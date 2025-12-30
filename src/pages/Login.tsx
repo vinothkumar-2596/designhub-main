@@ -27,7 +27,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('staff');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,6 +46,33 @@ export default function Login() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSignup = async () => {
+    if (!email || !password) {
+      toast.error('Email and password are required');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await signup(email, password, role);
+      toast.success('Account created');
+      navigate('/dashboard');
+    } catch (error) {
+      toast.error('Signup failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      await loginWithGoogle(role);
+      toast.success('Signed in with Google');
+      navigate('/dashboard');
+    } catch (error) {
+      toast.error('Google login failed');
     }
   };
 
@@ -166,7 +193,32 @@ export default function Login() {
             <Button type="submit" className="w-full h-11" disabled={isLoading}>
               {isLoading ? 'Signing in...' : 'Sign in'}
             </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full h-11"
+              disabled={isLoading}
+              onClick={handleSignup}
+            >
+              Create account
+            </Button>
           </form>
+
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-11"
+            onClick={handleGoogleLogin}
+            disabled={isLoading}
+          >
+            Continue with Google
+          </Button>
 
           <p className="text-center text-sm text-muted-foreground mt-8">
             This is a demo portal. Select any role to explore.
