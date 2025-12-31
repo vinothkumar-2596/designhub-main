@@ -19,22 +19,27 @@ import {
   FileText,
   Calendar,
   Clock,
-  CheckCircle2,
   Info,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { TaskCategory, TaskUrgency } from '@/types';
 import { addDays, format, isAfter, isBefore, addBusinessDays } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface UploadedFile {
   id: string;
   name: string;
   size: number;
+  driveId?: string;
+  url?: string;
+  uploading?: boolean;
+  error?: string;
 }
 
 export default function NewRequest() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showGuidelines, setShowGuidelines] = useState(true);
   
@@ -46,20 +51,78 @@ export default function NewRequest() {
   const [deadline, setDeadline] = useState('');
   const [isModification, setIsModification] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
 
   // Minimum deadline is 3 working days from now
   const minDeadline = format(addBusinessDays(new Date(), 3), 'yyyy-MM-dd');
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFiles = e.target.files;
-    if (uploadedFiles) {
-      const newFiles = Array.from(uploadedFiles).map((file) => ({
+    if (!uploadedFiles) return;
+
+    const selected = Array.from(uploadedFiles);
+    if (!apiUrl) {
+      const newFiles = selected.map((file) => ({
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
         size: file.size,
       }));
       setFiles([...files, ...newFiles]);
+      return;
     }
+
+    const pending = selected.map((file) => ({
+      id: Math.random().toString(36).substr(2, 9),
+      name: file.name,
+      size: file.size,
+      uploading: true,
+    }));
+    setFiles((prev) => [...prev, ...pending]);
+
+    await Promise.all(
+      selected.map(async (file, index) => {
+        const localId = pending[index].id;
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+          const response = await fetch(`${apiUrl}/api/files/upload`, {
+            method: 'POST',
+            body: formData,
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data?.error || 'Upload failed');
+          }
+          setFiles((prev) =>
+            prev.map((item) =>
+              item.id === localId
+                ? {
+                    ...item,
+                    driveId: data.id,
+                    url: data.webViewLink || data.webContentLink,
+                    uploading: false,
+                  }
+                : item
+            )
+          );
+        } catch (error) {
+          setFiles((prev) =>
+            prev.map((item) =>
+              item.id === localId
+                ? {
+                    ...item,
+                    uploading: false,
+                    error: 'Upload failed',
+                  }
+                : item
+            )
+          );
+          toast.error('File upload failed', {
+            description: file.name,
+          });
+        }
+      })
+    );
   };
 
   const removeFile = (id: string) => {
@@ -73,12 +136,16 @@ export default function NewRequest() {
   };
 
   const isFormValid = () => {
+    const hasUploadsInProgress = files.some((file) => file.uploading);
+    const hasUploadErrors = files.some((file) => file.error);
     return (
       title.trim() &&
       description.trim() &&
       category &&
       deadline &&
       files.length > 0 &&
+      !hasUploadsInProgress &&
+      !hasUploadErrors &&
       !isBefore(new Date(deadline), new Date(minDeadline))
     );
   };
@@ -95,8 +162,46 @@ export default function NewRequest() {
 
     setIsSubmitting(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    if (apiUrl) {
+      try {
+        const payload = {
+          title,
+          description,
+          category,
+          urgency,
+          deadline: new Date(deadline),
+          isModification,
+          status: 'pending',
+          requesterId: user?.id || '',
+          requesterName: user?.name || '',
+          requesterDepartment: user?.department || '',
+          files: files.map((file) => ({
+            name: file.name,
+            url: file.url || '',
+            type: 'input',
+            uploadedAt: new Date(),
+            uploadedBy: user?.id || '',
+          })),
+        };
+        const response = await fetch(`${apiUrl}/api/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          throw new Error('Request failed');
+        }
+      } catch (error) {
+        toast.error('Request submission failed', {
+          description: 'Please try again.',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+    } else {
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
 
     toast.success('Request submitted successfully!', {
       description: isModification
@@ -120,7 +225,7 @@ export default function NewRequest() {
 
         {/* Guidelines Banner */}
         {showGuidelines && (
-          <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 animate-slide-up relative">
+          <div className="bg-accent/15 border border-accent/30 rounded-xl p-5 animate-slide-up relative text-foreground">
             <button
               onClick={() => setShowGuidelines(false)}
               className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
@@ -128,28 +233,34 @@ export default function NewRequest() {
               <X className="h-4 w-4" />
             </button>
             <div className="flex items-start gap-3">
-              <Info className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+              <Info className="h-5 w-5 text-accent flex-shrink-0 mt-0.5" />
               <div>
                 <h3 className="font-semibold text-foreground mb-2">
                   Submission Guidelines
                 </h3>
-                <ul className="space-y-2 text-sm text-muted-foreground">
+                <ul className="space-y-2 text-sm text-foreground/80">
                   <li className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-status-completed flex-shrink-0 mt-0.5" />
+                    <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
+                      database
+                    </span>
                     <span>
                       <strong>Data Requirements:</strong> Include all text content,
                       images, logos, and reference files
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-status-completed flex-shrink-0 mt-0.5" />
+                    <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
+                      schedule
+                    </span>
                     <span>
                       <strong>Timeline:</strong> Minimum 3 working days for standard
                       requests. Urgent requests require justification.
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-status-completed flex-shrink-0 mt-0.5" />
+                    <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
+                      edit
+                    </span>
                     <span>
                       <strong>Modifications:</strong> Changes to approved designs
                       require Treasurer approval first
@@ -218,7 +329,9 @@ export default function NewRequest() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="intermediate">Intermediate</SelectItem>
                     <SelectItem value="urgent">Urgent</SelectItem>
                   </SelectContent>
                 </Select>
@@ -325,7 +438,11 @@ export default function NewRequest() {
                           {file.name}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {formatFileSize(file.size)}
+                          {file.uploading
+                            ? 'Uploading...'
+                            : file.error
+                              ? file.error
+                              : formatFileSize(file.size)}
                         </p>
                       </div>
                     </div>

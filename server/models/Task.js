@@ -4,7 +4,9 @@ const TaskFileSchema = new mongoose.Schema(
   {
     name: { type: String, default: "" },
     url: { type: String, default: "" },
-    type: { type: String, enum: ["input", "output"], default: "input" }
+    type: { type: String, enum: ["input", "output"], default: "input" },
+    uploadedAt: { type: Date },
+    uploadedBy: { type: String, default: "" }
   },
   { _id: false }
 );
@@ -43,7 +45,7 @@ const TaskSchema = new mongoose.Schema(
       enum: ["poster", "social_media", "banner", "brochure", "others"],
       required: true
     },
-    urgency: { type: String, enum: ["normal", "urgent"], default: "normal" },
+    urgency: { type: String, enum: ["low", "intermediate", "normal", "urgent"], default: "normal" },
     status: {
       type: String,
       enum: ["pending", "in_progress", "under_review", "completed", "clarification"],

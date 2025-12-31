@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import taskRoutes from "./routes/tasks.js";
 import activityRoutes from "./routes/activity.js";
 import authRoutes from "./routes/auth.js";
+import fileRoutes from "./routes/files.js";
+import driveAuthRoutes from "./routes/drive-auth.js";
 import User from "./models/User.js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url) });
@@ -20,6 +22,8 @@ app.get("/api/health", (req, res) => {
 app.use("/api/tasks", taskRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/files", fileRoutes);
+app.use("/api/drive", driveAuthRoutes);
 
 const port = process.env.PORT || 4000;
 const mongoUri = process.env.MONGODB_URI;
@@ -44,6 +48,20 @@ const ensureDemoUser = async () => {
       role: demoRole,
       name: "Demo User"
     });
+    return;
+  }
+  const nextRole = demoRole;
+  const nextPassword = demoPassword;
+  const nextName = "Demo User";
+  if (
+    existing.password !== nextPassword ||
+    existing.role !== nextRole ||
+    existing.name !== nextName
+  ) {
+    existing.password = nextPassword;
+    existing.role = nextRole;
+    existing.name = nextName;
+    await existing.save();
   }
 };
 

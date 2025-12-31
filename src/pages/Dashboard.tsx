@@ -39,7 +39,13 @@ export default function Dashboard() {
   const [showNotifications, setShowNotifications] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <DashboardLayout>
+        <div className="py-6" />
+      </DashboardLayout>
+    );
+  }
 
   const hydrateTask = (raw: typeof mockTasks[number]) => {
     if (!raw) return raw;
@@ -280,15 +286,15 @@ export default function Dashboard() {
 
           <div className="rounded-2xl border bg-card p-5 shadow-card">
             <div className="flex items-start gap-3">
-              <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <AlertTriangle className="h-4 w-4" />
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                   Important Notice
                 </p>
-                <h3 className="mt-2 text-base font-semibold text-foreground">Submission standards</h3>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <h3 className="text-base font-semibold text-foreground">Submission standards</h3>
+                <p className="text-sm leading-6 text-muted-foreground">
                   All design requests must include complete data and reference files. Minimum deadline is 3 working days.
                   Modifications require Treasurer approval.
                 </p>
@@ -389,7 +395,7 @@ export default function Dashboard() {
                       <p className="text-sm font-semibold text-foreground">
                         Designer completed {entry.taskTitle}
                       </p>
-                      <Badge className="text-[10px] uppercase tracking-[0.2em] bg-primary/10 text-primary border border-primary/20">
+                      <Badge className="text-[10px] uppercase tracking-[0.2em] bg-red-100 text-red-700 border border-red-200">
                         New
                       </Badge>
                     </div>

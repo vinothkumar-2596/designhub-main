@@ -22,3 +22,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+server/credentials/*.json
+server/credentials/drive-token.json

@@ -653,7 +653,16 @@ export default function TaskDetail() {
                               <AlertTriangle className="h-4 w-4 text-status-urgent" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon-sm">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={!file.url || file.url === '#'}
+                            onClick={() => {
+                              if (file.url && file.url !== '#') {
+                                window.open(file.url, '_blank', 'noopener,noreferrer');
+                              }
+                            }}
+                          >
                             <Download className="h-4 w-4" />
                           </Button>
                         </div>
@@ -690,7 +699,16 @@ export default function TaskDetail() {
                               <AlertTriangle className="h-4 w-4 text-status-urgent" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon-sm">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={!file.url || file.url === '#'}
+                            onClick={() => {
+                              if (file.url && file.url !== '#') {
+                                window.open(file.url, '_blank', 'noopener,noreferrer');
+                              }
+                            }}
+                          >
                             <Download className="h-4 w-4" />
                           </Button>
                         </div>

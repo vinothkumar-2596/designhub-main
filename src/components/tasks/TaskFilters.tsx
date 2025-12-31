@@ -87,7 +87,9 @@ export function TaskFilters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
               <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="intermediate">Intermediate</SelectItem>
               <SelectItem value="urgent">Urgent</SelectItem>
             </SelectContent>
           </Select>

@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth';
 import { User, UserRole } from '@/types';
 import { auth, firebaseEnabled, googleProvider } from '@/lib/firebase';
+import { DESIGNER_CREDENTIALS } from '@/constants/auth';
 
 interface AuthContextType {
   user: User | null;
@@ -108,12 +109,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string, role: UserRole) => {
-    if (firebaseEnabled && auth) {
-      await signInWithEmailAndPassword(auth, email, password);
-      localStorage.setItem('auth_role', role);
+    if (
+      role === 'designer' &&
+      email.trim().toLowerCase() === DESIGNER_CREDENTIALS.email &&
+      password === DESIGNER_CREDENTIALS.password
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setUser(mockUsers[role]);
       return;
     }
-    if (apiUrl) {
+    if (apiUrl && role === 'staff') {
       const response = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -128,6 +133,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
+      throw new Error('Login failed');
+    }
+    if (firebaseEnabled && auth) {
+      await signInWithEmailAndPassword(auth, email, password);
+      localStorage.setItem('auth_role', role);
+      return;
     }
 
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -135,12 +146,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = async (email: string, password: string, role: UserRole) => {
-    if (firebaseEnabled && auth) {
-      await createUserWithEmailAndPassword(auth, email, password);
-      localStorage.setItem('auth_role', role);
-      return;
-    }
     if (!apiUrl) {
+      if (firebaseEnabled && auth) {
+        await createUserWithEmailAndPassword(auth, email, password);
+        localStorage.setItem('auth_role', role);
+        return;
+      }
       setUser(mockUsers[role]);
       return;
     }
@@ -172,7 +183,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Google login not configured');
     }
     localStorage.setItem('auth_role', role);
-    await signInWithPopup(auth, googleProvider);
+    const result = await signInWithPopup(auth, googleProvider);
+    if (apiUrl) {
+      const profileEmail = result.user.email;
+      if (profileEmail) {
+        const response = await fetch(`${apiUrl}/api/auth/oauth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: profileEmail,
+            name: result.user.displayName || profileEmail.split('@')[0],
+            role,
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const nextUser = data.user as User;
+          setUser(nextUser);
+          if (data.token) {
+            persistAuth(data.token, nextUser);
+          }
+        }
+      }
+    }
   };
 
   const logout = () => {

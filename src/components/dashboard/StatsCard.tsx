@@ -40,7 +40,7 @@ export function StatsCard({ title, value, icon, trend, variant = 'default' }: St
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-2xl border p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up',
+        'relative overflow-hidden rounded-2xl border p-4 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up',
         variantStyles[variant]
       )}
     >
@@ -50,7 +50,7 @@ export function StatsCard({ title, value, icon, trend, variant = 'default' }: St
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             {title}
           </p>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">{value}</p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
           {trend && (
             <p
               className={cn(
@@ -58,11 +58,11 @@ export function StatsCard({ title, value, icon, trend, variant = 'default' }: St
                 trend.isPositive ? 'text-status-completed' : 'text-status-urgent'
               )}
             >
-              {trend.isPositive ? 'ƒ+`' : 'ƒ+"'} {Math.abs(trend.value)}% from last week
+              {trend.isPositive ? 'ï¿½+`' : 'ï¿½+"'} {Math.abs(trend.value)}% from last week
             </p>
           )}
         </div>
-        <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl', iconStyles[variant])}>
+        <div className={cn('flex h-9 w-9 items-center justify-center rounded-xl', iconStyles[variant])}>
           {icon}
         </div>
       </div>

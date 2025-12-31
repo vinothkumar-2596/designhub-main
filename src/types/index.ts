@@ -14,7 +14,7 @@ export type TaskCategory =
   | 'brochure'
   | 'others';
 
-export type TaskUrgency = 'normal' | 'urgent';
+export type TaskUrgency = 'low' | 'intermediate' | 'normal' | 'urgent';
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 

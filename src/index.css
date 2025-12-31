@@ -1,8 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap');
 
 @layer base {
   :root {
@@ -16,7 +17,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 221 83% 53%;
+    --primary: 232 50% 41%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 215 20% 93%;
@@ -25,15 +26,15 @@
     --muted: 215 20% 93%;
     --muted-foreground: 215 16% 47%;
 
-    --accent: 172 66% 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 42 76% 48%;
+    --accent-foreground: 222 47% 11%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --ring: 232 50% 41%;
 
     --radius: 0.75rem;
 
@@ -54,7 +55,7 @@
     /* Sidebar */
     --sidebar-background: 222 47% 11%;
     --sidebar-foreground: 215 20% 85%;
-    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary: 232 50% 41%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 222 47% 18%;
     --sidebar-accent-foreground: 0 0% 100%;
@@ -62,7 +63,7 @@
     --sidebar-ring: 221 83% 53%;
 
     /* Custom Design Tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(221 83% 53%) 0%, hsl(241 81% 54%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(232 50% 41%) 0%, hsl(241 81% 54%) 100%);
     --gradient-header: linear-gradient(180deg, hsl(222 47% 11%) 0%, hsl(222 47% 15%) 100%);
     --gradient-card-hover: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(220 20% 98%) 100%);
     
@@ -87,7 +88,7 @@
     --popover: 222 47% 11%;
     --popover-foreground: 215 20% 95%;
 
-    --primary: 221 83% 60%;
+    --primary: 232 50% 41%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 222 47% 18%;
@@ -96,19 +97,20 @@
     --muted: 222 47% 18%;
     --muted-foreground: 215 16% 60%;
 
-    --accent: 172 66% 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 42 76% 48%;
+    --accent-foreground: 222 47% 11%;
 
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 100%;
 
     --border: 222 47% 18%;
     --input: 222 47% 18%;
-    --ring: 221 83% 60%;
+    --ring: 232 50% 41%;
 
     --sidebar-background: 222 47% 6%;
     --sidebar-foreground: 215 20% 85%;
     --sidebar-accent: 222 47% 12%;
+    --sidebar-primary: 232 50% 41%;
   }
 }
 
@@ -125,6 +127,23 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
   }
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
 }
 
 @layer components {
