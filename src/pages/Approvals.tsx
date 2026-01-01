@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { mockTasks } from '@/data/mockTasks';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,20 +14,66 @@ import {
   AlertTriangle,
   Eye,
 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 
 export default function Approvals() {
   const { user } = useAuth();
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [tasks, setTasks] = useState(mockTasks);
+  const [isLoading, setIsLoading] = useState(false);
+  const apiUrl =
+    (import.meta.env.VITE_API_URL as string | undefined) ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? 'http://localhost:4000'
+      : undefined);
 
-  // Filter to only show modification requests pending approval
+  useEffect(() => {
+    if (!apiUrl) return;
+    const loadTasks = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`${apiUrl}/api/tasks`);
+        if (!response.ok) {
+          throw new Error('Failed to load tasks');
+        }
+        const data = await response.json();
+        const hydrated = data.map((task: any) => ({
+          ...task,
+          id: task.id || task._id,
+          deadline: new Date(task.deadline),
+          createdAt: new Date(task.createdAt),
+          updatedAt: new Date(task.updatedAt),
+          proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
+          deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
+          files: task.files?.map((file: any) => ({
+            ...file,
+            uploadedAt: new Date(file.uploadedAt),
+          })),
+          comments: task.comments?.map((comment: any) => ({
+            ...comment,
+            createdAt: new Date(comment.createdAt),
+          })),
+          changeHistory: task.changeHistory?.map((entry: any) => ({
+            ...entry,
+            createdAt: new Date(entry.createdAt),
+          })),
+        }));
+        setTasks(hydrated);
+      } catch (error) {
+        toast.error('Failed to load approvals');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadTasks();
+  }, [apiUrl]);
+
+  // Filter to only show requests pending approval
   const pendingApprovals = useMemo(() => {
-    return mockTasks.filter(
-      (task) => task.isModification && task.approvalStatus === 'pending'
-    );
-  }, []);
+    return tasks.filter((task) => task.approvalStatus === 'pending');
+  }, [tasks]);
 
   const handleApprove = async (taskId: string) => {
     setProcessingId(taskId);
@@ -63,14 +109,13 @@ export default function Approvals() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-foreground">Approval Guidelines</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                These requests involve modifications to previously approved designs.
-                Review carefully before approving to ensure changes align with
-                branding and budget requirements.
-              </p>
-            </div>
-          </div>
+          <h3 className="font-semibold text-foreground">Approval Guidelines</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+                Review incoming requests before approving to ensure the scope,
+                timeline, and assets align with brand and budget expectations.
+          </p>
+        </div>
+      </div>
         </div>
 
         {/* Results Count */}
@@ -80,7 +125,11 @@ export default function Approvals() {
         </p>
 
         {/* Approval Cards */}
-        {pendingApprovals.length > 0 ? (
+        {isLoading ? (
+          <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
+            <p className="text-sm text-muted-foreground">Loading approvals...</p>
+          </div>
+        ) : pendingApprovals.length > 0 ? (
           <div className="space-y-4">
             {pendingApprovals.map((task, index) => (
               <div

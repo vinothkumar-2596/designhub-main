@@ -26,7 +26,7 @@ export default function Settings() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6 max-w-4xl">
         {/* Header */}
         <div className="animate-fade-in">
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
@@ -36,7 +36,7 @@ export default function Settings() {
         </div>
 
         {/* Profile Section */}
-        <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+        <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <User className="h-5 w-5" />
             Profile
@@ -70,7 +70,7 @@ export default function Settings() {
         </div>
 
         {/* Role Switcher (Demo) */}
-        <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+        <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
           <h2 className="text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
             <Shield className="h-5 w-5" />
             Demo: Switch Role
@@ -94,7 +94,7 @@ export default function Settings() {
         </div>
 
         {/* Notifications */}
-        <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+        <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Bell className="h-5 w-5" />
             Notifications

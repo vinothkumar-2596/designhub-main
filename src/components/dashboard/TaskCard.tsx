@@ -1,7 +1,7 @@
 import { Task, TaskStatus } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, User, Paperclip, MessageSquare, ArrowRight } from 'lucide-react';
+import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 interface TaskCardProps {
   task: Task;
   showRequester?: boolean;
+  showAssignee?: boolean;
 }
 
 const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
@@ -27,7 +28,8 @@ const categoryLabels: Record<string, string> = {
   others: 'Others',
 };
 
-export function TaskCard({ task, showRequester = true }: TaskCardProps) {
+export function TaskCard({ task, showRequester = true, showAssignee = false }: TaskCardProps) {
+  const taskId = task.id || (task as unknown as { _id?: string })._id || '';
   const status = statusConfig[task.status];
   const isOverdue = isPast(task.deadline) && task.status !== 'completed';
   const deadlineText = isPast(task.deadline)
@@ -35,14 +37,14 @@ export function TaskCard({ task, showRequester = true }: TaskCardProps) {
     : `Due ${formatDistanceToNow(task.deadline, { addSuffix: true })}`;
 
   return (
-    <div className="group rounded-2xl border border-border/70 bg-card p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up">
+    <div className="group rounded-2xl border border-[#D9E6FF] bg-white p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={status.variant}>{status.label}</Badge>
           {task.urgency === 'urgent' && <Badge variant="urgent">Urgent</Badge>}
-          {task.isModification && task.approvalStatus === 'pending' && (
-            <Badge variant="pending">Awaiting Approval</Badge>
-          )}
+        {task.approvalStatus === 'pending' && (
+          <Badge variant="pending">Awaiting Approval</Badge>
+        )}
         </div>
         <Badge variant="secondary" className="text-xs font-semibold">
           {categoryLabels[task.category]}
@@ -63,6 +65,14 @@ export function TaskCard({ task, showRequester = true }: TaskCardProps) {
             <span>{task.requesterName}</span>
           </div>
         )}
+        {showAssignee && (
+          <div className="flex items-center gap-1.5">
+            <UserCheck className="h-3.5 w-3.5" />
+            <span>
+              {task.assignedToName ? `Assigned to ${task.assignedToName}` : 'Unassigned'}
+            </span>
+          </div>
+        )}
         <div className={cn('flex items-center gap-1.5', isOverdue && 'text-status-urgent font-medium')}>
           <Calendar className="h-3.5 w-3.5" />
           <span>{deadlineText}</span>
@@ -81,13 +91,13 @@ export function TaskCard({ task, showRequester = true }: TaskCardProps) {
         )}
       </div>
 
-      <div className="mt-4 flex items-center justify-between border-t border-border/70 pt-3">
+      <div className="mt-4 flex items-center justify-between border-t border-[#D9E6FF] pt-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Clock className="h-3.5 w-3.5" />
-          <span>Created {format(task.createdAt, 'MMM d, yyyy')}</span>
+          <span>Created {format(task.createdAt, 'MMM d, yyyy h:mm a')}</span>
         </div>
-        <Button variant="ghost" size="sm" asChild className="gap-1 text-primary hover:text-primary">
-          <Link to={`/task/${task.id}`}>
+        <Button variant="ghost" size="sm" asChild className="gap-1 font-semibold text-primary hover:text-foreground">
+          <Link to={`/task/${taskId}`} state={{ task }}>
             View Details
             <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
           </Link>

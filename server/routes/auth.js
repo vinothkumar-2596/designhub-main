@@ -65,8 +65,8 @@ const sendOtpEmail = async ({ to, otp }) => {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: "DesignHub password reset code",
-      text: `Your DesignHub OTP is ${otp}. It expires in 10 minutes.`,
+      subject: "DesignDesk password reset code",
+      text: `Your DesignDesk OTP is ${otp}. It expires in 10 minutes.`,
     });
     console.log("SMTP sendMail success:", info?.response || info?.messageId || "ok");
     return true;

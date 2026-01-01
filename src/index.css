@@ -8,7 +8,7 @@
 @layer base {
   :root {
     /* Core Brand Colors - Deep Blue Corporate */
-    --background: 220 20% 97%;
+    --background: 220 100% 99%;
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
@@ -20,10 +20,10 @@
     --primary: 232 50% 41%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 215 20% 93%;
+    --secondary: 220 18% 96%;
     --secondary-foreground: 222 47% 11%;
 
-    --muted: 215 20% 93%;
+    --muted: 220 18% 96%;
     --muted-foreground: 215 16% 47%;
 
     --accent: 42 76% 48%;
@@ -32,8 +32,8 @@
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
+    --border: 220 18% 90%;
+    --input: 220 18% 90%;
     --ring: 232 50% 41%;
 
     --radius: 0.75rem;
@@ -196,6 +196,10 @@
   .animate-slide-in-left {
     animation: slideInLeft var(--transition-slow) ease-out;
   }
+
+  .animate-dropdown {
+    animation: dropdownIn 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 
 @layer utilities {
@@ -247,6 +251,17 @@
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 

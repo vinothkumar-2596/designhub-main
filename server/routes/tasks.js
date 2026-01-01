@@ -1,18 +1,27 @@
 import express from "express";
 import Task from "../models/Task.js";
 import Activity from "../models/Activity.js";
+import { sendFinalFilesEmail } from "../lib/notifications.js";
 
 const router = express.Router();
 
 router.get("/", async (req, res) => {
   try {
-    const { status, category, urgency, requesterId, assignedToId, limit } = req.query;
+    const { status, category, urgency, requesterId, requesterEmail, assignedToId, limit } = req.query;
     const query = {};
 
     if (status) query.status = status;
     if (category) query.category = category;
     if (urgency) query.urgency = urgency;
-    if (requesterId) query.requesterId = requesterId;
+    if (requesterId && requesterEmail) {
+      query.$or = [
+        { requesterId },
+        { requesterEmail }
+      ];
+    } else {
+      if (requesterId) query.requesterId = requesterId;
+      if (requesterEmail) query.requesterEmail = requesterEmail;
+    }
     if (assignedToId) query.assignedToId = assignedToId;
 
     const safeLimit = Math.min(parseInt(limit || "100", 10), 500);
@@ -165,6 +174,15 @@ router.post("/:id/changes", async (req, res) => {
       userRole: userRole || "",
       createdAt: new Date()
     }));
+    const finalChangeEntries =
+      userRole === "designer"
+        ? changeEntries.filter(
+            (change) =>
+              change?.type === "file_added" &&
+              change?.field === "files" &&
+              change?.note === "Final file uploaded"
+          )
+        : [];
 
     const updateDoc = {
       $inc: { changeCount: changes.length },
@@ -191,6 +209,58 @@ router.post("/:id/changes", async (req, res) => {
       userId: userId || "",
       userName: userName || ""
     });
+
+    const finalFileChanges =
+      userRole === "designer"
+        ? changes.filter(
+            (change) =>
+              change?.type === "file_added" &&
+              change?.field === "files" &&
+              change?.note === "Final file uploaded"
+          )
+        : [];
+    if (finalFileChanges.length > 0 && task.requesterEmail) {
+      const baseUrl = process.env.FRONTEND_URL || "";
+      const taskUrl = baseUrl
+        ? `${baseUrl.replace(/\/$/, "")}/task/${updatedTask.id || updatedTask._id}`
+        : undefined;
+      const updatedFiles = Array.isArray(updatedTask.files) ? updatedTask.files : [];
+      const newNames = new Set(
+        finalFileChanges
+          .map((change) => change?.newValue)
+          .filter((name) => Boolean(name))
+      );
+      const files = updatedFiles
+        .filter((file) => file?.type === "output" && newNames.has(file.name))
+        .map((file) => ({ name: file.name, url: file.url }));
+      if (files.length === 0) {
+        newNames.forEach((name) => {
+          files.push({ name, url: "" });
+        });
+      }
+      const submittedAt = finalChangeEntries[0]?.createdAt;
+      try {
+        await sendFinalFilesEmail({
+          to: task.requesterEmail,
+          taskTitle: task.title,
+          files,
+          designerName: userName,
+          taskUrl,
+          submittedAt,
+          taskDetails: {
+            id: updatedTask.id || updatedTask._id?.toString?.() || updatedTask._id,
+            status: updatedTask.status,
+            category: updatedTask.category,
+            deadline: updatedTask.deadline,
+            requesterName: updatedTask.requesterName,
+            requesterEmail: updatedTask.requesterEmail,
+            requesterDepartment: updatedTask.requesterDepartment,
+          },
+        });
+      } catch (error) {
+        console.error("Final files notification error:", error?.message || error);
+      }
+    }
 
     res.json(updatedTask);
   } catch (error) {

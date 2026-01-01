@@ -21,6 +21,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "";
     const makePublic = process.env.DRIVE_PUBLIC !== "false";
+    const subfolderName = req.body?.taskTitle ? String(req.body.taskTitle) : undefined;
 
     const file = await uploadToDrive({
       buffer: req.file.buffer,
@@ -28,6 +29,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       mimeType: req.file.mimetype,
       folderId,
       makePublic,
+      subfolderName,
     });
 
     console.log("Drive upload success:", file?.id);

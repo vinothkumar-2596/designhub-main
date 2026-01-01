@@ -83,38 +83,57 @@ export const saveDriveToken = async (code) => {
   return tokens;
 };
 
-export const uploadToDrive = async ({ buffer, filename, mimeType, folderId, makePublic }) => {
+const sanitizeFolderName = (name) =>
+  name
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const findOrCreateFolder = async (drive, { name, parentId }) => {
+  const safeName = sanitizeFolderName(name);
+  if (!safeName) return parentId;
+
+  const existing = await drive.files.list({
+    q: [
+      "mimeType = 'application/vnd.google-apps.folder'",
+      `name = '${safeName.replace(/'/g, "\\'")}'`,
+      parentId ? `'${parentId}' in parents` : null,
+      "trashed = false",
+    ]
+      .filter(Boolean)
+      .join(" and "),
+    fields: "files(id,name)",
+    spaces: "drive",
+    pageSize: 1,
+  });
+  const match = existing.data.files?.[0];
+  if (match?.id) {
+    return match.id;
+  }
+
+  const created = await drive.files.create({
+    requestBody: {
+      name: safeName,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: parentId ? [parentId] : undefined,
+    },
+    fields: "id",
+  });
+  return created.data.id || parentId;
+};
+
+export const uploadToDrive = async ({ buffer, filename, mimeType, folderId, makePublic, subfolderName }) => {
   const drive = getDriveClient();
   const useDateFolders = process.env.DRIVE_DATE_FOLDERS !== "false";
   let targetFolder = folderId || undefined;
 
   if (useDateFolders && folderId) {
     const dateLabel = new Date().toISOString().slice(0, 10);
-    const existing = await drive.files.list({
-      q: [
-        "mimeType = 'application/vnd.google-apps.folder'",
-        `name = '${dateLabel}'`,
-        `'${folderId}' in parents`,
-        "trashed = false",
-      ].join(" and "),
-      fields: "files(id,name)",
-      spaces: "drive",
-      pageSize: 1,
-    });
-    const match = existing.data.files?.[0];
-    if (match?.id) {
-      targetFolder = match.id;
-    } else {
-      const created = await drive.files.create({
-        requestBody: {
-          name: dateLabel,
-          mimeType: "application/vnd.google-apps.folder",
-          parents: [folderId],
-        },
-        fields: "id",
-      });
-      targetFolder = created.data.id || folderId;
-    }
+    targetFolder = await findOrCreateFolder(drive, { name: dateLabel, parentId: folderId });
+  }
+
+  if (subfolderName) {
+    targetFolder = await findOrCreateFolder(drive, { name: subfolderName, parentId: targetFolder });
   }
 
   const stream = Readable.from(buffer);

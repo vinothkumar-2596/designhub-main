@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { ArrowDownRight, ArrowUpRight, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface StatsCardProps {
@@ -13,57 +14,54 @@ interface StatsCardProps {
 }
 
 const variantStyles = {
-  default: 'bg-card border-border/70',
-  primary: 'bg-primary/5 border-primary/20',
-  warning: 'bg-status-pending-bg border-status-pending/25',
-  success: 'bg-status-completed-bg border-status-completed/25',
-  urgent: 'bg-status-urgent-bg border-status-urgent/25',
+  default: 'bg-[#F3F7FF] border-[#D9E6FF]',
+  primary: 'bg-[#F3F7FF] border-[#D9E6FF]',
+  warning: 'bg-[#F3F7FF] border-[#D9E6FF]',
+  success: 'bg-[#F3F7FF] border-[#D9E6FF]',
+  urgent: 'bg-[#F3F7FF] border-[#D9E6FF]',
 };
 
 const iconStyles = {
-  default: 'bg-secondary text-secondary-foreground',
-  primary: 'bg-primary/15 text-primary',
-  warning: 'bg-status-pending/15 text-status-pending',
-  success: 'bg-status-completed/15 text-status-completed',
-  urgent: 'bg-status-urgent/15 text-status-urgent',
-};
-
-const accentStyles = {
-  default: 'bg-foreground/10',
-  primary: 'bg-primary/60',
-  warning: 'bg-status-pending/70',
-  success: 'bg-status-completed/70',
-  urgent: 'bg-status-urgent/70',
+  default: 'bg-gradient-to-br from-[#b16cff] to-[#7c3aed] text-white shadow-sm',
+  primary: 'bg-gradient-to-br from-[#60a5fa] to-[#2563eb] text-white shadow-sm',
+  warning: 'bg-gradient-to-br from-[#fbbf24] to-[#f97316] text-white shadow-sm',
+  success: 'bg-gradient-to-br from-[#34d399] to-[#10b981] text-white shadow-sm',
+  urgent: 'bg-gradient-to-br from-[#f87171] to-[#ef4444] text-white shadow-sm',
 };
 
 export function StatsCard({ title, value, icon, trend, variant = 'default' }: StatsCardProps) {
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-2xl border p-4 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up',
+        'relative overflow-hidden rounded-xl border p-4 shadow-[0_12px_24px_-16px_hsl(var(--foreground)_/_0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up',
         variantStyles[variant]
       )}
     >
-      <div className={cn('absolute left-0 top-0 h-full w-1', accentStyles[variant])} />
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            {title}
-          </p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+      <div className="flex items-start gap-3">
+        <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg', iconStyles[variant])}>
+          {icon}
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-1 text-sm font-medium text-foreground/80">
+            <span>{title}</span>
+          </div>
+          <p className="mt-2 text-[22px] font-semibold tracking-tight text-foreground">{value}</p>
           {trend && (
-            <p
+            <div
               className={cn(
-                'mt-2 text-xs font-medium',
+                'mt-1 flex items-center gap-1 text-xs font-medium',
                 trend.isPositive ? 'text-status-completed' : 'text-status-urgent'
               )}
             >
-              {trend.isPositive ? '�+`' : '�+"'} {Math.abs(trend.value)}% from last week
-            </p>
+              {trend.isPositive ? (
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              ) : (
+                <ArrowDownRight className="h-3.5 w-3.5" />
+              )}
+              <span>{Math.abs(trend.value)}%</span>
+              <span className="text-muted-foreground">from last quarter</span>
+            </div>
           )}
-        </div>
-        <div className={cn('flex h-9 w-9 items-center justify-center rounded-xl', iconStyles[variant])}>
-          {icon}
         </div>
       </div>
     </div>

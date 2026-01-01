@@ -53,6 +53,7 @@ const TaskSchema = new mongoose.Schema(
     },
     requesterId: { type: String, default: "" },
     requesterName: { type: String, default: "" },
+    requesterEmail: { type: String, default: "" },
     requesterDepartment: { type: String, default: "" },
     assignedToId: { type: String, default: "" },
     assignedToName: { type: String, default: "" },

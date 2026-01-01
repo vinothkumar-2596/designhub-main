@@ -1,4 +1,4 @@
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { mockTasks } from '@/data/mockTasks';
 import { useAuth } from '@/contexts/AuthContext';
@@ -54,29 +54,50 @@ type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' |
 export default function TaskDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = location.state as
+    | { task?: typeof mockTasks[number]; highlightChangeId?: string }
+    | null;
   const { user } = useAuth();
-  const task = mockTasks.find((t) => t.id === id);
-  const [taskState, setTaskState] = useState(task);
+  const apiUrl =
+    (import.meta.env.VITE_API_URL as string | undefined) ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? 'http://localhost:4000'
+      : undefined);
+  const stateTask = locationState?.task;
+  const highlightChangeId = locationState?.highlightChangeId;
+  const initialTask = stateTask || mockTasks.find((t) => t.id === id);
+  const [taskState, setTaskState] = useState<typeof mockTasks[number] | undefined>(initialTask);
+  const [isLoading, setIsLoading] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [newStatus, setNewStatus] = useState<TaskStatus | ''>('');
-  const [changeCount, setChangeCount] = useState(task?.changeCount ?? 0);
+  const [changeCount, setChangeCount] = useState(initialTask?.changeCount ?? 0);
   const initialApprovalStatus: ApprovalStatus | undefined =
-    task?.approvalStatus ?? ((task?.changeCount ?? 0) >= 3 ? 'pending' : undefined);
+    initialTask?.approvalStatus ?? ((initialTask?.changeCount ?? 0) >= 3 ? 'pending' : undefined);
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus | undefined>(
     initialApprovalStatus
   );
-  const [changeHistory, setChangeHistory] = useState<TaskChange[]>(task?.changeHistory ?? []);
-  const [editedDescription, setEditedDescription] = useState(task?.description ?? '');
+  const [changeHistory, setChangeHistory] = useState<TaskChange[]>(initialTask?.changeHistory ?? []);
+  const [editedDescription, setEditedDescription] = useState(initialTask?.description ?? '');
   const [editedDeadline, setEditedDeadline] = useState(
-    task ? format(task.deadline, 'yyyy-MM-dd') : ''
+    initialTask ? format(initialTask.deadline, 'yyyy-MM-dd') : ''
   );
   const [isEditingTask, setIsEditingTask] = useState(false);
   const [deadlineRequest, setDeadlineRequest] = useState(
-    task?.proposedDeadline ? format(task.proposedDeadline, 'yyyy-MM-dd') : ''
+    initialTask?.proposedDeadline ? format(initialTask.proposedDeadline, 'yyyy-MM-dd') : ''
   );
   const [newFileName, setNewFileName] = useState('');
   const [newFileType, setNewFileType] = useState<'input' | 'output'>('input');
+  const [isUploadingFinal, setIsUploadingFinal] = useState(false);
   const storageKey = id ? `designhub.task.${id}` : '';
+
+  useEffect(() => {
+    if (!highlightChangeId || typeof document === 'undefined') return;
+    const target = document.getElementById(`change-${highlightChangeId}`);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightChangeId, changeHistory.length]);
 
   const hydrateTask = (raw: typeof taskState) => {
     if (!raw) return raw;
@@ -112,11 +133,13 @@ export default function TaskDetail() {
     localStorage.setItem(storageKey, JSON.stringify(payload));
   };
 
-  if (!taskState || !task) {
+  if (!taskState) {
     return (
       <DashboardLayout>
         <div className="text-center py-16">
-          <h2 className="text-xl font-semibold">Task not found</h2>
+          <h2 className="text-xl font-semibold">
+            {isLoading ? 'Loading task...' : 'Task not found'}
+          </h2>
           <Button asChild className="mt-4">
             <Link to="/dashboard">Back to Dashboard</Link>
           </Button>
@@ -226,6 +249,39 @@ export default function TaskDetail() {
   };
 
   useEffect(() => {
+    if (!apiUrl || !id) return;
+    const loadTask = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`${apiUrl}/api/tasks/${id}`);
+        if (!response.ok) {
+          throw new Error('Task not found');
+        }
+        const data = await response.json();
+        const hydrated = hydrateTask({
+          ...data,
+          id: data.id || data._id,
+        });
+        setTaskState(hydrated);
+        setChangeHistory(hydrated?.changeHistory ?? []);
+        setChangeCount(hydrated?.changeCount ?? 0);
+        setApprovalStatus(hydrated?.approvalStatus);
+        setEditedDescription(hydrated?.description ?? '');
+        setEditedDeadline(hydrated ? format(hydrated.deadline, 'yyyy-MM-dd') : '');
+        setDeadlineRequest(
+          hydrated?.proposedDeadline ? format(hydrated.proposedDeadline, 'yyyy-MM-dd') : ''
+        );
+      } catch (error) {
+        setTaskState(undefined);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadTask();
+  }, [apiUrl, id]);
+
+  useEffect(() => {
+    if (apiUrl) return;
     if (!storageKey) return;
     const stored = localStorage.getItem(storageKey);
     if (!stored) return;
@@ -285,6 +341,7 @@ export default function TaskDetail() {
   const handleSaveUpdates = () => {
     const updates: Partial<typeof taskState> = {};
     const changes: ChangeInput[] = [];
+    const isStaffUpdate = user?.role === 'staff';
 
     if (editedDescription.trim() && editedDescription !== taskState.description) {
       changes.push({
@@ -292,6 +349,7 @@ export default function TaskDetail() {
         field: 'description',
         oldValue: taskState.description,
         newValue: editedDescription,
+        note: isStaffUpdate ? 'Staff requested changes' : undefined,
       });
       updates.description = editedDescription;
     }
@@ -352,6 +410,59 @@ export default function TaskDetail() {
     );
   };
 
+  const handleFinalUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+    if (!apiUrl) {
+      toast.error('File upload requires the backend.');
+      return;
+    }
+
+    setIsUploadingFinal(true);
+    const uploads = Array.from(selectedFiles);
+    try {
+      for (const file of uploads) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('taskTitle', taskState.title);
+        const response = await fetch(`${apiUrl}/api/files/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data?.error || 'Upload failed');
+        }
+        const newFile = {
+          id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: file.name,
+          url: data.webViewLink || data.webContentLink || '',
+          type: 'output' as const,
+          uploadedAt: new Date(),
+          uploadedBy: user?.id || '',
+        };
+        recordChanges(
+          [
+            {
+              type: 'file_added',
+              field: 'files',
+              oldValue: '',
+              newValue: newFile.name,
+              note: 'Final file uploaded',
+            },
+          ],
+          { files: [...taskState.files, newFile] }
+        );
+      }
+      toast.success('Final files uploaded.');
+    } catch (error) {
+      toast.error('File upload failed');
+    } finally {
+      setIsUploadingFinal(false);
+      e.target.value = '';
+    }
+  };
+
   const handleRequestDeadline = () => {
     if (!deadlineRequest) return;
     const minDate = minDeadlineDate;
@@ -391,6 +502,12 @@ export default function TaskDetail() {
             oldValue: format(taskState.deadline, 'MMM d, yyyy'),
             newValue: format(taskState.proposedDeadline, 'MMM d, yyyy'),
             note: `Approved by ${user?.name || 'Designer'}`,
+          },
+          {
+            type: 'update',
+            field: 'deadline_request',
+            oldValue: '',
+            newValue: 'Approved',
           },
         ],
         {
@@ -750,6 +867,20 @@ export default function TaskDetail() {
                   <p className="text-xs text-muted-foreground">
                     Drag and drop or click to upload
                   </p>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFinalUpload}
+                    className="hidden"
+                    id="final-file-upload"
+                    disabled={isUploadingFinal}
+                  />
+                  <label
+                    htmlFor="final-file-upload"
+                    className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground"
+                  >
+                    {isUploadingFinal ? 'Uploading...' : 'Select files'}
+                  </label>
                 </div>
               )}
             </div>
@@ -968,12 +1099,19 @@ export default function TaskDetail() {
                 <History className="h-4 w-4 text-muted-foreground" />
               </div>
               {changeHistory.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 scrollbar-thin">
                   {changeHistory.map((entry) => (
-                    <div key={entry.id} className="rounded-lg border border-border/60 bg-secondary/40 p-3">
+                    <div
+                      key={entry.id}
+                      id={`change-${entry.id}`}
+                      className={cn(
+                        'rounded-lg border border-border/60 bg-secondary/40 p-2.5 transition-colors',
+                        entry.id === highlightChangeId && 'border-primary/40 bg-primary/10'
+                      )}
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="text-sm font-medium text-foreground">
+                          <p className="text-sm font-medium text-foreground leading-snug">
                             {entry.userName} updated {entry.field}
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
@@ -983,7 +1121,7 @@ export default function TaskDetail() {
                             <p className="text-xs text-muted-foreground mt-1">{entry.note}</p>
                           )}
                         </div>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
                           {formatDistanceToNow(entry.createdAt, { addSuffix: true })}
                         </span>
                       </div>

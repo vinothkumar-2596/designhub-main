@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import Lottie from 'lottie-react';
 import {
   Select,
   SelectContent,
@@ -42,6 +50,8 @@ export default function NewRequest() {
   const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showGuidelines, setShowGuidelines] = useState(true);
+  const [showThankYou, setShowThankYou] = useState(false);
+  const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -51,10 +61,29 @@ export default function NewRequest() {
   const [deadline, setDeadline] = useState('');
   const [isModification, setIsModification] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>([]);
-  const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
+  const apiUrl =
+    (import.meta.env.VITE_API_URL as string | undefined) ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? 'http://localhost:4000'
+      : undefined);
 
   // Minimum deadline is 3 working days from now
   const minDeadline = format(addBusinessDays(new Date(), 3), 'yyyy-MM-dd');
+
+  useEffect(() => {
+    let isActive = true;
+    fetch('/lottie/thank-you.json')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (isActive && data) {
+          setThankYouAnimation(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFiles = e.target.files;
@@ -171,9 +200,11 @@ export default function NewRequest() {
           urgency,
           deadline: new Date(deadline),
           isModification,
+          approvalStatus: isModification ? 'pending' : undefined,
           status: 'pending',
           requesterId: user?.id || '',
           requesterName: user?.name || '',
+          requesterEmail: user?.email || '',
           requesterDepartment: user?.department || '',
           files: files.map((file) => ({
             name: file.name,
@@ -209,6 +240,12 @@ export default function NewRequest() {
         : 'Your request has been added to the design queue.',
     });
 
+    setIsSubmitting(false);
+    setShowThankYou(true);
+  };
+
+  const handleThankYouClose = () => {
+    setShowThankYou(false);
     navigate('/my-requests');
   };
 
@@ -474,6 +511,46 @@ export default function NewRequest() {
           </div>
         </form>
       </div>
+      <Dialog open={showThankYou} onOpenChange={(open) => (!open ? handleThankYouClose() : null)}>
+        <DialogContent className="max-w-md overflow-hidden p-0">
+          <div className="relative h-44 bg-primary/10">
+            {thankYouAnimation && (
+              <Lottie
+                animationData={thankYouAnimation}
+                loop={10}
+                className="h-full w-full"
+              />
+            )}
+          </div>
+          <div className="px-7 pb-7 pt-5 text-center">
+            <DialogHeader className="text-center sm:text-center">
+              <DialogTitle className="text-2xl font-bold text-foreground">Thank you!</DialogTitle>
+              <DialogDescription className="mt-2.5 text-sm text-muted-foreground">
+                Your request has been successfully submitted.
+                <br />
+                Our design team will review it shortly.
+              </DialogDescription>
+            </DialogHeader>
+            <Button className="mt-8 w-full" onClick={handleThankYouClose}>
+              Close
+            </Button>
+            <div className="mt-6 border-t border-border/60 pt-4 pb-2 text-center text-[11px] text-muted-foreground">
+              For assistance, please contact the coordinator at{' '}
+              <a href="tel:+910000000000" className="font-medium text-foreground/80 hover:text-foreground">
+                +91 0000000000
+              </a>{' '}
+              or{' '}
+              <a
+                href="mailto:support@designdesk.com"
+                className="font-medium text-foreground/80 hover:text-foreground"
+              >
+                support@designdesk.com
+              </a>
+              .
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

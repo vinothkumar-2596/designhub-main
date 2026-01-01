@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { TaskCard } from '@/components/dashboard/TaskCard';
 import { TaskFilters } from '@/components/tasks/TaskFilters';
@@ -8,18 +8,72 @@ import { TaskStatus, TaskCategory, TaskUrgency } from '@/types';
 import { ListTodo, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 
 export default function MyRequests() {
   const { user } = useAuth();
+  const apiUrl =
+    (import.meta.env.VITE_API_URL as string | undefined) ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? 'http://localhost:4000'
+      : undefined);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | 'all'>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<TaskUrgency | 'all'>('all');
+  const [tasks, setTasks] = useState(mockTasks);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!apiUrl || (!user?.id && !user?.email)) return;
+    const loadTasks = async () => {
+      setIsLoading(true);
+      try {
+        const emailValue = user?.email ? encodeURIComponent(user.email) : '';
+        const idValue = user?.id ? encodeURIComponent(user.id) : '';
+        const params = new URLSearchParams();
+        if (emailValue) params.set('requesterEmail', emailValue);
+        if (idValue) params.set('requesterId', idValue);
+        const response = await fetch(`${apiUrl}/api/tasks?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error('Failed to load requests');
+        }
+        const data = await response.json();
+        const hydrated = data.map((task: any) => ({
+          ...task,
+          id: task.id || task._id,
+          deadline: new Date(task.deadline),
+          createdAt: new Date(task.createdAt),
+          updatedAt: new Date(task.updatedAt),
+          proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
+          deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
+          files: task.files?.map((file) => ({
+            ...file,
+            uploadedAt: new Date(file.uploadedAt),
+          })),
+          comments: task.comments?.map((comment) => ({
+            ...comment,
+            createdAt: new Date(comment.createdAt),
+          })),
+          changeHistory: task.changeHistory?.map((entry) => ({
+            ...entry,
+            createdAt: new Date(entry.createdAt),
+          })),
+        }));
+        setTasks(hydrated);
+      } catch (error) {
+        toast.error('Failed to load requests');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadTasks();
+  }, [apiUrl, user?.id]);
 
   // Filter to only show user's own requests
   const userTasks = useMemo(() => {
-    return mockTasks.filter((task) => task.requesterId === user?.id);
-  }, [user?.id]);
+    return tasks.filter((task) => task.requesterId === user?.id);
+  }, [tasks, user?.id]);
 
   const filteredTasks = useMemo(() => {
     return userTasks.filter((task) => {
@@ -90,7 +144,11 @@ export default function MyRequests() {
         </p>
 
         {/* Task Grid */}
-        {filteredTasks.length > 0 ? (
+        {isLoading ? (
+          <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
+            <p className="text-sm text-muted-foreground">Loading requests...</p>
+          </div>
+        ) : filteredTasks.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {filteredTasks.map((task, index) => (
               <div key={task.id} style={{ animationDelay: `${index * 50}ms` }}>

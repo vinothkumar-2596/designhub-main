@@ -222,11 +222,14 @@ export default function Login() {
         <div className="relative z-10 flex flex-col justify-center px-16 text-sidebar-foreground">
           <div className="animate-slide-in-left">
             <div className="flex items-center gap-3 mb-8">
-              <div className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center">
-                <Palette className="h-6 w-6 text-primary-foreground" />
+              <div
+                className="h-12 w-12 rounded-xl flex items-center justify-center p-1"
+                style={{ backgroundColor: 'rgb(21, 30, 60)' }}
+              >
+                <img src="/favicon.png" alt="DesignDesk" className="h-full w-full object-contain" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-sidebar-primary-foreground">DesignHub</h1>
+                <h1 className="text-2xl font-bold text-sidebar-primary-foreground">DesignDesk</h1>
                 <p className="text-sm text-sidebar-foreground/70">Task Management Portal</p>
               </div>
             </div>
@@ -264,11 +267,14 @@ export default function Login() {
         <div className="w-full max-w-md animate-fade-in">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
-            <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center">
-              <Palette className="h-5 w-5 text-primary-foreground" />
+            <div
+              className="h-10 w-10 rounded-xl flex items-center justify-center p-1"
+              style={{ backgroundColor: 'rgb(21, 30, 60)' }}
+            >
+              <img src="/favicon.png" alt="DesignDesk" className="h-full w-full object-contain" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">DesignHub</h1>
+              <h1 className="text-xl font-bold">DesignDesk</h1>
               <p className="text-xs text-muted-foreground">Task Portal</p>
             </div>
           </div>
@@ -374,14 +380,10 @@ export default function Login() {
           </Button>
           {role === 'staff' ? (
             <p className="text-center text-xs text-muted-foreground mt-3">
-              Staff can sign up with Google or create an account. Use "Forgot password" to set a login password
-              after Google sign-in.
+              Staff can sign up with Google or create an account.
             </p>
           ) : null}
 
-          <p className="text-center text-sm text-muted-foreground mt-8">
-            This is a demo portal. Select any role to explore.
-          </p>
         </div>
       </div>
       </div>

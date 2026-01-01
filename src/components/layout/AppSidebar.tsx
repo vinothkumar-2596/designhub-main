@@ -1,6 +1,6 @@
-import { useLocation, Link } from 'react-router-dom';
+import { useLocation, Link, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard,
+  Home,
   PlusCircle,
   ListTodo,
   CheckSquare,
@@ -30,14 +30,14 @@ const navItems: NavItem[] = [
   {
     title: 'Dashboard',
     href: '/dashboard',
-    icon: LayoutDashboard,
+    icon: Home,
     roles: ['admin', 'designer', 'staff', 'treasurer'],
   },
   {
     title: 'New Request',
     href: '/new-request',
     icon: PlusCircle,
-    roles: ['staff'],
+    roles: ['staff', 'treasurer'],
   },
   {
     title: 'All Tasks',
@@ -67,6 +67,7 @@ const navItems: NavItem[] = [
 
 export function AppSidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -103,12 +104,26 @@ export function AppSidebar() {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
         {!collapsed && (
-          <div className="animate-fade-in">
-            <h1 className="text-lg font-bold text-sidebar-primary-foreground">
-              DesignHub
-            </h1>
-            <p className="text-xs text-sidebar-foreground/60">Task Portal</p>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              navigate('/dashboard');
+            }}
+            className="animate-fade-in flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/40 rounded-md"
+          >
+            <img
+              src="/favicon.png"
+              alt="DesignDesk"
+              className="h-9 w-9 rounded-xl object-contain p-1"
+              style={{ backgroundColor: 'rgb(21, 30, 60)' }}
+            />
+            <div>
+              <h1 className="text-lg font-bold text-sidebar-primary-foreground">
+                DesignDesk
+              </h1>
+              <p className="text-xs text-sidebar-foreground/60">Task Portal</p>
+            </div>
+          </button>
         )}
         <Button
           variant="ghost"
@@ -189,7 +204,13 @@ export function AppSidebar() {
           {!collapsed && <span className="text-sm font-medium">Settings</span>}
         </Link>
         <button
-          onClick={logout}
+          onClick={() => {
+            logout();
+            navigate('/', { replace: true });
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 0);
+          }}
           className={cn(
             'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground hover:bg-destructive/20 hover:text-destructive transition-all duration-200',
             collapsed && 'justify-center px-2'

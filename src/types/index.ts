@@ -55,6 +55,7 @@ export interface Task {
   status: TaskStatus;
   requesterId: string;
   requesterName: string;
+  requesterEmail?: string;
   requesterDepartment?: string;
   assignedTo?: string;
   assignedToName?: string;

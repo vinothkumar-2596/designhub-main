@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { TaskCard } from '@/components/dashboard/TaskCard';
@@ -8,8 +8,14 @@ import { TaskStatus, TaskCategory, TaskUrgency } from '@/types';
 import { ListTodo, Clock, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter';
 import { DateRangeOption, getDateRange, isWithinRange } from '@/lib/dateRange';
+import { toast } from 'sonner';
 
 export default function Tasks() {
+  const apiUrl =
+    (import.meta.env.VITE_API_URL as string | undefined) ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? 'http://localhost:4000'
+      : undefined);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | 'all'>('all');
@@ -17,6 +23,49 @@ export default function Tasks() {
   const [dateRange, setDateRange] = useState<DateRangeOption>('month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [tasks, setTasks] = useState(mockTasks);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!apiUrl) return;
+    const loadTasks = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`${apiUrl}/api/tasks`);
+        if (!response.ok) {
+          throw new Error('Failed to load tasks');
+        }
+        const data = await response.json();
+        const hydrated = data.map((task: any) => ({
+          ...task,
+          id: task.id || task._id,
+          deadline: new Date(task.deadline),
+          createdAt: new Date(task.createdAt),
+          updatedAt: new Date(task.updatedAt),
+          proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
+          deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
+          files: task.files?.map((file) => ({
+            ...file,
+            uploadedAt: new Date(file.uploadedAt),
+          })),
+          comments: task.comments?.map((comment) => ({
+            ...comment,
+            createdAt: new Date(comment.createdAt),
+          })),
+          changeHistory: task.changeHistory?.map((entry) => ({
+            ...entry,
+            createdAt: new Date(entry.createdAt),
+          })),
+        }));
+        setTasks(hydrated);
+      } catch (error) {
+        toast.error('Failed to load tasks');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadTasks();
+  }, [apiUrl]);
 
   const activeRange = useMemo(
     () => getDateRange(dateRange, customStart, customEnd),
@@ -24,8 +73,8 @@ export default function Tasks() {
   );
 
   const dateFilteredTasks = useMemo(
-    () => mockTasks.filter((task) => isWithinRange(task.createdAt, activeRange)),
-    [activeRange]
+    () => tasks.filter((task) => isWithinRange(task.createdAt, activeRange)),
+    [activeRange, tasks]
   );
 
   const filteredTasks = useMemo(() => {
@@ -135,7 +184,11 @@ export default function Tasks() {
         </p>
 
         {/* Task Grid */}
-        {filteredTasks.length > 0 ? (
+        {isLoading ? (
+          <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
+            <p className="text-sm text-muted-foreground">Loading tasks...</p>
+          </div>
+        ) : filteredTasks.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {filteredTasks.map((task, index) => (
               <div key={task.id} style={{ animationDelay: `${index * 50}ms` }}>
