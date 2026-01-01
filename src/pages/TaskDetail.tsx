@@ -28,7 +28,7 @@ import {
   History,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ApprovalStatus, TaskChange, TaskStatus } from '@/types';
 import { cn } from '@/lib/utils';
@@ -48,6 +48,14 @@ const categoryLabels: Record<string, string> = {
   brochure: 'Brochure',
   others: 'Others',
 };
+
+const changeFieldLabels: Record<string, string> = {
+  staff_note: 'staff note',
+  approval_status: 'approval status',
+  deadline_request: 'deadline request',
+};
+
+const formatChangeField = (field: string) => changeFieldLabels[field] || field.replace(/_/g, ' ');
 
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 
@@ -79,6 +87,7 @@ export default function TaskDetail() {
   );
   const [changeHistory, setChangeHistory] = useState<TaskChange[]>(initialTask?.changeHistory ?? []);
   const [editedDescription, setEditedDescription] = useState(initialTask?.description ?? '');
+  const [staffNote, setStaffNote] = useState('');
   const [editedDeadline, setEditedDeadline] = useState(
     initialTask ? format(initialTask.deadline, 'yyyy-MM-dd') : ''
   );
@@ -90,6 +99,26 @@ export default function TaskDetail() {
   const [newFileType, setNewFileType] = useState<'input' | 'output'>('input');
   const [isUploadingFinal, setIsUploadingFinal] = useState(false);
   const storageKey = id ? `designhub.task.${id}` : '';
+  const staffChangeCount = useMemo(() => {
+    const latestFinalApprovalAt = changeHistory.reduce((latest, entry) => {
+      if (entry.field !== 'approval_status') return latest;
+      const status = String(entry.newValue ?? '').toLowerCase();
+      if (status === 'pending') return latest;
+      const time = new Date(entry.createdAt ?? 0).getTime();
+      return time > latest ? time : latest;
+    }, 0);
+    return changeHistory.filter((entry) => {
+      if (entry.userRole !== 'staff') return false;
+      if (entry.field === 'approval_status') return false;
+      const time = new Date(entry.createdAt ?? 0).getTime();
+      return latestFinalApprovalAt ? time > latestFinalApprovalAt : true;
+    }).length;
+  }, [changeHistory]);
+  const approvalLockedForStaff = user?.role === 'staff' && approvalStatus === 'pending';
+  const staffChangeLabel = staffChangeCount === 1 ? '1 change updated' : `${staffChangeCount} changes updated`;
+  const canSendForApproval =
+    user?.role === 'staff' && staffChangeCount >= 3 && approvalStatus !== 'pending';
+  const staffChangeLimitReached = user?.role === 'staff' && staffChangeCount >= 3;
 
   useEffect(() => {
     if (!highlightChangeId || typeof document === 'undefined') return;
@@ -171,6 +200,7 @@ export default function TaskDetail() {
   const recordChanges = async (changes: ChangeInput[], updates: Partial<typeof taskState> = {}) => {
     if (changes.length === 0) return;
 
+    const isStaffUser = user?.role === 'staff';
     const now = new Date();
     const entries: TaskChange[] = changes.map((change, index) => ({
       id: `ch-${Date.now()}-${index}`,
@@ -187,7 +217,8 @@ export default function TaskDetail() {
     const updatesWithMeta = { ...updates, updatedAt: now };
 
     const nextCount = changeCount + entries.length;
-    const nextApproval = nextCount >= 3 ? 'pending' : approvalStatus;
+    const overrideApproval = updates.approvalStatus as ApprovalStatus | undefined;
+    const nextApproval = overrideApproval ?? (isStaffUser ? approvalStatus : nextCount >= 3 ? 'pending' : approvalStatus);
 
     const nextHistory = [...entries, ...changeHistory];
     setChangeCount(nextCount);
@@ -240,7 +271,7 @@ export default function TaskDetail() {
       }
     }
 
-    if (nextCount >= 3 && approvalStatus !== 'pending') {
+    if (!overrideApproval && isStaffUser && nextCount >= 3 && approvalStatus !== 'pending') {
       toast.message('Treasurer approval required after 3+ changes.');
       return;
     }
@@ -271,9 +302,11 @@ export default function TaskDetail() {
         setDeadlineRequest(
           hydrated?.proposedDeadline ? format(hydrated.proposedDeadline, 'yyyy-MM-dd') : ''
         );
-      } catch (error) {
+    } catch (error) {
+      if (!initialTask) {
         setTaskState(undefined);
-      } finally {
+      }
+    } finally {
         setIsLoading(false);
       }
     };
@@ -327,21 +360,59 @@ export default function TaskDetail() {
 
   const handleRequestApproval = () => {
     if (approvalStatus === 'pending') return;
-    setApprovalStatus('pending');
-    setTaskState((prev) => (prev ? { ...prev, approvalStatus: 'pending' } : prev));
+    if (user?.role !== 'staff' || staffChangeCount < 3) {
+      toast.message('Send for approval after 3 staff changes.');
+      return;
+    }
+    recordChanges(
+      [
+        {
+          type: 'status',
+          field: 'approval_status',
+          oldValue: approvalStatus ?? 'pending',
+          newValue: 'Pending',
+          note: `Approval requested by ${user?.name || 'Staff'}`,
+        },
+      ],
+      { approvalStatus: 'pending' }
+    );
     toast.message('Approval request sent to treasurer.');
   };
 
   const handleApprovalDecision = (decision: ApprovalStatus) => {
-    setApprovalStatus(decision);
-    setTaskState((prev) => (prev ? { ...prev, approvalStatus: decision } : prev));
+    const oldValue = approvalStatus ?? 'pending';
+    recordChanges(
+      [
+        {
+          type: 'status',
+          field: 'approval_status',
+          oldValue,
+          newValue: decision === 'approved' ? 'Approved' : 'Rejected',
+          note: `Approval ${decision} by ${user?.name || 'Treasurer'}`,
+        },
+      ],
+      {
+        approvalStatus: decision,
+        approvedBy: user?.name || '',
+        approvalDate: new Date(),
+      }
+    );
     toast.success(decision === 'approved' ? 'Request approved.' : 'Request rejected.');
   };
 
   const handleSaveUpdates = () => {
+    if (approvalLockedForStaff) {
+      toast.message('Approval pending. Changes are locked.');
+      return;
+    }
+    if (staffChangeLimitReached) {
+      toast.message('Change limit reached. Send for approval.');
+      return;
+    }
     const updates: Partial<typeof taskState> = {};
     const changes: ChangeInput[] = [];
     const isStaffUpdate = user?.role === 'staff';
+    const staffNoteValue = staffNote.trim();
 
     if (editedDescription.trim() && editedDescription !== taskState.description) {
       changes.push({
@@ -349,9 +420,21 @@ export default function TaskDetail() {
         field: 'description',
         oldValue: taskState.description,
         newValue: editedDescription,
-        note: isStaffUpdate ? 'Staff requested changes' : undefined,
+        note: isStaffUpdate ? staffNoteValue || 'Staff requested changes' : undefined,
       });
       updates.description = editedDescription;
+    }
+
+    if (!editedDescription.trim() || editedDescription === taskState.description) {
+      if (isStaffUpdate && staffNoteValue) {
+        changes.push({
+          type: 'update',
+          field: 'staff_note',
+          oldValue: '',
+          newValue: staffNoteValue,
+          note: staffNoteValue,
+        });
+      }
     }
 
     if (changes.length === 0) {
@@ -360,9 +443,20 @@ export default function TaskDetail() {
     }
 
     recordChanges(changes, updates);
+    if (isStaffUpdate) {
+      setStaffNote('');
+    }
   };
 
   const handleAddFile = () => {
+    if (approvalLockedForStaff) {
+      toast.message('Approval pending. Changes are locked.');
+      return;
+    }
+    if (staffChangeLimitReached) {
+      toast.message('Change limit reached. Send for approval.');
+      return;
+    }
     if (!newFileName.trim()) return;
     const newFile = {
       id: `f-${Date.now()}`,
@@ -393,6 +487,14 @@ export default function TaskDetail() {
   };
 
   const handleRemoveFile = (fileId: string, fileName: string) => {
+    if (approvalLockedForStaff) {
+      toast.message('Approval pending. Changes are locked.');
+      return;
+    }
+    if (staffChangeLimitReached) {
+      toast.message('Change limit reached. Send for approval.');
+      return;
+    }
     const updates = {
       files: taskState.files.filter((file) => file.id !== fileId),
     };
@@ -464,6 +566,14 @@ export default function TaskDetail() {
   };
 
   const handleRequestDeadline = () => {
+    if (approvalLockedForStaff) {
+      toast.message('Approval pending. Changes are locked.');
+      return;
+    }
+    if (staffChangeLimitReached) {
+      toast.message('Change limit reached. Send for approval.');
+      return;
+    }
     if (!deadlineRequest) return;
     const minDate = minDeadlineDate;
     const requested = new Date(deadlineRequest);
@@ -607,6 +717,7 @@ export default function TaskDetail() {
                     variant="secondary"
                     size="sm"
                     onClick={() => setIsEditingTask((prev) => !prev)}
+                    disabled={approvalLockedForStaff || staffChangeLimitReached}
                   >
                     {isEditingTask ? 'Close' : 'Edit'}
                   </Button>
@@ -622,8 +733,24 @@ export default function TaskDetail() {
                         onChange={(event) => setEditedDescription(event.target.value)}
                         rows={4}
                         className="mt-2"
+                        disabled={approvalLockedForStaff || staffChangeLimitReached}
                       />
                     </div>
+                    {user?.role === 'staff' && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Staff message to designer
+                        </p>
+                        <Textarea
+                          value={staffNote}
+                          onChange={(event) => setStaffNote(event.target.value)}
+                          rows={3}
+                          className="mt-2"
+                          placeholder="Describe the change request for the designer and treasurer review."
+                          disabled={approvalLockedForStaff || staffChangeLimitReached}
+                        />
+                      </div>
+                    )}
                     {user?.role !== 'staff' && (
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -637,7 +764,19 @@ export default function TaskDetail() {
                         />
                       </div>
                     )}
-                    <Button onClick={handleSaveUpdates}>Save Updates</Button>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button
+                        onClick={handleSaveUpdates}
+                        disabled={approvalLockedForStaff || staffChangeLimitReached}
+                      >
+                        Save Updates
+                      </Button>
+                      {canSendForApproval && (
+                        <Button variant="outline" onClick={handleRequestApproval}>
+                          Send to Treasurer
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-border/60 bg-secondary/30 p-4">
@@ -689,14 +828,18 @@ export default function TaskDetail() {
                   required after the third change.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="outline"
-                  onClick={handleRequestApproval}
-                  disabled={approvalStatus === 'pending'}
-                >
-                  Request Treasurer Approval
-                </Button>
+              <div className="flex flex-wrap items-center gap-3">
+                {user?.role === 'staff' && (
+                  <span className="text-sm font-semibold text-primary/80">{staffChangeLabel}</span>
+                )}
+                {canSendForApproval && (
+                  <Button onClick={handleRequestApproval}>Send to Treasurer</Button>
+                )}
+                {approvalLockedForStaff && (
+                  <Badge variant="pending" className="border border-primary/20 bg-primary/10 text-primary">
+                    Approval Pending
+                  </Badge>
+                )}
                 {user?.role === 'treasurer' && approvalStatus === 'pending' && (
                   <>
                     <Button onClick={() => handleApprovalDecision('approved')}>Approve</Button>
@@ -718,9 +861,14 @@ export default function TaskDetail() {
                     onChange={(event) => setDeadlineRequest(event.target.value)}
                     className="h-9 max-w-xs"
                     min={format(minDeadlineDate, 'yyyy-MM-dd')}
-                    disabled={!canEditTask}
+                    disabled={!canEditTask || approvalLockedForStaff || staffChangeLimitReached}
                   />
-                  <Button onClick={handleRequestDeadline} disabled={!canEditTask || !deadlineRequest}>
+                  <Button
+                    onClick={handleRequestDeadline}
+                    disabled={
+                      !canEditTask || !deadlineRequest || approvalLockedForStaff || staffChangeLimitReached
+                    }
+                  >
                     Request Deadline
                   </Button>
                   {taskState.deadlineApprovalStatus === 'pending' && canApproveDeadline && (
@@ -765,6 +913,7 @@ export default function TaskDetail() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
+                              disabled={approvalLockedForStaff || staffChangeLimitReached}
                               onClick={() => handleRemoveFile(file.id, file.name)}
                             >
                               <AlertTriangle className="h-4 w-4 text-status-urgent" />
@@ -811,6 +960,7 @@ export default function TaskDetail() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
+                              disabled={approvalLockedForStaff || staffChangeLimitReached}
                               onClick={() => handleRemoveFile(file.id, file.name)}
                             >
                               <AlertTriangle className="h-4 w-4 text-status-urgent" />
@@ -839,13 +989,18 @@ export default function TaskDetail() {
                 <div className="rounded-lg border border-dashed border-border p-4">
                   <p className="text-sm font-medium text-foreground mb-3">Add Attachment</p>
                   <div className="flex flex-wrap items-center gap-3">
-                    <Input
-                      placeholder="file_name.pdf"
-                      value={newFileName}
-                      onChange={(event) => setNewFileName(event.target.value)}
-                      className="flex-1 min-w-[180px]"
-                    />
-                    <Select value={newFileType} onValueChange={(v) => setNewFileType(v as 'input' | 'output')}>
+                  <Input
+                    placeholder="file_name.pdf"
+                    value={newFileName}
+                    onChange={(event) => setNewFileName(event.target.value)}
+                    className="flex-1 min-w-[180px]"
+                    disabled={approvalLockedForStaff || staffChangeLimitReached}
+                  />
+                    <Select
+                      value={newFileType}
+                      onValueChange={(v) => setNewFileType(v as 'input' | 'output')}
+                      disabled={approvalLockedForStaff || staffChangeLimitReached}
+                    >
                       <SelectTrigger className="w-[140px]">
                         <SelectValue placeholder="Type" />
                       </SelectTrigger>
@@ -854,7 +1009,9 @@ export default function TaskDetail() {
                         <SelectItem value="output">Deliverable</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button onClick={handleAddFile}>Add File</Button>
+                    <Button onClick={handleAddFile} disabled={approvalLockedForStaff || staffChangeLimitReached}>
+                      Add File
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1082,7 +1239,7 @@ export default function TaskDetail() {
                   {changeHistory.slice(0, 3).map((entry) => (
                     <div key={entry.id} className="rounded-lg border border-border/60 bg-secondary/40 p-3">
                       <p className="text-sm font-medium text-foreground">
-                        {entry.note || `${entry.userName} updated ${entry.field}`}
+                        {entry.note || `${entry.userName} updated ${formatChangeField(entry.field)}`}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
                         {formatDistanceToNow(entry.createdAt, { addSuffix: true })}
@@ -1112,7 +1269,7 @@ export default function TaskDetail() {
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-sm font-medium text-foreground leading-snug">
-                            {entry.userName} updated {entry.field}
+                            {entry.userName} updated {formatChangeField(entry.field)}
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
                             {entry.oldValue ? `From "${entry.oldValue}" to "${entry.newValue}"` : entry.newValue}

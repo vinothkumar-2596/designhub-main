@@ -221,14 +221,23 @@ export default function Dashboard() {
   const staffNotifications = useMemo(() => {
     if (user.role !== 'staff') return [];
     return hydratedTasks
+      .filter((task) => task.requesterId === user.id)
       .flatMap((task) =>
         (task.changeHistory || [])
           .filter(
-            (entry) =>
-              ((entry.field === 'status' &&
-                (entry.newValue === 'Completed' || entry.newValue === 'completed')) ||
-                (entry.field === 'deadline_request' && entry.newValue === 'Approved')) &&
-              entry.userRole === 'designer'
+            (entry) => {
+              const isDesignerCompletion =
+                entry.userRole === 'designer' &&
+                entry.field === 'status' &&
+                (entry.newValue === 'Completed' || entry.newValue === 'completed');
+              const isDesignerDeadlineApproval =
+                entry.userRole === 'designer' &&
+                entry.field === 'deadline_request' &&
+                entry.newValue === 'Approved';
+              const isTreasurerApproval =
+                entry.userRole === 'treasurer' && entry.field === 'approval_status';
+              return isDesignerCompletion || isDesignerDeadlineApproval || isTreasurerApproval;
+            }
           )
           .map((entry) => ({ ...entry, taskId: task.id, taskTitle: task.title, task }))
       )
@@ -242,9 +251,16 @@ export default function Dashboard() {
       .flatMap((task) =>
         (task.changeHistory || [])
           .filter(
-            (entry) =>
-              entry.userRole === 'staff' &&
-              ['description', 'files', 'deadline_request', 'status'].includes(entry.field)
+            (entry) => {
+              const isStaffUpdate =
+                entry.userRole === 'staff' &&
+                ['description', 'files', 'deadline_request', 'status', 'staff_note'].includes(
+                  entry.field
+                );
+              const isTreasurerApproval =
+                entry.userRole === 'treasurer' && entry.field === 'approval_status';
+              return isStaffUpdate || isTreasurerApproval;
+            }
           )
           .map((entry) => ({ ...entry, taskId: task.id, taskTitle: task.title, task }))
       )
@@ -329,34 +345,163 @@ export default function Dashboard() {
 
   const getNotificationTitle = (entry: any) => {
     if (user.role === 'staff') {
+      if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+        const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
+          ? 'rejected'
+          : 'approved';
+        return `Treasurer ${decision} ${entry.taskTitle}`;
+      }
       return `Designer completed ${entry.taskTitle}`;
+    }
+    if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+      const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
+        ? 'rejected'
+        : 'approved';
+      return `Treasurer ${decision} ${entry.taskTitle}`;
     }
     return `Staff updated ${entry.taskTitle}`;
   };
 
   const getNotificationNote = (entry: any) => {
     if (user.role === 'staff') {
+      if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+        const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
+          ? 'rejected'
+          : 'approved';
+        return entry.note || `Approval ${decision}`;
+      }
       return entry.note || 'Status updated to completed';
+    }
+    if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+      const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
+        ? 'rejected'
+        : 'approved';
+      return entry.note || `Approval ${decision}`;
     }
     return entry.note || `${entry.userName} updated ${entry.field}`;
   };
 
+  const getStaffUpdatePreview = (task: typeof hydratedTasks[number]) => {
+    const history = [...(task.changeHistory || [])].sort(
+      (a, b) =>
+        new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+    );
+    for (const entry of history) {
+      if (entry.userRole !== 'staff') continue;
+      if (entry.field === 'approval_status') continue;
+      if (entry.field === 'staff_note' && entry.newValue) {
+        return entry.newValue;
+      }
+      if (entry.field === 'description' && entry.newValue) {
+        return entry.newValue;
+      }
+      if (entry.note) {
+        return entry.note;
+      }
+      if (entry.newValue) {
+        return entry.newValue;
+      }
+    }
+    return '';
+  };
+
+  const updateApprovalStatus = async (
+    taskId: string,
+    decision: 'approved' | 'rejected'
+  ) => {
+    const currentTask = hydratedTasks.find((task) => task.id === taskId);
+    const oldValue = currentTask?.approvalStatus ?? 'pending';
+    const newValue = decision === 'approved' ? 'Approved' : 'Rejected';
+    const approvalNote = `Approval ${decision} by ${user?.name || 'Treasurer'}`;
+    if (apiUrl) {
+      const response = await fetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          updates: {
+            approvalStatus: decision,
+            approvedBy: user?.name || '',
+            approvalDate: new Date(),
+          },
+          changes: [
+            {
+              type: 'status',
+              field: 'approval_status',
+              oldValue,
+              newValue,
+              note: approvalNote,
+            },
+          ],
+          userId: user?.id || '',
+          userName: user?.name || '',
+          userRole: user?.role || '',
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update approval');
+      }
+      const updated = await response.json();
+      const hydrated = hydrateTask({
+        ...updated,
+        id: updated.id || updated._id,
+      });
+      setTasks((prev) =>
+        prev.map((task) => (task.id === hydrated.id ? hydrated : task))
+      );
+      return;
+    }
+
+    if (!currentTask) return;
+    const entry = {
+      id: `ch-${Date.now()}-0`,
+      type: 'status',
+      field: 'approval_status',
+      oldValue,
+      newValue,
+      note: approvalNote,
+      userId: user?.id || '',
+      userName: user?.name || 'Treasurer',
+      userRole: user?.role || 'treasurer',
+      createdAt: new Date(),
+    };
+    const updated = {
+      ...currentTask,
+      approvalStatus: decision,
+      approvedBy: user?.name || '',
+      approvalDate: new Date(),
+      updatedAt: new Date(),
+      changeHistory: [entry, ...(currentTask.changeHistory || [])],
+    };
+    localStorage.setItem(`designhub.task.${taskId}`, JSON.stringify(updated));
+    setStorageTick((prev) => prev + 1);
+  };
+
   const handleApprove = async (taskId: string) => {
     setProcessingApprovalId(taskId);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    toast.success('Request approved', {
-      description: 'The request has been forwarded to the design team.',
-    });
-    setProcessingApprovalId(null);
+    try {
+      await updateApprovalStatus(taskId, 'approved');
+      toast.success('Request approved', {
+        description: 'The requester has been notified.',
+      });
+    } catch (error) {
+      toast.error('Failed to approve request');
+    } finally {
+      setProcessingApprovalId(null);
+    }
   };
 
   const handleReject = async (taskId: string) => {
     setProcessingApprovalId(taskId);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    toast.error('Request rejected', {
-      description: 'The requester has been notified.',
-    });
-    setProcessingApprovalId(null);
+    try {
+      await updateApprovalStatus(taskId, 'rejected');
+      toast.success('Request rejected', {
+        description: 'The requester has been notified.',
+      });
+    } catch (error) {
+      toast.error('Failed to reject request');
+    } finally {
+      setProcessingApprovalId(null);
+    }
   };
 
   const handleSendAppreciation = async () => {
@@ -708,68 +853,87 @@ export default function Dashboard() {
               </div>
 
               {pendingApprovals.length > 0 ? (
-                <div className="space-y-4">
-                  {pendingApprovals.slice(0, 2).map((task) => (
-                    <div key={task.id} className="bg-white border border-[#D9E6FF] rounded-2xl p-5 shadow-card">
-                      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge variant="pending">Awaiting Approval</Badge>
-                            {task.urgency === 'urgent' && <Badge variant="urgent">Urgent</Badge>}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {pendingApprovals.slice(0, 4).map((task) => {
+                    const staffPreview = getStaffUpdatePreview(task);
+                    return (
+                      <div key={task.id} className="bg-white border border-[#D9E6FF] rounded-2xl p-5 shadow-card">
+                        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge
+                                variant="pending"
+                                className="border border-primary/20 bg-primary/10 text-primary"
+                              >
+                                Awaiting Approval
+                              </Badge>
+                              {task.urgency === 'urgent' && <Badge variant="urgent">Urgent</Badge>}
+                            </div>
+                            <h3 className="text-lg font-semibold text-foreground mb-2">{task.title}</h3>
+                            {staffPreview ? (
+                              <div className="mb-4 rounded-lg border border-primary/10 bg-primary/5 px-3 py-2">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/70">
+                                  Staff update
+                                </p>
+                                <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                                  {staffPreview}
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                                {task.description}
+                              </p>
+                            )}
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-1.5">
+                                <User className="h-4 w-4" />
+                                <span>
+                                  {task.requesterName}
+                                  {task.requesterDepartment && (
+                                    <span className="text-xs ml-1">({task.requesterDepartment})</span>
+                                  )}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="h-4 w-4" />
+                                <span>Due {format(task.deadline, 'MMM d, yyyy')}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Paperclip className="h-4 w-4" />
+                                <span>{task.files.length} files attached</span>
+                              </div>
+                            </div>
                           </div>
-                          <h3 className="text-lg font-semibold text-foreground mb-2">{task.title}</h3>
-                          <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                            {task.description}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1.5">
-                              <User className="h-4 w-4" />
-                              <span>
-                                {task.requesterName}
-                                {task.requesterDepartment && (
-                                  <span className="text-xs ml-1">({task.requesterDepartment})</span>
-                                )}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Calendar className="h-4 w-4" />
-                              <span>Due {format(task.deadline, 'MMM d, yyyy')}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Paperclip className="h-4 w-4" />
-                              <span>{task.files.length} files attached</span>
-                            </div>
+                          <div className="flex flex-row lg:flex-col gap-2 lg:w-36">
+                            <Button
+                              variant="default"
+                              className="flex-1 gap-2"
+                              onClick={() => handleApprove(task.id)}
+                              disabled={processingApprovalId === task.id}
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                              Approve
+                            </Button>
+                            <Button
+                              variant="outline"
+                              className="flex-1 gap-2 border-primary/30 text-primary hover:bg-primary/5"
+                              onClick={() => handleReject(task.id)}
+                              disabled={processingApprovalId === task.id}
+                            >
+                              <XCircle className="h-4 w-4" />
+                              Reject
+                            </Button>
+                            <Button variant="ghost" size="sm" asChild className="gap-2 text-primary hover:bg-primary/5">
+                              <Link to={`/task/${task.id}`} state={{ task }}>
+                                <Eye className="h-4 w-4" />
+                                Details
+                              </Link>
+                            </Button>
                           </div>
-                        </div>
-                        <div className="flex flex-row lg:flex-col gap-2 lg:w-36">
-                          <Button
-                            variant="default"
-                            className="flex-1 gap-2 bg-status-completed hover:bg-status-completed/90"
-                            onClick={() => handleApprove(task.id)}
-                            disabled={processingApprovalId === task.id}
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                            Approve
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="flex-1 gap-2 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                            onClick={() => handleReject(task.id)}
-                            disabled={processingApprovalId === task.id}
-                          >
-                            <XCircle className="h-4 w-4" />
-                            Reject
-                          </Button>
-                          <Button variant="ghost" size="sm" asChild className="gap-2">
-                            <Link to={`/task/${task.id}`}>
-                              <Eye className="h-4 w-4" />
-                              Details
-                            </Link>
-                          </Button>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
