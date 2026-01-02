@@ -336,7 +336,7 @@ export default function Login() {
             </Button>
             {role === 'staff' ? (
               <p className="text-center text-xs text-muted-foreground mt-3">
-                Staff can sign up with Google or create an account.
+                Staff can sign up with Google or use Create account.
               </p>
             ) : null}
 
