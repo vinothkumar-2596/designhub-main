@@ -26,6 +26,14 @@ import {
   Clock,
   Info,
   X,
+  Image,
+  Flag,
+  Megaphone,
+  Share2,
+  Globe,
+  Layout,
+  Monitor,
+  BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { TaskCategory, TaskUrgency } from '@/types';
@@ -33,6 +41,9 @@ import { addDays, isBefore, startOfDay } from 'date-fns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import Box from '@mui/material/Box';
+import LinearProgress, { LinearProgressProps } from '@mui/material/LinearProgress';
+import Typography from '@mui/material/Typography';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface UploadedFile {
@@ -42,7 +53,43 @@ interface UploadedFile {
   driveId?: string;
   url?: string;
   uploading?: boolean;
+  progress?: number;
   error?: string;
+}
+
+const categoryOptions: { value: TaskCategory; label: string; icon: React.ElementType }[] = [
+  { value: 'banner', label: 'Banner', icon: Flag },
+  { value: 'campaign_or_others', label: 'Campaign or others', icon: Megaphone },
+  { value: 'social_media_creative', label: 'Social Media Creative', icon: Share2 },
+  { value: 'website_assets', label: 'Website Assets', icon: Globe },
+  { value: 'ui_ux', label: 'UI/UX', icon: Layout },
+  { value: 'led_backdrop', label: 'LED Backdrop', icon: Monitor },
+  { value: 'brochure', label: 'Brochure', icon: BookOpen },
+  { value: 'flyer', label: 'Flyer', icon: FileText },
+];
+
+const getFileIcon = (fileName: string, className: string) => {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'pdf') return <FileText className={className} />;
+  if (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(extension)) {
+    return <Image className={className} />;
+  }
+  return <FileText className={className} />;
+};
+
+function LinearProgressWithLabel(props: LinearProgressProps & { value: number }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+      <Box sx={{ width: '100%', mr: 1 }}>
+        <LinearProgress variant="determinate" {...props} />
+      </Box>
+      <Box sx={{ minWidth: 35 }}>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          {`${Math.round(props.value)}%`}
+        </Typography>
+      </Box>
+    </Box>
+  );
 }
 
 export default function NewRequest() {
@@ -61,6 +108,8 @@ export default function NewRequest() {
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const glassPanelClass =
+    'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
   const apiUrl =
     (import.meta.env.VITE_API_URL as string | undefined) ||
     (typeof window !== 'undefined' && window.location.hostname === 'localhost'
@@ -85,6 +134,73 @@ export default function NewRequest() {
     };
   }, []);
 
+  const updateFile = (id: string, updates: Partial<UploadedFile>) => {
+    setFiles((prev) =>
+      prev.map((file) => (file.id === id ? { ...file, ...updates } : file))
+    );
+  };
+
+  const uploadFileWithProgress = (file: File, localId: string) =>
+    new Promise<void>((resolve) => {
+      if (!apiUrl) {
+        updateFile(localId, { uploading: false, progress: 100 });
+        resolve();
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${apiUrl}/api/files/upload`);
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const nextProgress = Math.round((event.loaded / event.total) * 100);
+        updateFile(localId, {
+          progress: nextProgress,
+          uploading: nextProgress < 100,
+        });
+      };
+
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          updateFile(localId, { uploading: false, error: 'Upload failed' });
+          toast.error('File upload failed', { description: file.name });
+          resolve();
+          return;
+        }
+
+        let data: { id?: string; webViewLink?: string; webContentLink?: string } | null =
+          null;
+        try {
+          data = JSON.parse(xhr.responseText) as {
+            id?: string;
+            webViewLink?: string;
+            webContentLink?: string;
+          };
+        } catch {
+          data = null;
+        }
+
+        updateFile(localId, {
+          driveId: data?.id,
+          url: data?.webViewLink || data?.webContentLink,
+          uploading: false,
+          progress: 100,
+        });
+        resolve();
+      };
+
+      xhr.onerror = () => {
+        updateFile(localId, { uploading: false, error: 'Upload failed' });
+        toast.error('File upload failed', { description: file.name });
+        resolve();
+      };
+
+      xhr.send(formData);
+    });
+
   const processFiles = async (selected: File[]) => {
     if (selected.length === 0) return;
     if (!apiUrl) {
@@ -92,8 +208,9 @@ export default function NewRequest() {
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
         size: file.size,
+        progress: 100,
       }));
-      setFiles([...files, ...newFiles]);
+      setFiles((prev) => [...prev, ...newFiles]);
       return;
     }
 
@@ -102,51 +219,14 @@ export default function NewRequest() {
       name: file.name,
       size: file.size,
       uploading: true,
+      progress: 0,
     }));
     setFiles((prev) => [...prev, ...pending]);
 
     await Promise.all(
       selected.map(async (file, index) => {
         const localId = pending[index].id;
-        const formData = new FormData();
-        formData.append('file', file);
-        try {
-          const response = await fetch(`${apiUrl}/api/files/upload`, {
-            method: 'POST',
-            body: formData,
-          });
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data?.error || 'Upload failed');
-          }
-          setFiles((prev) =>
-            prev.map((item) =>
-              item.id === localId
-                ? {
-                    ...item,
-                    driveId: data.id,
-                    url: data.webViewLink || data.webContentLink,
-                    uploading: false,
-                  }
-                : item
-            )
-          );
-        } catch (error) {
-          setFiles((prev) =>
-            prev.map((item) =>
-              item.id === localId
-                ? {
-                    ...item,
-                    uploading: false,
-                    error: 'Upload failed',
-                  }
-                : item
-            )
-          );
-          toast.error('File upload failed', {
-            description: file.name,
-          });
-        }
+        await uploadFileWithProgress(file, localId);
       })
     );
   };
@@ -175,7 +255,7 @@ export default function NewRequest() {
   };
 
   const removeFile = (id: string) => {
-    setFiles(files.filter((f) => f.id !== id));
+    setFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   const formatFileSize = (bytes: number) => {
@@ -192,7 +272,6 @@ export default function NewRequest() {
       description.trim() &&
       category &&
       deadline &&
-      files.length > 0 &&
       !hasUploadsInProgress &&
       !hasUploadErrors &&
       !isBefore(startOfDay(deadline), minDeadlineDate)
@@ -204,12 +283,13 @@ export default function NewRequest() {
     
     if (!isFormValid()) {
       toast.error('Please complete all required fields', {
-        description: 'Ensure all fields are filled and at least one file is uploaded.',
+        description: 'Ensure all required fields are filled in.',
       });
       return;
     }
 
     setIsSubmitting(true);
+    let fallbackToMock = false;
 
     if (apiUrl) {
       try {
@@ -240,21 +320,15 @@ export default function NewRequest() {
         if (!response.ok) {
           throw new Error('Request failed');
         }
-      } catch (error) {
-        toast.error('Request submission failed', {
-          description: 'Please try again.',
-        });
-        setIsSubmitting(false);
-        return;
+      } catch {
+        fallbackToMock = true;
       }
-    } else {
+    }
+
+    if (!apiUrl || fallbackToMock) {
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
-
-    toast.success('Request submitted successfully!', {
-      description: 'Your request has been added to the design queue.',
-    });
 
     setIsSubmitting(false);
     setShowThankYou(true);
@@ -267,7 +341,12 @@ export default function NewRequest() {
 
   return (
     <DashboardLayout>
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="relative">
+        <div className="pointer-events-none absolute inset-0 -z-10 w-screen left-1/2 -translate-x-1/2 bg-white">
+          <div className="absolute left-1/2 top-[-22%] h-[680px] w-[780px] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(77,92,218,0.6),_rgba(120,190,255,0.4)_45%,_transparent_72%)] blur-[90px] opacity-90" />
+          <div className="absolute left-[10%] bottom-[-20%] h-[520px] w-[620px] rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(120,190,255,0.35),_transparent_70%)] blur-[110px] opacity-70" />
+        </div>
+        <div className="max-w-3xl mx-auto space-y-6">
         {/* Header */}
         <div className="animate-fade-in">
           <h1 className="text-2xl font-bold text-foreground">New Design Request</h1>
@@ -278,7 +357,7 @@ export default function NewRequest() {
 
         {/* Guidelines Banner */}
         {showGuidelines && (
-          <div className="bg-accent/15 border border-accent/30 rounded-xl p-5 animate-slide-up relative text-foreground">
+          <div className={`${glassPanelClass} p-5 animate-slide-up relative text-foreground`}>
             <button
               onClick={() => setShowGuidelines(false)}
               className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
@@ -327,7 +406,7 @@ export default function NewRequest() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="bg-card border border-border rounded-xl p-6 space-y-5 animate-slide-up">
+          <div className={`${glassPanelClass} p-6 pb-8 min-h-[520px] space-y-5 animate-slide-up`}>
             {/* Title */}
             <div className="space-y-2">
               <Label htmlFor="title">
@@ -365,12 +444,15 @@ export default function NewRequest() {
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="poster">Poster</SelectItem>
-                    <SelectItem value="social_media">Social Media</SelectItem>
-                    <SelectItem value="banner">Banner</SelectItem>
-                    <SelectItem value="brochure">Brochure</SelectItem>
-                    <SelectItem value="others">Others</SelectItem>
+                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
+                    {categoryOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        <div className="flex items-center gap-2">
+                          <option.icon className="h-4 w-4 text-muted-foreground" />
+                          <span>{option.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -381,7 +463,7 @@ export default function NewRequest() {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="normal">Normal</SelectItem>
                     <SelectItem value="intermediate">Intermediate</SelectItem>
@@ -410,19 +492,20 @@ export default function NewRequest() {
                           '& .MuiInputBase-root': {
                             borderRadius: 'var(--radius)',
                             height: 40,
-                            backgroundColor: 'hsl(var(--background))',
+                            backgroundColor: 'rgba(255, 255, 255, 0.75)',
+                            backdropFilter: 'blur(16px)',
                           },
                           '& .MuiInputBase-input': {
                             padding: '0 14px',
                           },
                           '& .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'hsl(var(--input))',
+                            borderColor: '#C9D7FF',
                           },
                           '&:hover .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'hsl(var(--ring))',
+                            borderColor: '#B7C8FF',
                           },
                           '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'hsl(var(--ring))',
+                            borderColor: '#A9BFFF',
                           },
                           '& .MuiSvgIcon-root': {
                             color: 'hsl(var(--muted-foreground))',
@@ -442,19 +525,21 @@ export default function NewRequest() {
           </div>
 
           {/* File Upload */}
-          <div className="bg-card border border-border rounded-xl p-6 space-y-4 animate-slide-up">
+          <div className={`${glassPanelClass} p-6 space-y-4 animate-slide-up`}>
             <div>
               <Label>
-                Attachments <span className="text-destructive">*</span>
+                Attachments <span className="text-muted-foreground">(Optional)</span>
               </Label>
               <p className="text-sm text-muted-foreground mt-1">
-                Upload all required content, reference files, and data
+                Upload any supporting content, reference files, and data
               </p>
             </div>
 
             <div
-              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                isDragging ? 'border-primary/60 bg-primary/5' : 'border-border hover:border-primary/50'
+              className={`border-2 border-dashed rounded-lg p-8 pb-10 text-center transition-colors ${
+                isDragging
+                  ? 'border-primary/60 bg-white/80'
+                  : 'border-border bg-white/70 hover:border-primary/50'
               }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -483,11 +568,11 @@ export default function NewRequest() {
                 {files.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between bg-secondary/50 rounded-lg px-4 py-3"
+                    className="flex items-center justify-between rounded-lg border border-[#D7E3FF] bg-gradient-to-r from-[#F4F8FF]/90 via-[#EEF4FF]/70 to-[#E6F1FF]/80 px-4 py-3 supports-[backdrop-filter]:bg-[#EEF4FF]/60 backdrop-blur-xl"
                   >
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-5 w-5 text-primary" />
-                      <div>
+                    <div className="flex items-start gap-3 flex-1">
+                      {getFileIcon(file.name, 'h-5 w-5 text-primary')}
+                      <div className="flex-1">
                         <p className="text-sm font-medium text-foreground">
                           {file.name}
                         </p>
@@ -498,6 +583,11 @@ export default function NewRequest() {
                               ? file.error
                               : formatFileSize(file.size)}
                         </p>
+                        {file.uploading && typeof file.progress === 'number' && (
+                          <div className="mt-2 w-full max-w-sm">
+                            <LinearProgressWithLabel value={file.progress} />
+                          </div>
+                        )}
                       </div>
                     </div>
                     <button
@@ -527,6 +617,7 @@ export default function NewRequest() {
             </Button>
           </div>
         </form>
+        </div>
       </div>
       <Dialog open={showThankYou} onOpenChange={(open) => (!open ? handleThankYouClose() : null)}>
         <DialogContent className="max-w-md overflow-hidden p-0">

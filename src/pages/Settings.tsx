@@ -6,11 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { UserRole } from '@/types';
-import { User, Bell, Palette, Shield, Users, Briefcase } from 'lucide-react';
+import { User, Bell, Palette, Users, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[] = [
-  { value: 'admin', label: 'Administrator', icon: Shield },
   { value: 'designer', label: 'Designer', icon: Palette },
   { value: 'staff', label: 'Staff', icon: Users },
   { value: 'treasurer', label: 'Treasurer', icon: Briefcase },
@@ -72,7 +71,7 @@ export default function Settings() {
         {/* Role Switcher (Demo) */}
         <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
           <h2 className="text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
-            <Shield className="h-5 w-5" />
+            <Users className="h-5 w-5" />
             Demo: Switch Role
           </h2>
           <p className="text-sm text-muted-foreground mb-4">

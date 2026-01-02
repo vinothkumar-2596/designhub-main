@@ -5,6 +5,7 @@ import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight 
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface TaskCardProps {
   task: Task;
@@ -21,23 +22,58 @@ const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'pr
 };
 
 const categoryLabels: Record<string, string> = {
-  poster: 'Poster',
-  social_media: 'Social Media',
   banner: 'Banner',
+  campaign_or_others: 'Campaign or others',
+  social_media_creative: 'Social Media Creative',
+  website_assets: 'Website Assets',
+  ui_ux: 'UI/UX',
+  led_backdrop: 'LED Backdrop',
   brochure: 'Brochure',
-  others: 'Others',
+  flyer: 'Flyer',
 };
 
 export function TaskCard({ task, showRequester = true, showAssignee = false }: TaskCardProps) {
+  const { user } = useAuth();
   const taskId = task.id || (task as unknown as { _id?: string })._id || '';
   const status = statusConfig[task.status];
   const isOverdue = isPast(task.deadline) && task.status !== 'completed';
   const deadlineText = isPast(task.deadline)
     ? `${formatDistanceToNow(task.deadline)} overdue`
     : `Due ${formatDistanceToNow(task.deadline, { addSuffix: true })}`;
+  const assignedToId =
+    (task as { assignedTo?: string; assignedToId?: string }).assignedTo ||
+    (task as { assignedToId?: string }).assignedToId;
+  const assignedToName = task.assignedToName || '';
+  const normalizedAssignedName = assignedToName.trim().toLowerCase();
+  const normalizedUserName = user?.name?.trim().toLowerCase() || '';
+  const normalizedUserEmail = user?.email?.trim().toLowerCase() || '';
+  const emailPrefix = normalizedUserEmail.split('@')[0];
+  const nameMatches =
+    normalizedAssignedName &&
+    normalizedUserName &&
+    (normalizedAssignedName === normalizedUserName ||
+      normalizedAssignedName.includes(normalizedUserName) ||
+      normalizedUserName.includes(normalizedAssignedName));
+  const emailMatches =
+    normalizedAssignedName && emailPrefix && normalizedAssignedName.includes(emailPrefix);
+  const isAssignedToUser =
+    Boolean(user) && (assignedToId === user?.id || nameMatches || emailMatches);
+  const viewedKey =
+    user && taskId ? `designhub.task.viewed.${user.id}.${taskId}` : '';
+  const hasViewed =
+    typeof window !== 'undefined' && viewedKey
+      ? localStorage.getItem(viewedKey) === 'true'
+      : true;
+  const isHighlighted =
+    user?.role === 'designer' && isAssignedToUser && !hasViewed;
 
   return (
-    <div className="group rounded-2xl border border-[#D9E6FF] bg-white p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up">
+    <div
+      className={cn(
+        'group rounded-2xl border p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up',
+        isHighlighted ? 'border-[#A9BFFF] bg-[#F3F7FF]' : 'border-[#D9E6FF] bg-white'
+      )}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={status.variant}>{status.label}</Badge>

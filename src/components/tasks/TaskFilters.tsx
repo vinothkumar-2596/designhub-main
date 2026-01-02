@@ -11,6 +11,17 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { TaskStatus, TaskCategory, TaskUrgency } from '@/types';
 
+const categoryLabels: Record<TaskCategory, string> = {
+  banner: 'Banner',
+  campaign_or_others: 'Campaign or others',
+  social_media_creative: 'Social Media Creative',
+  website_assets: 'Website Assets',
+  ui_ux: 'UI/UX',
+  led_backdrop: 'LED Backdrop',
+  brochure: 'Brochure',
+  flyer: 'Flyer',
+};
+
 interface TaskFiltersProps {
   search: string;
   onSearchChange: (value: string) => void;
@@ -73,11 +84,14 @@ export function TaskFilters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="poster">Poster</SelectItem>
-              <SelectItem value="social_media">Social Media</SelectItem>
               <SelectItem value="banner">Banner</SelectItem>
+              <SelectItem value="campaign_or_others">Campaign or others</SelectItem>
+              <SelectItem value="social_media_creative">Social Media Creative</SelectItem>
+              <SelectItem value="website_assets">Website Assets</SelectItem>
+              <SelectItem value="ui_ux">UI/UX</SelectItem>
+              <SelectItem value="led_backdrop">LED Backdrop</SelectItem>
               <SelectItem value="brochure">Brochure</SelectItem>
-              <SelectItem value="others">Others</SelectItem>
+              <SelectItem value="flyer">Flyer</SelectItem>
             </SelectContent>
           </Select>
 
@@ -124,7 +138,7 @@ export function TaskFilters({
           )}
           {categoryFilter !== 'all' && (
             <Badge variant="secondary" className="gap-1">
-              Category: {categoryFilter.replace('_', ' ')}
+              Category: {categoryLabels[categoryFilter]}
               <button onClick={() => onCategoryChange('all')} className="ml-1 hover:text-destructive">
                 <X className="h-3 w-3" />
               </button>

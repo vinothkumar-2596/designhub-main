@@ -44,11 +44,14 @@ const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'pr
 };
 
 const categoryLabels: Record<string, string> = {
-  poster: 'Poster',
-  social_media: 'Social Media',
   banner: 'Banner',
+  campaign_or_others: 'Campaign or others',
+  social_media_creative: 'Social Media Creative',
+  website_assets: 'Website Assets',
+  ui_ux: 'UI/UX',
+  led_backdrop: 'LED Backdrop',
   brochure: 'Brochure',
-  others: 'Others',
+  flyer: 'Flyer',
 };
 
 const changeFieldLabels: Record<string, string> = {
@@ -60,6 +63,11 @@ const changeFieldLabels: Record<string, string> = {
 const formatChangeField = (field: string) => changeFieldLabels[field] || field.replace(/_/g, ' ');
 
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
+
+const glassPanelClass =
+  'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
+const fileRowClass =
+  'flex items-center justify-between rounded-lg border border-[#D7E3FF] bg-gradient-to-r from-[#F4F8FF]/90 via-[#EEF4FF]/70 to-[#E6F1FF]/80 px-4 py-3 supports-[backdrop-filter]:bg-[#EEF4FF]/60 backdrop-blur-xl';
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -122,6 +130,13 @@ export default function TaskDetail() {
   const canSendForApproval =
     user?.role === 'staff' && staffChangeCount >= 3 && approvalStatus !== 'pending';
   const staffChangeLimitReached = user?.role === 'staff' && staffChangeCount >= 3;
+
+  useEffect(() => {
+    if (!user || typeof window === 'undefined') return;
+    const taskKey = taskState?.id || id;
+    if (!taskKey) return;
+    localStorage.setItem(`designhub.task.viewed.${user.id}.${taskKey}`, 'true');
+  }, [user, taskState?.id, id]);
 
   useEffect(() => {
     if (!highlightChangeId || typeof document === 'undefined') return;
@@ -194,8 +209,8 @@ export default function TaskDetail() {
   };
   const status = statusConfig[taskState.status];
   const isOverdue = isPast(taskState.deadline) && taskState.status !== 'completed';
-  const isDesignerOrAdmin = user?.role === 'admin' || user?.role === 'designer';
-  const canEditTask = user?.role === 'staff' || user?.role === 'admin';
+  const isDesignerOrAdmin = user?.role === 'designer';
+  const canEditTask = user?.role === 'staff';
   const canApproveDeadline = user?.role === 'designer';
   const minDeadlineDate = addWorkingDays(new Date(), 3);
   const inputFiles = taskState.files.filter((f) => f.type === 'input');
@@ -765,7 +780,7 @@ export default function TaskDetail() {
           {/* Left Column - Details */}
           <div className="lg:col-span-2 space-y-6">
             {/* Description */}
-            <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-3">Description</h2>
               <p className="text-muted-foreground whitespace-pre-wrap">
                 {taskState.description}
@@ -773,7 +788,7 @@ export default function TaskDetail() {
             </div>
 
             {canEditTask && (
-              <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-foreground">Edit Task</h2>
                   <Button
@@ -902,7 +917,7 @@ export default function TaskDetail() {
 
             {/* Status Update (Designer/Admin only) */}
             {isDesignerOrAdmin && taskState.status !== 'completed' && (
-              <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
                 <h2 className="font-semibold text-foreground mb-3">Update Status</h2>
                 <div className="flex gap-3">
                   <Select
@@ -973,7 +988,7 @@ export default function TaskDetail() {
             </div> */}
 
             {/* Files */}
-            <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Files</h2>
 
               {/* Input Files */}
@@ -986,7 +1001,7 @@ export default function TaskDetail() {
                     {inputFiles.map((file) => (
                       <div
                         key={file.id}
-                        className="flex items-center justify-between bg-secondary/50 rounded-lg px-4 py-3"
+                        className={fileRowClass}
                       >
                         <div className="flex items-center gap-3">
                           <FileText className="h-5 w-5 text-primary" />
@@ -1033,7 +1048,7 @@ export default function TaskDetail() {
                     {outputFiles.map((file) => (
                       <div
                         key={file.id}
-                        className="flex items-center justify-between bg-status-completed-bg rounded-lg px-4 py-3"
+                        className={fileRowClass}
                       >
                         <div className="flex items-center gap-3">
                           <FileText className="h-5 w-5 text-status-completed" />
@@ -1127,7 +1142,7 @@ export default function TaskDetail() {
             </div>
 
             {/* Comments */}
-            <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
                 Comments ({taskState.comments.length})
@@ -1185,7 +1200,7 @@ export default function TaskDetail() {
           {/* Right Column - Metadata */}
           <div className="space-y-6">
             {/* Task Info */}
-            <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Details</h2>
               <dl className="space-y-4">
                 <div>
@@ -1258,7 +1273,7 @@ export default function TaskDetail() {
             </div>
 
             {/* Status Timeline (simplified) */}
-            <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Status</h2>
               <div className="relative">
                 <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-border" />
@@ -1314,7 +1329,7 @@ export default function TaskDetail() {
             </div>
 
             {user?.role === 'staff' && changeHistory.length > 0 && (
-              <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-foreground">Notifications</h2>
                   <History className="h-4 w-4 text-muted-foreground" />
@@ -1334,7 +1349,7 @@ export default function TaskDetail() {
               </div>
             )}
 
-            <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
+            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-semibold text-foreground">Change History</h2>
                 <History className="h-4 w-4 text-muted-foreground" />

@@ -17,7 +17,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <div className="flex min-h-screen w-full bg-background">
       <AppSidebar />
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto scrollbar-none">
         <div className="container py-6 px-4 md:px-8 max-w-7xl mx-auto">
           {children}
         </div>

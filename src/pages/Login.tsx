@@ -22,11 +22,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Palette, Shield, Users, Briefcase } from 'lucide-react';
+import { Palette, Users, Briefcase, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType; description: string }[] = [
-  { value: 'admin', label: 'Administrator', icon: Shield, description: 'Full system access' },
   { value: 'designer', label: 'Designer', icon: Palette, description: 'Manage & complete tasks' },
   { value: 'staff', label: 'Staff', icon: Users, description: 'Submit design requests' },
   { value: 'treasurer', label: 'Treasurer', icon: Briefcase, description: 'Approve modifications' },
@@ -37,6 +36,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('staff');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [isResetLoading, setIsResetLoading] = useState(false);
@@ -44,8 +44,13 @@ export default function Login() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupRole, setSignupRole] = useState<UserRole>('staff');
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
   const { login, signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const glassInputClass =
+    'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
+  const glassButtonClass =
+    'bg-white text-foreground hover:bg-[#F8FBFF]/95';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,7 +148,7 @@ export default function Login() {
         {/* Left Panel - Branding */}
         <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent" />
-          <div className="relative z-10 flex flex-col justify-center px-16 text-sidebar-foreground">
+          <div className="relative z-10 flex flex-col justify-center px-16 ml-[150px] text-sidebar-foreground">
             <div className="animate-slide-in-left">
               <div className="flex items-center gap-3 mb-8">
                 <div
@@ -165,19 +170,6 @@ export default function Login() {
                 Submit requests, track progress, and collaborate seamlessly with your design team.
               </p>
 
-              <div className="space-y-4">
-                {[
-                  'Submit design requests with all required materials',
-                  'Track real-time status of every request',
-                  'Automated notifications and reminders',
-                  'Transparent approval workflow',
-                ].map((feature, index) => (
-                  <div key={index} className="flex items-center gap-3">
-                    <div className="h-2 w-2 rounded-full bg-primary" />
-                    <span className="text-sidebar-foreground/90">{feature}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
 
@@ -187,8 +179,13 @@ export default function Login() {
         </div>
 
         {/* Right Panel - Login Form */}
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="w-full max-w-md animate-fade-in">
+        <div className="relative flex-1 flex items-center justify-center p-8 overflow-hidden bg-[#F6F8FF]/60">
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute -top-24 left-10 h-64 w-64 rounded-full bg-[#E6ECFF]/60 blur-3xl" />
+            <div className="absolute bottom-10 right-16 h-72 w-72 rounded-full bg-[#DCE9FF]/60 blur-3xl" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_55%)]" />
+          </div>
+          <div className="relative w-full max-w-md animate-fade-in">
             {/* Mobile Logo */}
             <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
               <div
@@ -214,22 +211,34 @@ export default function Login() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="you@company.com"
+                  placeholder="Enter your email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="h-11"
+                  className={`h-11 ${glassInputClass} placeholder:text-[#9CA3AF] placeholder:opacity-100`}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="********"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-11"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    key={showPassword ? 'password-text' : 'password-hidden'}
+                    placeholder="********"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className={`h-11 pr-10 ${glassInputClass}`}
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
                 {role !== 'designer' ? (
                   <button
                     type="button"
@@ -242,18 +251,18 @@ export default function Login() {
               </div>
 
               <div className="space-y-2">
-                <Label>Role (Demo)</Label>
+                <Label>Role</Label>
                 <Select value={role} onValueChange={(v) => handleRoleChange(v as UserRole)}>
-                  <SelectTrigger className="h-11">
+                  <SelectTrigger className={`h-11 ${glassInputClass}`}>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
                     {roleOptions.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-sm leading-none">
                           <option.icon className="h-4 w-4 text-muted-foreground" />
-                          <span>{option.label}</span>
-                          <span className="text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground/90">{option.label}</span>
+                          <span className="text-[11px] text-foreground/70">
                             - {option.description}
                           </span>
                         </div>
@@ -266,14 +275,18 @@ export default function Login() {
                 </p>
               </div>
 
-              <Button type="submit" className="w-full h-11" disabled={isLoading}>
+              <Button
+                type="submit"
+                className="w-full h-11 bg-[#35429A] text-white border border-white/30 backdrop-blur-lg shadow-sm transition-colors hover:bg-[#2F3C8A]"
+                disabled={isLoading}
+              >
                 {isLoading ? 'Signing in...' : 'Sign in'}
               </Button>
               {role === 'staff' ? (
                 <Button
                   type="button"
-                  variant="secondary"
-                  className="w-full h-11"
+                  variant="outline"
+                  className={`w-full h-11 ${glassButtonClass} border-0 bg-transparent backdrop-blur-xl ring-1 ring-white/20 shadow-[0_10px_26px_-18px_rgba(59,130,246,0.45)] hover:bg-transparent`}
                   disabled={isLoading}
                   onClick={handleOpenSignup}
                 >
@@ -291,11 +304,35 @@ export default function Login() {
             <Button
               type="button"
               variant="outline"
-              className="w-full h-11"
+              className={`w-full h-11 ${glassButtonClass} border-0`}
               onClick={handleGoogleLogin}
               disabled={isLoading}
             >
-              Continue with Google
+              <span className="inline-flex items-center justify-center gap-2">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 533.5 544.3"
+                  className="h-4 w-4"
+                >
+                  <path
+                    d="M533.5 278.4c0-18.8-1.5-37-4.3-54.6H272v103.4h146.9c-6.3 34-25.2 62.8-53.8 82l86.9 67.6c50.7-46.8 81.5-115.9 81.5-198.4z"
+                    fill="#4285F4"
+                  />
+                  <path
+                    d="M272 544.3c72.7 0 133.7-24.1 178.3-65.4l-86.9-67.6c-24.1 16.2-55 25.8-91.4 25.8-70 0-129.4-47.2-150.7-110.5H32.9v69.5c44.4 88.1 135.4 148.2 239.1 148.2z"
+                    fill="#34A853"
+                  />
+                  <path
+                    d="M121.3 326.6c-10.4-31-10.4-64.6 0-95.6V161.5H32.9c-38.6 77.2-38.6 168.2 0 245.4l88.4-69.5z"
+                    fill="#FBBC05"
+                  />
+                  <path
+                    d="M272 107.7c39.6-.6 77.6 14 106.7 40.9l79.4-79.4C407.3 24.1 346.3 0 272 0 168.3 0 77.3 60.1 32.9 148.2l88.4 69.5C142.6 154.9 202 107.7 272 107.7z"
+                    fill="#EA4335"
+                  />
+                </svg>
+                <span>Continue with Google</span>
+              </span>
             </Button>
             {role === 'staff' ? (
               <p className="text-center text-xs text-muted-foreground mt-3">
@@ -323,9 +360,16 @@ export default function Login() {
                 value={resetEmail}
                 onChange={(e) => setResetEmail(e.target.value)}
                 placeholder="you@gmail.com"
+                className={glassInputClass}
               />
             </div>
-            <Button type="button" variant="outline" onClick={handleSendResetEmail} disabled={isResetLoading}>
+            <Button
+              type="button"
+              variant="outline"
+              className={glassButtonClass}
+              onClick={handleSendResetEmail}
+              disabled={isResetLoading}
+            >
               {isResetLoading ? 'Sending...' : 'Send reset link'}
             </Button>
           </div>
@@ -348,51 +392,58 @@ export default function Login() {
                 value={signupEmail}
                 onChange={(e) => setSignupEmail(e.target.value)}
                 placeholder="you@gmail.com"
+                className={glassInputClass}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="signup-password">Password</Label>
-              <Input
-                id="signup-password"
-                type="password"
-                value={signupPassword}
-                onChange={(e) => setSignupPassword(e.target.value)}
-                placeholder="Create a password"
-              />
+              <div className="relative">
+                <Input
+                  id="signup-password"
+                  type={showSignupPassword ? 'text' : 'password'}
+                  key={showSignupPassword ? 'signup-password-text' : 'signup-password-hidden'}
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  placeholder="Create a password"
+                  className={`pr-10 ${glassInputClass}`}
+                />
+                <button
+                  type="button"
+                  aria-label={showSignupPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showSignupPassword}
+                  onClick={() => setShowSignupPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Role</Label>
               <Select value={signupRole} onValueChange={(value) => setSignupRole(value as UserRole)}>
-                <SelectTrigger className="h-11">
+                <SelectTrigger className={`h-11 ${glassInputClass}`}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
                   <SelectItem value="staff">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 text-sm leading-none">
                       <Users className="h-4 w-4 text-muted-foreground" />
-                      <span>Staff</span>
-                      <span className="text-xs text-muted-foreground">- Submit design requests</span>
+                      <span className="font-semibold text-foreground/90">Staff</span>
+                      <span className="text-[11px] text-foreground/70">- Submit design requests</span>
                     </div>
                   </SelectItem>
                   <SelectItem value="designer">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 text-sm leading-none">
                       <Palette className="h-4 w-4 text-muted-foreground" />
-                      <span>Designer</span>
-                      <span className="text-xs text-muted-foreground">- Manage & complete tasks</span>
+                      <span className="font-semibold text-foreground/90">Designer</span>
+                      <span className="text-[11px] text-foreground/70">- Manage & complete tasks</span>
                     </div>
                   </SelectItem>
                   <SelectItem value="treasurer">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 text-sm leading-none">
                       <Briefcase className="h-4 w-4 text-muted-foreground" />
-                      <span>Treasurer</span>
-                      <span className="text-xs text-muted-foreground">- Approve modifications</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="admin">
-                    <div className="flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-muted-foreground" />
-                      <span>Administrator</span>
-                      <span className="text-xs text-muted-foreground">- Full system access</span>
+                      <span className="font-semibold text-foreground/90">Treasurer</span>
+                      <span className="text-[11px] text-foreground/70">- Approve modifications</span>
                     </div>
                   </SelectItem>
                 </SelectContent>
@@ -400,7 +451,13 @@ export default function Login() {
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" onClick={handleSignupSubmit} disabled={isLoading}>
+            <Button
+              type="button"
+              variant="outline"
+              className={glassButtonClass}
+              onClick={handleSignupSubmit}
+              disabled={isLoading}
+            >
               {isLoading ? 'Creating...' : 'Create account'}
             </Button>
           </DialogFooter>

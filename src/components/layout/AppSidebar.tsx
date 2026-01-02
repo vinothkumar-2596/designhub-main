@@ -4,7 +4,6 @@ import {
   PlusCircle,
   ListTodo,
   CheckSquare,
-  Clock,
   Settings,
   LogOut,
   ChevronLeft,
@@ -31,7 +30,7 @@ const navItems: NavItem[] = [
     title: 'Dashboard',
     href: '/dashboard',
     icon: Home,
-    roles: ['admin', 'designer', 'staff', 'treasurer'],
+    roles: ['designer', 'staff', 'treasurer'],
   },
   {
     title: 'New Request',
@@ -43,7 +42,7 @@ const navItems: NavItem[] = [
     title: 'All Tasks',
     href: '/tasks',
     icon: ListTodo,
-    roles: ['admin', 'designer'],
+    roles: ['designer'],
   },
   {
     title: 'My Requests',
@@ -56,12 +55,6 @@ const navItems: NavItem[] = [
     href: '/approvals',
     icon: CheckSquare,
     roles: ['treasurer'],
-  },
-  {
-    title: 'Activity Log',
-    href: '/activity',
-    icon: Clock,
-    roles: ['admin'],
   },
 ];
 
@@ -79,7 +72,6 @@ export function AppSidebar() {
 
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
-      admin: 'Administrator',
       designer: 'Designer',
       staff: 'Staff',
       treasurer: 'Treasurer',
@@ -88,7 +80,7 @@ export function AppSidebar() {
   };
 
   const getRoleIcon = (role: string) => {
-    if (role === 'admin' || role === 'treasurer') {
+    if (role === 'treasurer') {
       return <Shield className="h-3 w-3" />;
     }
     return <User className="h-3 w-3" />;

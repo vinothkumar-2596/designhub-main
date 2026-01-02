@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'designer' | 'staff' | 'treasurer';
+export type UserRole = 'designer' | 'staff' | 'treasurer';
 
 export type TaskStatus = 
   | 'pending'
@@ -7,12 +7,15 @@ export type TaskStatus =
   | 'under_review'
   | 'completed';
 
-export type TaskCategory = 
-  | 'poster'
-  | 'social_media'
+export type TaskCategory =
   | 'banner'
+  | 'campaign_or_others'
+  | 'social_media_creative'
+  | 'website_assets'
+  | 'ui_ux'
+  | 'led_backdrop'
   | 'brochure'
-  | 'others';
+  | 'flyer';
 
 export type TaskUrgency = 'low' | 'intermediate' | 'normal' | 'urgent';
 

@@ -17,7 +17,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 232 50% 41%;
+    --primary: 232 49% 41%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 18% 96%;
@@ -34,7 +34,7 @@
 
     --border: 220 18% 90%;
     --input: 220 18% 90%;
-    --ring: 232 50% 41%;
+    --ring: 232 49% 41%;
 
     --radius: 0.75rem;
 
@@ -55,7 +55,7 @@
     /* Sidebar */
     --sidebar-background: 222 47% 11%;
     --sidebar-foreground: 215 20% 85%;
-    --sidebar-primary: 232 50% 41%;
+    --sidebar-primary: 232 49% 41%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 222 47% 18%;
     --sidebar-accent-foreground: 0 0% 100%;
@@ -220,6 +220,14 @@
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: hsl(var(--border));
     border-radius: 3px;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }
 

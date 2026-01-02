@@ -33,7 +33,6 @@ import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 
 const roleLabels: Record<string, string> = {
-  admin: 'Administrator',
   designer: 'Designer',
   staff: 'Staff',
   treasurer: 'Treasurer',
@@ -218,6 +217,15 @@ export default function Dashboard() {
     };
   }, [assignedDesignTasks]);
 
+  const getLatestEntry = (entries: any[]) => {
+    if (entries.length === 0) return null;
+    return entries.reduce((latest, current) => {
+      const latestTime = new Date(latest.createdAt ?? 0).getTime();
+      const currentTime = new Date(current.createdAt ?? 0).getTime();
+      return currentTime > latestTime ? current : latest;
+    }, entries[0]);
+  };
+
   const staffNotifications = useMemo(() => {
     if (user.role !== 'staff') return [];
     return hydratedTasks
@@ -248,22 +256,29 @@ export default function Dashboard() {
   const designerNotifications = useMemo(() => {
     if (user.role !== 'designer') return [];
     return hydratedTasks
-      .flatMap((task) =>
-        (task.changeHistory || [])
-          .filter(
-            (entry) => {
-              const isStaffUpdate =
-                entry.userRole === 'staff' &&
-                ['description', 'files', 'deadline_request', 'status', 'staff_note'].includes(
-                  entry.field
-                );
-              const isTreasurerApproval =
-                entry.userRole === 'treasurer' && entry.field === 'approval_status';
-              return isStaffUpdate || isTreasurerApproval;
-            }
-          )
-          .map((entry) => ({ ...entry, taskId: task.id, taskTitle: task.title, task }))
-      )
+      .flatMap((task) => {
+        const history = task.changeHistory || [];
+        const treasurerEntries = history.filter(
+          (entry) => entry.userRole === 'treasurer' && entry.field === 'approval_status'
+        );
+        if (treasurerEntries.length > 0) {
+          const latestTreasurer = getLatestEntry(treasurerEntries);
+          return latestTreasurer
+            ? [{ ...latestTreasurer, taskId: task.id, taskTitle: task.title, task }]
+            : [];
+        }
+        const staffEntries = history.filter(
+          (entry) =>
+            entry.userRole === 'staff' &&
+            ['description', 'files', 'deadline_request', 'status', 'staff_note'].includes(
+              entry.field
+            )
+        );
+        const latestStaff = getLatestEntry(staffEntries);
+        return latestStaff
+          ? [{ ...latestStaff, taskId: task.id, taskTitle: task.title, task }]
+          : [];
+      })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
   }, [hydratedTasks, user.role]);
@@ -516,8 +531,6 @@ export default function Dashboard() {
 
   const getWelcomeMessage = () => {
     switch (user.role) {
-      case 'admin':
-        return 'Manage all design requests and team workflow';
       case 'designer':
         return 'View and complete assigned design tasks';
       case 'staff':
@@ -540,7 +553,7 @@ export default function Dashboard() {
     },
   ];
 
-  if (user.role === 'treasurer' || user.role === 'admin') {
+  if (user.role === 'treasurer') {
     summaryItems.push({
       label: 'Pending approvals',
       value: stats.pendingApprovals,
@@ -557,76 +570,78 @@ export default function Dashboard() {
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              Dashboard Overview
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {(user.role === 'staff' || user.role === 'designer') && (
-              <div className="relative">
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  className="h-9 w-9"
-                  onClick={toggleNotifications}
-                >
-                  <Bell className="h-4 w-4" />
-                </Button>
-                {hasNotifications && (
-                  <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-primary" />
-                )}
-                {notificationsOpen && hasNotifications && (
-                  <div className="absolute right-0 mt-2 w-72 rounded-xl border border-primary/15 bg-white/80 backdrop-blur-md p-3 shadow-card z-50 animate-dropdown origin-top-right">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
-                        Notifications
-                      </span>
-                      <button
-                        className="text-primary/60 hover:text-primary"
-                        onClick={closeNotificationsPreview}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {activeNotifications.map((entry) => (
-                        <Link
-                          key={entry.id}
-                          to={`/task/${entry.taskId}`}
-                          state={{ task: entry.task, highlightChangeId: entry.id }}
+        <div className="sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-white/70 supports-[backdrop-filter]:bg-white/60 backdrop-blur-xl">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                Dashboard Overview
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {(user.role === 'staff' || user.role === 'designer') && (
+                <div className="relative">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={toggleNotifications}
+                  >
+                    <Bell className="h-4 w-4" />
+                  </Button>
+                  {hasNotifications && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-primary" />
+                  )}
+                  {notificationsOpen && hasNotifications && (
+                    <div className="absolute right-0 mt-2 w-72 rounded-xl border border-[#C9D7FF] bg-[#F2F6FF]/95 backdrop-blur-xl p-3 shadow-lg z-50 animate-dropdown origin-top-right">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
+                          Notifications
+                        </span>
+                        <button
+                          className="text-primary/60 hover:text-primary"
                           onClick={closeNotificationsPreview}
-                          className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold text-foreground">
-                              {getNotificationTitle(entry)}
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {activeNotifications.map((entry) => (
+                          <Link
+                            key={entry.id}
+                            to={`/task/${entry.taskId}`}
+                            state={{ task: entry.task, highlightChangeId: entry.id }}
+                            onClick={closeNotificationsPreview}
+                            className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-semibold text-foreground">
+                                {getNotificationTitle(entry)}
+                              </p>
+                              <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {getNotificationNote(entry)}
                             </p>
-                            <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {getNotificationNote(entry)}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
-                          </p>
-                        </Link>
-                      ))}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
+                            </p>
+                          </Link>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
-            <DateRangeFilter
-              value={dateRange}
-              onChange={setDateRange}
-              startDate={customStart}
-              endDate={customEnd}
-              onStartDateChange={setCustomStart}
-              onEndDateChange={setCustomEnd}
-              showLabel={false}
-            />
+                  )}
+                </div>
+              )}
+              <DateRangeFilter
+                value={dateRange}
+                onChange={setDateRange}
+                startDate={customStart}
+                endDate={customEnd}
+                onStartDateChange={setCustomStart}
+                onEndDateChange={setCustomEnd}
+                showLabel={false}
+              />
+            </div>
           </div>
         </div>
 
@@ -685,11 +700,11 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2" aria-hidden="true">
               {summaryItems.map((item) => (
                 <div
                   key={item.label}
-                  className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-[#F9FBFF] px-4 py-3"
+                  className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-[#F9FBFF] px-4 py-3 opacity-0 pointer-events-none select-none"
                 >
                   <span className="text-sm text-muted-foreground">{item.label}</span>
                   <span className="text-lg font-semibold text-foreground">{item.value}</span>
@@ -733,7 +748,7 @@ export default function Dashboard() {
               variant="primary"
             />
           )}
-          {(user.role === 'treasurer' || user.role === 'admin') && (
+          {user.role === 'treasurer' && (
             <StatsCard
               title="Pending Approvals"
               value={stats.pendingApprovals}
