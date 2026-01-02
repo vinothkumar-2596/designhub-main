@@ -8,14 +8,12 @@ import {
 } from 'firebase/auth';
 import { User, UserRole } from '@/types';
 import { auth, firebaseEnabled, googleProvider } from '@/lib/firebase';
-import { DESIGNER_CREDENTIALS } from '@/constants/auth';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   login: (email: string, password: string, role: UserRole) => Promise<void>;
   signup: (email: string, password: string, role: UserRole) => Promise<void>;
-  loginWithToken: (token: string) => void;
   loginWithGoogle: (role: UserRole) => Promise<void>;
   logout: () => void;
   switchRole: (role: UserRole) => void;
@@ -23,62 +21,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for demo purposes
-const mockUsers: Record<UserRole, User> = {
-  admin: {
-    id: '1',
-    name: 'Alex Designer',
-    email: 'alex@company.com',
-    role: 'admin',
-    department: 'Design',
-  },
-  designer: {
-    id: '2',
-    name: 'Sarah Creative',
-    email: 'sarah@company.com',
-    role: 'designer',
-    department: 'Design',
-  },
-  staff: {
-    id: '3',
-    name: 'John Requester',
-    email: 'john@company.com',
-    role: 'staff',
-    department: 'Marketing',
-  },
-  treasurer: {
-    id: '4',
-    name: 'Emily Finance',
-    email: 'emily@company.com',
-    role: 'treasurer',
-    department: 'Finance',
-  },
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
-
-  const decodeTokenUser = (token: string): User | null => {
-    try {
-      const payload = token.split('.')[1];
-      const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-      const decoded = JSON.parse(atob(normalized));
-      return {
-        id: decoded.sub || '',
-        name: decoded.name || decoded.email || 'User',
-        email: decoded.email || '',
-        role: decoded.role || 'staff',
-      } as User;
-    } catch {
-      return null;
-    }
-  };
-
-  const persistAuth = (token: string, nextUser: User) => {
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('auth_user', JSON.stringify(nextUser));
-  };
 
   useEffect(() => {
     const stored = localStorage.getItem('auth_user');
@@ -109,73 +53,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string, role: UserRole) => {
-    if (
-      role === 'designer' &&
-      email.trim().toLowerCase() === DESIGNER_CREDENTIALS.email &&
-      password === DESIGNER_CREDENTIALS.password
-    ) {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setUser(mockUsers[role]);
-      return;
+    if (!firebaseEnabled || !auth) {
+      throw new Error('Firebase authentication is not configured');
     }
-    if (apiUrl && role === 'staff') {
-      const response = await fetch(`${apiUrl}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const nextUser = data.user as User;
-        setUser(nextUser);
-        if (data.token) {
-          persistAuth(data.token, nextUser);
-        }
-        return;
-      }
-      throw new Error('Login failed');
-    }
-    if (firebaseEnabled && auth) {
-      await signInWithEmailAndPassword(auth, email, password);
-      localStorage.setItem('auth_role', role);
-      return;
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 500));
-    setUser(mockUsers[role]);
+    localStorage.setItem('auth_role', role);
+    await signInWithEmailAndPassword(auth, email, password);
   };
 
   const signup = async (email: string, password: string, role: UserRole) => {
-    if (!apiUrl) {
-      if (firebaseEnabled && auth) {
-        await createUserWithEmailAndPassword(auth, email, password);
-        localStorage.setItem('auth_role', role);
-        return;
-      }
-      setUser(mockUsers[role]);
-      return;
+    if (!firebaseEnabled || !auth) {
+      throw new Error('Firebase authentication is not configured');
     }
-    const response = await fetch(`${apiUrl}/api/auth/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, role }),
-    });
-    if (!response.ok) {
-      throw new Error('Signup failed');
-    }
-    const data = await response.json();
-    const nextUser = data.user as User;
-    setUser(nextUser);
-    if (data.token) {
-      persistAuth(data.token, nextUser);
-    }
-  };
-
-  const loginWithToken = (token: string) => {
-    const nextUser = decodeTokenUser(token);
-    if (!nextUser) return;
-    setUser(nextUser);
-    persistAuth(token, nextUser);
+    localStorage.setItem('auth_role', role);
+    await createUserWithEmailAndPassword(auth, email, password);
   };
 
   const loginWithGoogle = async (role: UserRole) => {
@@ -183,29 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Google login not configured');
     }
     localStorage.setItem('auth_role', role);
-    const result = await signInWithPopup(auth, googleProvider);
-    if (apiUrl) {
-      const profileEmail = result.user.email;
-      if (profileEmail) {
-        const response = await fetch(`${apiUrl}/api/auth/oauth`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: profileEmail,
-            name: result.user.displayName || profileEmail.split('@')[0],
-            role,
-          }),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          const nextUser = data.user as User;
-          setUser(nextUser);
-          if (data.token) {
-            persistAuth(data.token, nextUser);
-          }
-        }
-      }
-    }
+    await signInWithPopup(auth, googleProvider);
   };
 
   const logout = () => {
@@ -214,11 +82,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     localStorage.removeItem('auth_user');
-    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_role');
   };
 
   const switchRole = (role: UserRole) => {
-    setUser(mockUsers[role]);
+    localStorage.setItem('auth_role', role);
+    setUser((current) => {
+      if (!current) return current;
+      const nextUser = { ...current, role };
+      localStorage.setItem('auth_user', JSON.stringify(nextUser));
+      return nextUser;
+    });
   };
 
   return (
@@ -228,7 +102,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user,
         login,
         signup,
-        loginWithToken,
         loginWithGoogle,
         logout,
         switchRole,

@@ -371,7 +371,7 @@ export default function TaskDetail() {
           field: 'approval_status',
           oldValue: approvalStatus ?? 'pending',
           newValue: 'Pending',
-          note: `Approval requested by ${user?.name || 'Staff'}`,
+          note: `Approval requested - ${user?.name || 'Staff'}`,
         },
       ],
       { approvalStatus: 'pending' }
@@ -717,7 +717,7 @@ export default function TaskDetail() {
                     variant="secondary"
                     size="sm"
                     onClick={() => setIsEditingTask((prev) => !prev)}
-                    disabled={approvalLockedForStaff || staffChangeLimitReached}
+                    disabled={approvalLockedForStaff}
                   >
                     {isEditingTask ? 'Close' : 'Edit'}
                   </Button>
@@ -733,7 +733,7 @@ export default function TaskDetail() {
                         onChange={(event) => setEditedDescription(event.target.value)}
                         rows={4}
                         className="mt-2"
-                        disabled={approvalLockedForStaff || staffChangeLimitReached}
+                        disabled={approvalLockedForStaff}
                       />
                     </div>
                     {user?.role === 'staff' && (
@@ -747,7 +747,7 @@ export default function TaskDetail() {
                           rows={3}
                           className="mt-2"
                           placeholder="Describe the change request for the designer and treasurer review."
-                          disabled={approvalLockedForStaff || staffChangeLimitReached}
+                          disabled={approvalLockedForStaff}
                         />
                       </div>
                     )}
@@ -767,7 +767,7 @@ export default function TaskDetail() {
                     <div className="flex flex-wrap items-center gap-3">
                       <Button
                         onClick={handleSaveUpdates}
-                        disabled={approvalLockedForStaff || staffChangeLimitReached}
+                        disabled={approvalLockedForStaff || (user?.role === 'staff' && staffChangeLimitReached)}
                       >
                         Save Updates
                       </Button>

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { useAuth } from '@/contexts/AuthContext';
+import { auth, firebaseEnabled } from '@/lib/firebase';
 import { UserRole } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +24,6 @@ import {
 } from '@/components/ui/select';
 import { Palette, Shield, Users, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
-import { DESIGNER_CREDENTIALS } from '@/constants/auth';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType; description: string }[] = [
   { value: 'admin', label: 'Administrator', icon: Shield, description: 'Full system access' },
@@ -38,8 +39,6 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
-  const [resetOtp, setResetOtp] = useState('');
-  const [resetPassword, setResetPassword] = useState('');
   const [isResetLoading, setIsResetLoading] = useState(false);
   const [isSignupOpen, setIsSignupOpen] = useState(false);
   const [signupEmail, setSignupEmail] = useState('');
@@ -47,24 +46,12 @@ export default function Login() {
   const [signupRole, setSignupRole] = useState<UserRole>('staff');
   const { login, signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
-  const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      if (role === 'designer') {
-        const isMatch =
-          email.trim().toLowerCase() === DESIGNER_CREDENTIALS.email &&
-          password === DESIGNER_CREDENTIALS.password;
-        if (!isMatch) {
-          toast.error('Designer credentials required', {
-            description: 'Use the designer email and password shown below.',
-          });
-          return;
-        }
-      }
       await login(email, password, role);
       toast.success('Welcome back!', {
         description: `Logged in as ${roleOptions.find(r => r.value === role)?.label}`,
@@ -94,87 +81,28 @@ export default function Login() {
   };
 
   const handleOpenReset = () => {
-    if (role === 'designer') {
-      toast.error('Password reset is not available for designer accounts');
-      return;
-    }
     setResetEmail(email);
-    setResetOtp('');
-    setResetPassword('');
     setIsResetOpen(true);
   };
 
-  const handleSendOtp = async () => {
+  const handleSendResetEmail = async () => {
     if (!resetEmail) {
       toast.error('Enter your email first');
       return;
     }
 
-    if (!apiUrl) {
-      toast.success('OTP sent', {
-        description: `We sent a one-time password to ${resetEmail}.`,
-      });
-      return;
-    }
-
     setIsResetLoading(true);
     try {
-      const response = await fetch(`${apiUrl}/api/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: resetEmail }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to send OTP');
+      if (!firebaseEnabled || !auth) {
+        throw new Error('Firebase email is not configured');
       }
-      const otpMessage = data?.otp ? ` OTP: ${data.otp}` : '';
-      toast.success('OTP sent', {
-        description: `We sent a one-time password to ${resetEmail}.${otpMessage}`,
-      });
-    } catch (error) {
-      toast.error('Failed to send OTP');
-    } finally {
-      setIsResetLoading(false);
-    }
-  };
-
-  const handleResetPassword = async () => {
-    if (!resetEmail || !resetOtp || !resetPassword) {
-      toast.error('Email, OTP, and new password are required');
-      return;
-    }
-
-    if (!apiUrl) {
-      toast.success('Password updated', {
-        description: 'You can now sign in with your new password.',
+      await sendPasswordResetEmail(auth, resetEmail);
+      toast.success('Reset email sent', {
+        description: `Check ${resetEmail} for a password reset link.`,
       });
       setIsResetOpen(false);
-      return;
-    }
-
-    setIsResetLoading(true);
-    try {
-      const response = await fetch(`${apiUrl}/api/auth/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: resetEmail,
-          otp: resetOtp,
-          newPassword: resetPassword,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to reset password');
-      }
-      toast.success('Password updated', {
-        description: 'You can now sign in with your new password.',
-      });
-      setPassword('');
-      setIsResetOpen(false);
     } catch (error) {
-      toast.error('Failed to reset password');
+      toast.error('Failed to send reset email');
     } finally {
       setIsResetLoading(false);
     }
@@ -182,10 +110,6 @@ export default function Login() {
 
   const handleRoleChange = (nextRole: UserRole) => {
     setRole(nextRole);
-    if (nextRole === 'designer') {
-      setEmail(DESIGNER_CREDENTIALS.email);
-      setPassword(DESIGNER_CREDENTIALS.password);
-    }
   };
 
   const handleOpenSignup = () => {
@@ -216,183 +140,178 @@ export default function Login() {
   return (
     <>
       <div className="min-h-screen flex bg-background">
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent" />
-        <div className="relative z-10 flex flex-col justify-center px-16 text-sidebar-foreground">
-          <div className="animate-slide-in-left">
-            <div className="flex items-center gap-3 mb-8">
+        {/* Left Panel - Branding */}
+        <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent" />
+          <div className="relative z-10 flex flex-col justify-center px-16 text-sidebar-foreground">
+            <div className="animate-slide-in-left">
+              <div className="flex items-center gap-3 mb-8">
+                <div
+                  className="h-12 w-12 rounded-xl flex items-center justify-center p-1"
+                  style={{ backgroundColor: 'rgb(21, 30, 60)' }}
+                >
+                  <img src="/favicon.png" alt="DesignDesk" className="h-full w-full object-contain" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-sidebar-primary-foreground">DesignDesk</h1>
+                  <p className="text-sm text-sidebar-foreground/70">Task Management Portal</p>
+                </div>
+              </div>
+
+              <h2 className="text-4xl font-bold text-sidebar-primary-foreground mb-4 leading-tight">
+                Streamline Your<br />Design Workflow
+              </h2>
+              <p className="text-lg text-sidebar-foreground/80 mb-8 max-w-md">
+                Submit requests, track progress, and collaborate seamlessly with your design team.
+              </p>
+
+              <div className="space-y-4">
+                {[
+                  'Submit design requests with all required materials',
+                  'Track real-time status of every request',
+                  'Automated notifications and reminders',
+                  'Transparent approval workflow',
+                ].map((feature, index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    <div className="h-2 w-2 rounded-full bg-primary" />
+                    <span className="text-sidebar-foreground/90">{feature}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Decorative Elements */}
+          <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
+          <div className="absolute top-20 right-20 w-64 h-64 bg-accent/10 rounded-full blur-3xl" />
+        </div>
+
+        {/* Right Panel - Login Form */}
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="w-full max-w-md animate-fade-in">
+            {/* Mobile Logo */}
+            <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
               <div
-                className="h-12 w-12 rounded-xl flex items-center justify-center p-1"
+                className="h-10 w-10 rounded-xl flex items-center justify-center p-1"
                 style={{ backgroundColor: 'rgb(21, 30, 60)' }}
               >
                 <img src="/favicon.png" alt="DesignDesk" className="h-full w-full object-contain" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-sidebar-primary-foreground">DesignDesk</h1>
-                <p className="text-sm text-sidebar-foreground/70">Task Management Portal</p>
+                <h1 className="text-xl font-bold">DesignDesk</h1>
+                <p className="text-xs text-muted-foreground">Task Portal</p>
               </div>
             </div>
-            
-            <h2 className="text-4xl font-bold text-sidebar-primary-foreground mb-4 leading-tight">
-              Streamline Your<br />Design Workflow
-            </h2>
-            <p className="text-lg text-sidebar-foreground/80 mb-8 max-w-md">
-              Submit requests, track progress, and collaborate seamlessly with your design team.
-            </p>
 
-            <div className="space-y-4">
-              {[
-                'Submit design requests with all required materials',
-                'Track real-time status of every request',
-                'Automated notifications and reminders',
-                'Transparent approval workflow',
-              ].map((feature, index) => (
-                <div key={index} className="flex items-center gap-3">
-                  <div className="h-2 w-2 rounded-full bg-primary" />
-                  <span className="text-sidebar-foreground/90">{feature}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Decorative Elements */}
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
-        <div className="absolute top-20 right-20 w-64 h-64 bg-accent/10 rounded-full blur-3xl" />
-      </div>
-
-      {/* Right Panel - Login Form */}
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-md animate-fade-in">
-          {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
-            <div
-              className="h-10 w-10 rounded-xl flex items-center justify-center p-1"
-              style={{ backgroundColor: 'rgb(21, 30, 60)' }}
-            >
-              <img src="/favicon.png" alt="DesignDesk" className="h-full w-full object-contain" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold">DesignDesk</h1>
-              <p className="text-xs text-muted-foreground">Task Portal</p>
-            </div>
-          </div>
-
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-foreground">Welcome back</h2>
-            <p className="text-muted-foreground mt-2">Sign in to access your dashboard</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="h-11"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="********"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-11"
-              />
-              {role !== 'designer' ? (
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:underline"
-                  onClick={handleOpenReset}
-                >
-                  Forgot password? Get OTP
-                </button>
-              ) : null}
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-foreground">Welcome back</h2>
+              <p className="text-muted-foreground mt-2">Sign in to access your dashboard</p>
             </div>
 
-            <div className="space-y-2">
-              <Label>Role (Demo)</Label>
-              <Select value={role} onValueChange={(v) => handleRoleChange(v as UserRole)}>
-                <SelectTrigger className="h-11">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {roleOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex items-center gap-2">
-                        <option.icon className="h-4 w-4 text-muted-foreground" />
-                        <span>{option.label}</span>
-                        <span className="text-xs text-muted-foreground">
-                          - {option.description}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Select a role to experience different portal views
-              </p>
-              {role === 'designer' ? (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="********"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="h-11"
+                />
+                {role !== 'designer' ? (
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={handleOpenReset}
+                  >
+                    Forgot password? Send reset link
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Role (Demo)</Label>
+                <Select value={role} onValueChange={(v) => handleRoleChange(v as UserRole)}>
+                  <SelectTrigger className="h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roleOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        <div className="flex items-center gap-2">
+                          <option.icon className="h-4 w-4 text-muted-foreground" />
+                          <span>{option.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            - {option.description}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-muted-foreground">
-                  Designer portal credentials: {DESIGNER_CREDENTIALS.email} / {DESIGNER_CREDENTIALS.password}
+                  Select a role to experience different portal views
                 </p>
+              </div>
+
+              <Button type="submit" className="w-full h-11" disabled={isLoading}>
+                {isLoading ? 'Signing in...' : 'Sign in'}
+              </Button>
+              {role === 'staff' ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full h-11"
+                  disabled={isLoading}
+                  onClick={handleOpenSignup}
+                >
+                  Create account
+                </Button>
               ) : null}
+            </form>
+
+            <div className="my-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">or</span>
+              <div className="h-px flex-1 bg-border" />
             </div>
 
-            <Button type="submit" className="w-full h-11" disabled={isLoading}>
-              {isLoading ? 'Signing in...' : 'Sign in'}
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-11"
+              onClick={handleGoogleLogin}
+              disabled={isLoading}
+            >
+              Continue with Google
             </Button>
             {role === 'staff' ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full h-11"
-                disabled={isLoading}
-                onClick={handleOpenSignup}
-              >
-                Create account
-              </Button>
+              <p className="text-center text-xs text-muted-foreground mt-3">
+                Staff can sign up with Google or create an account.
+              </p>
             ) : null}
-          </form>
 
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">or</span>
-            <div className="h-px flex-1 bg-border" />
           </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full h-11"
-            onClick={handleGoogleLogin}
-            disabled={isLoading}
-          >
-            Continue with Google
-          </Button>
-          {role === 'staff' ? (
-            <p className="text-center text-xs text-muted-foreground mt-3">
-              Staff can sign up with Google or create an account.
-            </p>
-          ) : null}
-
         </div>
-      </div>
       </div>
       <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reset password</DialogTitle>
             <DialogDescription>
-              Send an OTP to your Gmail, then set a new password.
+              We'll send a password reset link to your email.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -406,35 +325,10 @@ export default function Login() {
                 placeholder="you@gmail.com"
               />
             </div>
-            <Button type="button" variant="outline" onClick={handleSendOtp} disabled={isResetLoading}>
-              {isResetLoading ? 'Sending OTP...' : 'Send OTP'}
+            <Button type="button" variant="outline" onClick={handleSendResetEmail} disabled={isResetLoading}>
+              {isResetLoading ? 'Sending...' : 'Send reset link'}
             </Button>
-            <div className="space-y-2">
-              <Label htmlFor="reset-otp">OTP</Label>
-              <Input
-                id="reset-otp"
-                type="text"
-                value={resetOtp}
-                onChange={(e) => setResetOtp(e.target.value)}
-                placeholder="6-digit code"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="reset-password">New password</Label>
-              <Input
-                id="reset-password"
-                type="password"
-                value={resetPassword}
-                onChange={(e) => setResetPassword(e.target.value)}
-                placeholder="Create a new password"
-              />
-            </div>
           </div>
-          <DialogFooter>
-            <Button type="button" onClick={handleResetPassword} disabled={isResetLoading}>
-              {isResetLoading ? 'Updating...' : 'Update password'}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={isSignupOpen} onOpenChange={setIsSignupOpen}>
@@ -515,5 +409,3 @@ export default function Login() {
     </>
   );
 }
-
-
