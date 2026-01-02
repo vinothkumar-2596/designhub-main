@@ -23,7 +23,9 @@ import {
   Send,
   FileText,
   Upload,
+  Loader2,
   CheckCircle2,
+  Trash2,
   AlertTriangle,
   History,
 } from 'lucide-react';
@@ -98,6 +100,7 @@ export default function TaskDetail() {
   const [newFileName, setNewFileName] = useState('');
   const [newFileType, setNewFileType] = useState<'input' | 'output'>('input');
   const [isUploadingFinal, setIsUploadingFinal] = useState(false);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const storageKey = id ? `designhub.task.${id}` : '';
   const staffChangeCount = useMemo(() => {
     const latestFinalApprovalAt = changeHistory.reduce((latest, entry) => {
@@ -138,9 +141,10 @@ export default function TaskDetail() {
       updatedAt: new Date(raw.updatedAt),
       proposedDeadline: raw.proposedDeadline ? toDate(raw.proposedDeadline as unknown as string) : undefined,
       deadlineApprovedAt: raw.deadlineApprovedAt ? toDate(raw.deadlineApprovedAt as unknown as string) : undefined,
-      files: raw.files?.map((file) => ({
+      files: raw.files?.map((file, index) => ({
         ...file,
-        uploadedAt: new Date(file.uploadedAt),
+        id: file.id ?? `file-${index}-${file.name || 'attachment'}`,
+        uploadedAt: file.uploadedAt ? new Date(file.uploadedAt) : new Date(),
       })),
       comments: raw.comments?.map((comment) => ({
         ...comment,
@@ -302,11 +306,11 @@ export default function TaskDetail() {
         setDeadlineRequest(
           hydrated?.proposedDeadline ? format(hydrated.proposedDeadline, 'yyyy-MM-dd') : ''
         );
-    } catch (error) {
-      if (!initialTask) {
-        setTaskState(undefined);
-      }
-    } finally {
+      } catch (error) {
+        if (!initialTask) {
+          setTaskState(undefined);
+        }
+      } finally {
         setIsLoading(false);
       }
     };
@@ -565,6 +569,65 @@ export default function TaskDetail() {
     }
   };
 
+  const handleEditAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+    if (approvalLockedForStaff) {
+      toast.message('Approval pending. Changes are locked.');
+      e.target.value = '';
+      return;
+    }
+    if (!apiUrl) {
+      toast.error('File upload requires the backend.');
+      e.target.value = '';
+      return;
+    }
+
+    setIsUploadingAttachment(true);
+    const uploads = Array.from(selectedFiles);
+    try {
+      for (const file of uploads) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('taskTitle', taskState.title);
+        const response = await fetch(`${apiUrl}/api/files/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data?.error || 'Upload failed');
+        }
+        const newFile = {
+          id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: file.name,
+          url: data.webViewLink || data.webContentLink || '',
+          type: 'input' as const,
+          uploadedAt: new Date(),
+          uploadedBy: user?.id || '',
+        };
+        recordChanges(
+          [
+            {
+              type: 'file_added',
+              field: 'files',
+              oldValue: '',
+              newValue: newFile.name,
+              note: 'Attachment uploaded',
+            },
+          ],
+          { files: [...taskState.files, newFile] }
+        );
+      }
+      toast.success('Attachments uploaded.');
+    } catch (error) {
+      toast.error('File upload failed');
+    } finally {
+      setIsUploadingAttachment(false);
+      e.target.value = '';
+    }
+  };
+
   const handleRequestDeadline = () => {
     if (approvalLockedForStaff) {
       toast.message('Approval pending. Changes are locked.');
@@ -679,15 +742,15 @@ export default function TaskDetail() {
                   approvalStatus === 'approved'
                     ? 'completed'
                     : approvalStatus === 'rejected'
-                    ? 'urgent'
-                    : 'pending'
+                      ? 'urgent'
+                      : 'pending'
                 }
               >
                 {approvalStatus === 'approved'
                   ? 'Approved'
                   : approvalStatus === 'rejected'
-                  ? 'Rejected'
-                  : 'Awaiting Approval'}
+                    ? 'Rejected'
+                    : 'Awaiting Approval'}
               </Badge>
             )}
             <span className="text-sm text-muted-foreground bg-secondary px-2 py-0.5 rounded-md">
@@ -751,31 +814,80 @@ export default function TaskDetail() {
                         />
                       </div>
                     )}
-                    {user?.role !== 'staff' && (
+                      {user?.role !== 'staff' && (
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            Deadline
+                          </p>
+                          <Input
+                            type="date"
+                            value={editedDeadline}
+                            onChange={(event) => setEditedDeadline(event.target.value)}
+                            className="mt-2 max-w-xs"
+                          />
+                        </div>
+                      )}
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          Deadline
+                          Attachments (optional)
                         </p>
-                        <Input
-                          type="date"
-                          value={editedDeadline}
-                          onChange={(event) => setEditedDeadline(event.target.value)}
-                          className="mt-2 max-w-xs"
-                        />
+                        <div className="mt-2 flex flex-wrap items-center gap-3">
+                          <input
+                            type="file"
+                            multiple
+                            onChange={handleEditAttachmentUpload}
+                            className="hidden"
+                            id="edit-attachment-upload"
+                            disabled={approvalLockedForStaff || isUploadingAttachment}
+                          />
+                          <label
+                            htmlFor="edit-attachment-upload"
+                            className="inline-flex cursor-pointer items-center justify-center rounded-md border border-border bg-secondary px-3 py-2 text-xs font-medium text-foreground"
+                          >
+                            {isUploadingAttachment ? 'Uploading...' : 'Select files'}
+                          </label>
+                          <span className="text-xs text-muted-foreground">
+                            Add reference files if needed.
+                          </span>
+                        </div>
                       </div>
-                    )}
                     <div className="flex flex-wrap items-center gap-3">
-                      <Button
-                        onClick={handleSaveUpdates}
-                        disabled={approvalLockedForStaff || (user?.role === 'staff' && staffChangeLimitReached)}
-                      >
-                        Save Updates
-                      </Button>
-                      {canSendForApproval && (
-                        <Button variant="outline" onClick={handleRequestApproval}>
-                          Send to Treasurer
-                        </Button>
+                      {user?.role === 'staff' && (
+                        <span className="text-sm font-semibold text-primary/80">{staffChangeLabel}</span>
                       )}
+                        <Button
+                          onClick={handleSaveUpdates}
+                          disabled={
+                            approvalLockedForStaff ||
+                            (user?.role === 'staff' && staffChangeLimitReached) ||
+                            isUploadingAttachment
+                          }
+                        >
+                          {isUploadingAttachment && staffChangeCount < 3 ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Saving...
+                            </span>
+                          ) : (
+                            'Save Updates'
+                          )}
+                        </Button>
+                        {canSendForApproval && (
+                          <Button
+                            variant="outline"
+                            onClick={handleRequestApproval}
+                            disabled={isUploadingAttachment}
+                          >
+                            {isUploadingAttachment ? (
+                              <span className="inline-flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Sending...
+                              </span>
+                            ) : (
+                              'Send to Treasurer'
+                            )}
+                          </Button>
+                        )}
                     </div>
                   </div>
                 ) : (
@@ -820,36 +932,8 @@ export default function TaskDetail() {
               </div>
             )}
 
-            <div className="bg-card border border-border rounded-xl p-6 animate-slide-up space-y-4">
+            {/* <div className="bg-card border border-border rounded-xl p-6 animate-slide-up space-y-4">
               <div>
-                <h2 className="font-semibold text-foreground mb-2">Change Control</h2>
-                <p className="text-sm text-muted-foreground">
-                  Any data change, file update, or status update counts toward the approval threshold. Treasurer approval is
-                  required after the third change.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                {user?.role === 'staff' && (
-                  <span className="text-sm font-semibold text-primary/80">{staffChangeLabel}</span>
-                )}
-                {canSendForApproval && (
-                  <Button onClick={handleRequestApproval}>Send to Treasurer</Button>
-                )}
-                {approvalLockedForStaff && (
-                  <Badge variant="pending" className="border border-primary/20 bg-primary/10 text-primary">
-                    Approval Pending
-                  </Badge>
-                )}
-                {user?.role === 'treasurer' && approvalStatus === 'pending' && (
-                  <>
-                    <Button onClick={() => handleApprovalDecision('approved')}>Approve</Button>
-                    <Button variant="destructive" onClick={() => handleApprovalDecision('rejected')}>
-                      Reject
-                    </Button>
-                  </>
-                )}
-              </div>
-              <div className="border-t border-border pt-4">
                 <h3 className="text-sm font-semibold text-foreground">Deadline Request</h3>
                 <p className="text-xs text-muted-foreground mt-1">
                   Staff must request deadlines at least 3 working days from today. Designer approval required.
@@ -886,7 +970,7 @@ export default function TaskDetail() {
                   </Badge>
                 )}
               </div>
-            </div>
+            </div> */}
 
             {/* Files */}
             <div className="bg-card border border-border rounded-xl p-6 animate-slide-up">
@@ -916,7 +1000,7 @@ export default function TaskDetail() {
                               disabled={approvalLockedForStaff || staffChangeLimitReached}
                               onClick={() => handleRemoveFile(file.id, file.name)}
                             >
-                              <AlertTriangle className="h-4 w-4 text-status-urgent" />
+                                <Trash2 className="h-4 w-4 text-status-urgent" />
                             </Button>
                           )}
                           <Button
@@ -963,7 +1047,7 @@ export default function TaskDetail() {
                               disabled={approvalLockedForStaff || staffChangeLimitReached}
                               onClick={() => handleRemoveFile(file.id, file.name)}
                             >
-                              <AlertTriangle className="h-4 w-4 text-status-urgent" />
+                                <Trash2 className="h-4 w-4 text-status-urgent" />
                             </Button>
                           )}
                           <Button
@@ -989,13 +1073,13 @@ export default function TaskDetail() {
                 <div className="rounded-lg border border-dashed border-border p-4">
                   <p className="text-sm font-medium text-foreground mb-3">Add Attachment</p>
                   <div className="flex flex-wrap items-center gap-3">
-                  <Input
-                    placeholder="file_name.pdf"
-                    value={newFileName}
-                    onChange={(event) => setNewFileName(event.target.value)}
-                    className="flex-1 min-w-[180px]"
-                    disabled={approvalLockedForStaff || staffChangeLimitReached}
-                  />
+                    <Input
+                      placeholder="file_name.pdf"
+                      value={newFileName}
+                      onChange={(event) => setNewFileName(event.target.value)}
+                      className="flex-1 min-w-[180px]"
+                      disabled={approvalLockedForStaff || staffChangeLimitReached}
+                    />
                     <Select
                       value={newFileType}
                       onValueChange={(v) => setNewFileType(v as 'input' | 'output')}
@@ -1194,8 +1278,8 @@ export default function TaskDetail() {
                               isCurrent
                                 ? 'bg-primary border-primary'
                                 : isPast
-                                ? 'bg-status-completed border-status-completed'
-                                : 'bg-card border-border'
+                                  ? 'bg-status-completed border-status-completed'
+                                  : 'bg-card border-border'
                             )}
                           >
                             {(isPast || isCurrent) && (
@@ -1215,8 +1299,8 @@ export default function TaskDetail() {
                               isCurrent
                                 ? 'font-medium text-foreground'
                                 : isPast
-                                ? 'text-muted-foreground'
-                                : 'text-muted-foreground/50'
+                                  ? 'text-muted-foreground'
+                                  : 'text-muted-foreground/50'
                             )}
                           >
                             {statusConfig[s].label}

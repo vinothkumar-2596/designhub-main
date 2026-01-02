@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -22,17 +21,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  AlertTriangle,
   Upload,
   FileText,
-  Calendar,
   Clock,
   Info,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { TaskCategory, TaskUrgency } from '@/types';
-import { addDays, format, isAfter, isBefore, addBusinessDays } from 'date-fns';
+import { addDays, isBefore, startOfDay } from 'date-fns';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface UploadedFile {
@@ -58,17 +58,17 @@ export default function NewRequest() {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<TaskCategory | ''>('');
   const [urgency, setUrgency] = useState<TaskUrgency>('normal');
-  const [deadline, setDeadline] = useState('');
-  const [isModification, setIsModification] = useState(false);
+  const [deadline, setDeadline] = useState<Date | null>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const apiUrl =
     (import.meta.env.VITE_API_URL as string | undefined) ||
     (typeof window !== 'undefined' && window.location.hostname === 'localhost'
       ? 'http://localhost:4000'
       : undefined);
 
-  // Minimum deadline is 3 working days from now
-  const minDeadline = format(addBusinessDays(new Date(), 3), 'yyyy-MM-dd');
+  // Minimum deadline is 3 days from now
+  const minDeadlineDate = startOfDay(addDays(new Date(), 3));
 
   useEffect(() => {
     let isActive = true;
@@ -85,11 +85,8 @@ export default function NewRequest() {
     };
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const uploadedFiles = e.target.files;
-    if (!uploadedFiles) return;
-
-    const selected = Array.from(uploadedFiles);
+  const processFiles = async (selected: File[]) => {
+    if (selected.length === 0) return;
     if (!apiUrl) {
       const newFiles = selected.map((file) => ({
         id: Math.random().toString(36).substr(2, 9),
@@ -154,6 +151,29 @@ export default function NewRequest() {
     );
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const uploadedFiles = e.target.files;
+    if (!uploadedFiles) return;
+    await processFiles(Array.from(uploadedFiles));
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const droppedFiles = Array.from(event.dataTransfer.files || []);
+    await processFiles(droppedFiles);
+  };
+
   const removeFile = (id: string) => {
     setFiles(files.filter((f) => f.id !== id));
   };
@@ -175,7 +195,7 @@ export default function NewRequest() {
       files.length > 0 &&
       !hasUploadsInProgress &&
       !hasUploadErrors &&
-      !isBefore(new Date(deadline), new Date(minDeadline))
+      !isBefore(startOfDay(deadline), minDeadlineDate)
     );
   };
 
@@ -198,9 +218,7 @@ export default function NewRequest() {
           description,
           category,
           urgency,
-          deadline: new Date(deadline),
-          isModification,
-          approvalStatus: isModification ? 'pending' : undefined,
+          deadline: deadline as Date,
           status: 'pending',
           requesterId: user?.id || '',
           requesterName: user?.name || '',
@@ -235,9 +253,7 @@ export default function NewRequest() {
     }
 
     toast.success('Request submitted successfully!', {
-      description: isModification
-        ? 'Your request has been sent to the Treasurer for approval.'
-        : 'Your request has been added to the design queue.',
+      description: 'Your request has been added to the design queue.',
     });
 
     setIsSubmitting(false);
@@ -381,54 +397,48 @@ export default function NewRequest() {
                 Deadline <span className="text-destructive">*</span>
               </Label>
               <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="deadline"
-                  type="date"
-                  min={minDeadline}
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  className="pl-10"
-                />
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DatePicker
+                    value={deadline}
+                    onChange={(newValue) => setDeadline(newValue)}
+                    minDate={minDeadlineDate}
+                    slotProps={{
+                      textField: {
+                        size: 'small',
+                        fullWidth: true,
+                        sx: {
+                          '& .MuiInputBase-root': {
+                            borderRadius: 'var(--radius)',
+                            height: 40,
+                            backgroundColor: 'hsl(var(--background))',
+                          },
+                          '& .MuiInputBase-input': {
+                            padding: '0 14px',
+                          },
+                          '& .MuiOutlinedInput-notchedOutline': {
+                            borderColor: 'hsl(var(--input))',
+                          },
+                          '&:hover .MuiOutlinedInput-notchedOutline': {
+                            borderColor: 'hsl(var(--ring))',
+                          },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                            borderColor: 'hsl(var(--ring))',
+                          },
+                          '& .MuiSvgIcon-root': {
+                            color: 'hsl(var(--muted-foreground))',
+                          },
+                        },
+                      },
+                    }}
+                  />
+                </LocalizationProvider>
               </div>
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                Minimum 3 working days from submission date
+                Minimum 3 days from today
               </p>
             </div>
 
-            {/* Modification Checkbox */}
-            <div className="flex items-start space-x-3 pt-2">
-              <Checkbox
-                id="modification"
-                checked={isModification}
-                onCheckedChange={(checked) => setIsModification(checked as boolean)}
-              />
-              <div className="space-y-1">
-                <Label
-                  htmlFor="modification"
-                  className="font-medium cursor-pointer"
-                >
-                  This is a modification of an approved design
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Modifications require Treasurer approval before processing
-                </p>
-              </div>
-            </div>
-
-            {isModification && (
-              <div className="bg-status-pending-bg border border-status-pending/20 rounded-lg p-4 flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-status-pending flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium text-foreground">Approval Required</p>
-                  <p className="text-muted-foreground mt-1">
-                    This request will be sent to the Treasurer for approval before
-                    being assigned to a designer.
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* File Upload */}
@@ -442,7 +452,14 @@ export default function NewRequest() {
               </p>
             </div>
 
-            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
+            <div
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                isDragging ? 'border-primary/60 bg-primary/5' : 'border-border hover:border-primary/50'
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <input
                 type="file"
                 multiple
