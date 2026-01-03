@@ -15,8 +15,19 @@ const TaskCommentSchema = new mongoose.Schema(
   {
     userId: { type: String, default: "" },
     userName: { type: String, default: "" },
+    userRole: { type: String, default: "" },
     content: { type: String, required: true, trim: true },
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    receiverRoles: { type: [String], default: [] },
+    seenBy: {
+      type: [
+        {
+          role: { type: String, default: "" },
+          seenAt: { type: Date, default: Date.now }
+        }
+      ],
+      default: []
+    }
   },
   { _id: true }
 );

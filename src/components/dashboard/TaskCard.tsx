@@ -132,7 +132,12 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <Clock className="h-3.5 w-3.5" />
           <span>Created {format(task.createdAt, 'MMM d, yyyy h:mm a')}</span>
         </div>
-        <Button variant="ghost" size="sm" asChild className="gap-1 font-semibold text-primary hover:text-foreground">
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+          className="gap-1 font-semibold text-primary border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.35)]"
+        >
           <Link to={`/task/${taskId}`} state={{ task }}>
             View Details
             <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />

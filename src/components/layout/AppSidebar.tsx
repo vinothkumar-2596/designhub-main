@@ -204,7 +204,7 @@ export function AppSidebar() {
             }, 0);
           }}
           className={cn(
-            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground hover:bg-destructive/20 hover:text-destructive transition-all duration-200',
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground hover:bg-sidebar-primary/15 hover:text-sidebar-primary-foreground transition-all duration-200',
             collapsed && 'justify-center px-2'
           )}
         >

@@ -99,6 +99,7 @@ export default function NewRequest() {
   const [showGuidelines, setShowGuidelines] = useState(true);
   const [showThankYou, setShowThankYou] = useState(false);
   const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
+  const [uploadAnimation, setUploadAnimation] = useState<object | null>(null);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -110,6 +111,8 @@ export default function NewRequest() {
   const [isDragging, setIsDragging] = useState(false);
   const glassPanelClass =
     'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
+  const glassInputClass =
+    'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
   const apiUrl =
     (import.meta.env.VITE_API_URL as string | undefined) ||
     (typeof window !== 'undefined' && window.location.hostname === 'localhost'
@@ -121,12 +124,20 @@ export default function NewRequest() {
 
   useEffect(() => {
     let isActive = true;
-    fetch('/lottie/thank-you.json')
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        if (isActive && data) {
-          setThankYouAnimation(data);
-        }
+
+    const fetchAnimation = async (path: string) => {
+      const response = await fetch(path);
+      return response.ok ? response.json() : null;
+    };
+
+    Promise.all([
+      fetchAnimation('/lottie/thank-you.json'),
+      fetchAnimation('/lottie/upload-file.json'),
+    ])
+      .then(([thankYouData, uploadData]) => {
+        if (!isActive) return;
+        if (thankYouData) setThankYouAnimation(thankYouData);
+        if (uploadData) setUploadAnimation(uploadData);
       })
       .catch(() => {});
     return () => {
@@ -417,6 +428,7 @@ export default function NewRequest() {
                 placeholder="e.g., Annual Report Cover Design"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                className={`h-11 ${glassInputClass}`}
               />
             </div>
 
@@ -431,6 +443,7 @@ export default function NewRequest() {
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                className={`${glassInputClass} min-h-[120px]`}
               />
             </div>
 
@@ -441,7 +454,7 @@ export default function NewRequest() {
                   Category <span className="text-destructive">*</span>
                 </Label>
                 <Select value={category} onValueChange={(v) => setCategory(v as TaskCategory)}>
-                  <SelectTrigger>
+                  <SelectTrigger className={`h-11 ${glassInputClass}`}>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
@@ -460,7 +473,7 @@ export default function NewRequest() {
               <div className="space-y-2">
                 <Label>Urgency</Label>
                 <Select value={urgency} onValueChange={(v) => setUrgency(v as TaskUrgency)}>
-                  <SelectTrigger>
+                  <SelectTrigger className={`h-11 ${glassInputClass}`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
@@ -489,23 +502,41 @@ export default function NewRequest() {
                         size: 'small',
                         fullWidth: true,
                         sx: {
-                          '& .MuiInputBase-root': {
+                          '& .MuiPickersOutlinedInput-root': {
                             borderRadius: 'var(--radius)',
-                            height: 40,
+                            height: 44,
                             backgroundColor: 'rgba(255, 255, 255, 0.75)',
-                            backdropFilter: 'blur(16px)',
+                            backdropFilter: 'blur(12px)',
+                            fontWeight: 500,
+                            color: 'hsl(var(--foreground) / 0.9)',
+                            fontSize: '0.875rem',
                           },
-                          '& .MuiInputBase-input': {
-                            padding: '0 14px',
+                          '& .MuiPickersOutlinedInput-notchedOutline': {
+                            borderColor: '#D9E6FF',
                           },
-                          '& .MuiOutlinedInput-notchedOutline': {
-                            borderColor: '#C9D7FF',
-                          },
-                          '&:hover .MuiOutlinedInput-notchedOutline': {
+                          '&:hover .MuiPickersOutlinedInput-notchedOutline': {
                             borderColor: '#B7C8FF',
                           },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                            borderColor: '#A9BFFF',
+                          '& .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline':
+                            {
+                              borderColor: '#B7C8FF',
+                            },
+                          '& .MuiPickersOutlinedInput-root.Mui-focused': {
+                            boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.18)',
+                          },
+                          '& .MuiPickersInputBase-input': {
+                            padding: '0 14px',
+                            fontWeight: 500,
+                            fontSize: '0.875rem',
+                          },
+                          '& .MuiPickersInputBase-sectionContent': {
+                            fontWeight: 500,
+                            color: 'hsl(var(--foreground) / 0.9)',
+                            fontSize: '0.875rem',
+                          },
+                          '& .MuiPickersInputBase-input::placeholder': {
+                            color: '#9CA3AF',
+                            opacity: 1,
                           },
                           '& .MuiSvgIcon-root': {
                             color: 'hsl(var(--muted-foreground))',
@@ -553,7 +584,15 @@ export default function NewRequest() {
                 id="file-upload"
               />
               <label htmlFor="file-upload" className="cursor-pointer">
-                <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                {uploadAnimation ? (
+                  <Lottie
+                    animationData={uploadAnimation}
+                    loop
+                    className="h-24 w-24 mx-auto mb-3"
+                  />
+                ) : (
+                  <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                )}
                 <p className="font-medium text-foreground">
                   Click to upload or drag and drop
                 </p>

@@ -83,7 +83,7 @@ export default function Settings() {
                 key={role.value}
                 variant={user?.role === role.value ? 'default' : 'outline'}
                 onClick={() => handleRoleSwitch(role.value)}
-                className="justify-start gap-2"
+                className="justify-start gap-2 border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.35)]"
               >
                 <role.icon className="h-4 w-4" />
                 {role.label}

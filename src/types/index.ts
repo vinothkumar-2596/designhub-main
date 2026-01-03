@@ -35,9 +35,16 @@ export interface TaskComment {
   taskId: string;
   userId: string;
   userName: string;
-  userRole: UserRole;
+  userRole?: UserRole;
   content: string;
   createdAt: Date;
+  receiverRoles?: UserRole[];
+  seenBy?: CommentSeen[];
+}
+
+export interface CommentSeen {
+  role: UserRole;
+  seenAt: Date;
 }
 
 export interface TaskFile {

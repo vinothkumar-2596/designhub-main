@@ -87,15 +87,44 @@ router.patch("/:id", async (req, res) => {
 
 router.post("/:id/comments", async (req, res) => {
   try {
-    const { userId, userName, content } = req.body;
+    const { userId, userName, userRole, content, receiverRoles } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({ error: "Comment content is required." });
     }
 
+    const validRoles = ["staff", "treasurer", "designer"];
+    const senderRole = validRoles.includes(userRole) ? userRole : "";
+    const normalizedReceivers = Array.isArray(receiverRoles)
+      ? receiverRoles.filter((role) => validRoles.includes(role))
+      : [];
+    const resolvedReceivers =
+      normalizedReceivers.length > 0
+        ? normalizedReceivers
+        : senderRole
+        ? validRoles.filter((role) => role !== senderRole)
+        : validRoles;
+    const uniqueReceivers = [
+      ...new Set(
+        senderRole
+          ? resolvedReceivers.filter((role) => role !== senderRole)
+          : resolvedReceivers
+      ),
+    ];
+
     const task = await Task.findByIdAndUpdate(
       req.params.id,
-      { $push: { comments: { userId, userName, content } } },
+      {
+        $push: {
+          comments: {
+            userId,
+            userName,
+            userRole: senderRole,
+            content,
+            receiverRoles: uniqueReceivers
+          }
+        }
+      },
       { new: true }
     );
 
@@ -114,6 +143,51 @@ router.post("/:id/comments", async (req, res) => {
     res.json(task);
   } catch (error) {
     res.status(400).json({ error: "Failed to add comment." });
+  }
+});
+
+router.post("/:id/comments/seen", async (req, res) => {
+  try {
+    const { role } = req.body;
+    const validRoles = ["staff", "treasurer", "designer"];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: "Invalid role." });
+    }
+
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({ error: "Task not found." });
+    }
+
+    let updated = false;
+    const now = new Date();
+    task.comments = task.comments.map((comment) => {
+      const receivers =
+        Array.isArray(comment.receiverRoles) && comment.receiverRoles.length > 0
+          ? comment.receiverRoles
+          : comment.userRole
+          ? validRoles.filter((validRole) => validRole !== comment.userRole)
+          : validRoles;
+      if (!receivers.includes(role)) {
+        return comment;
+      }
+      const seenBy = Array.isArray(comment.seenBy) ? comment.seenBy : [];
+      if (seenBy.some((entry) => entry.role === role)) {
+        return comment;
+      }
+      comment.seenBy = [...seenBy, { role, seenAt: now }];
+      updated = true;
+      return comment;
+    });
+
+    if (updated) {
+      task.markModified("comments");
+      await task.save();
+    }
+
+    res.json(task);
+  } catch (error) {
+    res.status(400).json({ error: "Failed to update comment status." });
   }
 });
 

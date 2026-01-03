@@ -200,22 +200,6 @@ export default function Dashboard() {
     () => dateFilteredTasks.filter((task) => Boolean(task.assignedTo)),
     [dateFilteredTasks]
   );
-  const assignedDesignPreview = assignedDesignTasks.slice(0, 4);
-  const assignedDesignBreakdown = useMemo(() => {
-    const completed = assignedDesignTasks.filter((task) => task.status === 'completed').length;
-    const inProgress = assignedDesignTasks.filter((task) =>
-      ['in_progress', 'under_review'].includes(task.status)
-    ).length;
-    const pending = assignedDesignTasks.filter((task) =>
-      ['pending', 'clarification_required'].includes(task.status)
-    ).length;
-    return {
-      total: assignedDesignTasks.length,
-      completed,
-      inProgress,
-      pending,
-    };
-  }, [assignedDesignTasks]);
 
   const getLatestEntry = (entries: any[]) => {
     if (entries.length === 0) return null;
@@ -951,56 +935,12 @@ export default function Dashboard() {
                   })}
                 </div>
               ) : (
-                <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+                <div className="min-h-[72px] rounded-xl border border-border bg-card px-4 py-4 text-sm text-muted-foreground">
                   No pending approvals at the moment.
                 </div>
               )}
 
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      Assigned Projects
-                    </p>
-                    <h3 className="text-lg font-semibold text-foreground">
-                      Assigned to Designers
-                    </h3>
-                  </div>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to="/tasks">View All</Link>
-                  </Button>
-                </div>
-                <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <span>
-                    <span className="font-semibold text-foreground">{assignedDesignBreakdown.total}</span> assigned
-                  </span>
-                  <span>
-                    <span className="font-semibold text-foreground">{assignedDesignBreakdown.inProgress}</span> in progress
-                  </span>
-                  <span>
-                    <span className="font-semibold text-foreground">{assignedDesignBreakdown.completed}</span> completed
-                  </span>
-                  <span>
-                    <span className="font-semibold text-foreground">{assignedDesignBreakdown.pending}</span> pending
-                  </span>
-                </div>
-
-                {assignedDesignPreview.length > 0 ? (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {assignedDesignPreview.map((task, index) => (
-                      <div key={task.id} style={{ animationDelay: `${index * 50}ms` }}>
-                        <TaskCard task={task} showRequester showAssignee />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-                    No assigned projects yet.
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-6 rounded-2xl border border-[#D9E6FF] bg-white p-5 shadow-card">
+              <div className="mt-8 rounded-2xl border border-[#D9E6FF] bg-white p-5 shadow-card">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EEF3FF] text-primary ring-1 ring-[#D9E6FF]">
                     <Sparkles className="h-4 w-4" />

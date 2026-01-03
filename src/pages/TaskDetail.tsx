@@ -32,7 +32,7 @@ import {
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { ApprovalStatus, TaskChange, TaskStatus } from '@/types';
+import { ApprovalStatus, TaskChange, TaskStatus, UserRole } from '@/types';
 import { cn } from '@/lib/utils';
 
 const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
@@ -61,6 +61,12 @@ const changeFieldLabels: Record<string, string> = {
 };
 
 const formatChangeField = (field: string) => changeFieldLabels[field] || field.replace(/_/g, ' ');
+const roleLabels: Record<UserRole, string> = {
+  staff: 'Staff',
+  treasurer: 'Treasurer',
+  designer: 'Designer',
+};
+const allRoles: UserRole[] = ['staff', 'treasurer', 'designer'];
 
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 
@@ -68,6 +74,8 @@ const glassPanelClass =
   'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
 const fileRowClass =
   'flex items-center justify-between rounded-lg border border-[#D7E3FF] bg-gradient-to-r from-[#F4F8FF]/90 via-[#EEF4FF]/70 to-[#E6F1FF]/80 px-4 py-3 supports-[backdrop-filter]:bg-[#EEF4FF]/60 backdrop-blur-xl';
+const fileActionButtonClass =
+  'border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.35)]';
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -149,6 +157,8 @@ export default function TaskDetail() {
   const hydrateTask = (raw: typeof taskState) => {
     if (!raw) return raw;
     const toDate = (value?: string | Date) => (value ? new Date(value) : undefined);
+    const normalizeRole = (role?: string) =>
+      allRoles.includes(role as UserRole) ? (role as UserRole) : 'staff';
     return {
       ...raw,
       deadline: new Date(raw.deadline),
@@ -161,8 +171,20 @@ export default function TaskDetail() {
         id: file.id ?? `file-${index}-${file.name || 'attachment'}`,
         uploadedAt: file.uploadedAt ? new Date(file.uploadedAt) : new Date(),
       })),
-      comments: raw.comments?.map((comment) => ({
+      comments: raw.comments?.map((comment, index) => ({
         ...comment,
+        id:
+          comment.id ||
+          (comment as { _id?: string })._id ||
+          `comment-${index}-${comment.userId || 'user'}`,
+        userRole: normalizeRole(comment.userRole),
+        receiverRoles:
+          comment.receiverRoles?.filter((role) => allRoles.includes(role)) ?? [],
+        seenBy: comment.seenBy?.map((entry) => ({
+          ...entry,
+          role: normalizeRole(entry.role),
+          seenAt: new Date(entry.seenAt),
+        })) ?? [],
         createdAt: new Date(comment.createdAt),
       })),
       changeHistory: raw.changeHistory?.map((entry) => ({
@@ -179,6 +201,29 @@ export default function TaskDetail() {
       changeHistory: nextHistory ?? nextTask.changeHistory,
     };
     localStorage.setItem(storageKey, JSON.stringify(payload));
+  };
+
+  const getReceiverRoles = (senderRole?: UserRole) =>
+    senderRole ? allRoles.filter((role) => role !== senderRole) : allRoles;
+
+  const resolveCommentReceivers = (comment: (typeof taskState)['comments'][number]) => {
+    if (comment.receiverRoles && comment.receiverRoles.length > 0) {
+      return comment.receiverRoles;
+    }
+    if (comment.userRole) {
+      return allRoles.filter((role) => role !== comment.userRole);
+    }
+    return allRoles;
+  };
+
+  const hasUnseenForRole = (task: typeof taskState, role?: UserRole) => {
+    if (!task || !role) return false;
+    return task.comments?.some((comment) => {
+      const receivers = resolveCommentReceivers(comment);
+      if (!receivers.includes(role)) return false;
+      const seenBy = comment.seenBy ?? [];
+      return !seenBy.some((entry) => entry.role === role);
+    });
   };
 
   if (!taskState) {
@@ -354,10 +399,99 @@ export default function TaskDetail() {
     }
   }, [storageKey]);
 
-  const handleAddComment = () => {
-    if (!newComment.trim()) return;
-    toast.success('Comment added');
+  useEffect(() => {
+    if (!user || !taskState || !user.role) return;
+    if (!hasUnseenForRole(taskState, user.role)) return;
+    const markSeen = async () => {
+      if (apiUrl) {
+        try {
+          const response = await fetch(`${apiUrl}/api/tasks/${taskState.id}/comments/seen`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: user.role }),
+          });
+          if (!response.ok) return;
+          const updated = await response.json();
+          const hydrated = hydrateTask(updated);
+          setTaskState(hydrated);
+        } catch {
+          // no-op
+        }
+        return;
+      }
+
+      const nextTask = {
+        ...taskState,
+        comments: taskState.comments.map((comment) => {
+          const receivers = resolveCommentReceivers(comment);
+          if (!receivers.includes(user.role)) return comment;
+          const seenBy = comment.seenBy ?? [];
+          if (seenBy.some((entry) => entry.role === user.role)) return comment;
+          return {
+            ...comment,
+            seenBy: [...seenBy, { role: user.role, seenAt: new Date() }],
+          };
+        }),
+      };
+      setTaskState(nextTask);
+      persistTask(nextTask);
+    };
+    markSeen();
+  }, [apiUrl, taskState, user]);
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !taskState) return;
+    const content = newComment.trim();
+    const receiverRoles = getReceiverRoles(user?.role);
+
+    if (apiUrl) {
+      try {
+        const response = await fetch(`${apiUrl}/api/tasks/${taskState.id}/comments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user?.id || '',
+            userName: user?.name || 'User',
+            userRole: user?.role || 'staff',
+            content,
+            receiverRoles,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to add comment');
+        }
+        const updated = await response.json();
+        const hydrated = hydrateTask(updated);
+        setTaskState(hydrated);
+        setNewComment('');
+        toast.success('Comment added');
+        return;
+      } catch {
+        toast.error('Failed to add comment');
+        return;
+      }
+    }
+
+    const nextComment = {
+      id: `comment-${Date.now()}`,
+      taskId: taskState.id,
+      userId: user?.id || '',
+      userName: user?.name || 'User',
+      userRole: user?.role || 'staff',
+      content,
+      createdAt: new Date(),
+      receiverRoles,
+      seenBy: [],
+    };
+    const nextTask = {
+      ...taskState,
+      comments: [...taskState.comments, nextComment],
+      updatedAt: new Date(),
+    };
+    setTaskState(nextTask);
+    persistTask(nextTask);
     setNewComment('');
+    toast.success('Comment added');
   };
 
   const handleStatusChange = (status: TaskStatus) => {
@@ -733,7 +867,7 @@ export default function TaskDetail() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-4xl">
+      <div className="space-y-6 max-w-4xl select-none">
         {/* Back Button */}
         <Button
           variant="ghost"
@@ -810,7 +944,7 @@ export default function TaskDetail() {
                         value={editedDescription}
                         onChange={(event) => setEditedDescription(event.target.value)}
                         rows={4}
-                        className="mt-2"
+                        className="mt-2 select-text"
                         disabled={approvalLockedForStaff}
                       />
                     </div>
@@ -823,7 +957,7 @@ export default function TaskDetail() {
                           value={staffNote}
                           onChange={(event) => setStaffNote(event.target.value)}
                           rows={3}
-                          className="mt-2"
+                          className="mt-2 select-text"
                           placeholder="Describe the change request for the designer and treasurer review."
                           disabled={approvalLockedForStaff}
                         />
@@ -838,7 +972,7 @@ export default function TaskDetail() {
                             type="date"
                             value={editedDeadline}
                             onChange={(event) => setEditedDeadline(event.target.value)}
-                            className="mt-2 max-w-xs"
+                            className="mt-2 max-w-xs select-text"
                           />
                         </div>
                       )}
@@ -1013,6 +1147,7 @@ export default function TaskDetail() {
                               variant="ghost"
                               size="icon-sm"
                               disabled={approvalLockedForStaff || staffChangeLimitReached}
+                              className={fileActionButtonClass}
                               onClick={() => handleRemoveFile(file.id, file.name)}
                             >
                                 <Trash2 className="h-4 w-4 text-status-urgent" />
@@ -1022,6 +1157,7 @@ export default function TaskDetail() {
                             variant="ghost"
                             size="icon-sm"
                             disabled={!file.url || file.url === '#'}
+                            className={fileActionButtonClass}
                             onClick={() => {
                               if (file.url && file.url !== '#') {
                                 window.open(file.url, '_blank', 'noopener,noreferrer');
@@ -1060,6 +1196,7 @@ export default function TaskDetail() {
                               variant="ghost"
                               size="icon-sm"
                               disabled={approvalLockedForStaff || staffChangeLimitReached}
+                              className={fileActionButtonClass}
                               onClick={() => handleRemoveFile(file.id, file.name)}
                             >
                                 <Trash2 className="h-4 w-4 text-status-urgent" />
@@ -1069,6 +1206,7 @@ export default function TaskDetail() {
                             variant="ghost"
                             size="icon-sm"
                             disabled={!file.url || file.url === '#'}
+                            className={fileActionButtonClass}
                             onClick={() => {
                               if (file.url && file.url !== '#') {
                                 window.open(file.url, '_blank', 'noopener,noreferrer');
@@ -1092,7 +1230,7 @@ export default function TaskDetail() {
                       placeholder="file_name.pdf"
                       value={newFileName}
                       onChange={(event) => setNewFileName(event.target.value)}
-                      className="flex-1 min-w-[180px]"
+                      className="flex-1 min-w-[180px] select-text"
                       disabled={approvalLockedForStaff || staffChangeLimitReached}
                     />
                     <Select
@@ -1157,19 +1295,48 @@ export default function TaskDetail() {
                         {comment.userName.charAt(0)}
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-sm">
-                            {comment.userName}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(comment.createdAt, {
-                              addSuffix: true,
-                            })}
-                          </span>
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="font-medium text-sm">{comment.userName}</span>
+                          {comment.userRole && (
+                            <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                              {roleLabels[comment.userRole] ?? comment.userRole}
+                            </span>
+                          )}
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          {comment.content}
-                        </p>
+                        <p className="text-sm text-muted-foreground">{comment.content}</p>
+                        <div className="mt-2 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+                          <span>{format(comment.createdAt, 'MMM d, yyyy • h:mm a')}</span>
+                          {comment.userId === user?.id && (
+                            <span>
+                              {(() => {
+                                const receivers = resolveCommentReceivers(comment);
+                                const seenBy = comment.seenBy ?? [];
+                                const seenRoles = receivers.filter((role) =>
+                                  seenBy.some((entry) => entry.role === role)
+                                );
+                                const pendingRoles = receivers.filter(
+                                  (role) => !seenRoles.includes(role)
+                                );
+                                if (receivers.length === 0) {
+                                  return null;
+                                }
+                                if (seenRoles.length === 0) {
+                                  return 'Sent';
+                                }
+                                if (pendingRoles.length === 0) {
+                                  return `Seen by ${seenRoles
+                                    .map((role) => roleLabels[role] ?? role)
+                                    .join(', ')}`;
+                                }
+                                return `Seen by ${seenRoles
+                                  .map((role) => roleLabels[role] ?? role)
+                                  .join(', ')} • Pending ${pendingRoles
+                                  .map((role) => roleLabels[role] ?? role)
+                                  .join(', ')}`;
+                              })()}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1183,7 +1350,7 @@ export default function TaskDetail() {
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   rows={2}
-                  className="flex-1"
+                  className="flex-1 select-text"
                 />
                 <Button
                   onClick={handleAddComment}
