@@ -9,20 +9,25 @@ import { ListTodo, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { mergeLocalTasks } from '@/lib/taskStorage';
+import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
+import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
 export default function MyRequests() {
   const { user } = useAuth();
+  const { query, setQuery, setItems, setScopeLabel } = useGlobalSearch();
   const apiUrl =
     (import.meta.env.VITE_API_URL as string | undefined) ||
     (typeof window !== 'undefined' && window.location.hostname === 'localhost'
       ? 'http://localhost:4000'
       : undefined);
-  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | 'all'>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<TaskUrgency | 'all'>('all');
   const [tasks, setTasks] = useState(mockTasks);
   const [isLoading, setIsLoading] = useState(false);
+  const [storageTick, setStorageTick] = useState(0);
+  const [useLocalData, setUseLocalData] = useState(!apiUrl);
 
   useEffect(() => {
     if (!apiUrl || (!user?.id && !user?.email)) return;
@@ -61,8 +66,10 @@ export default function MyRequests() {
           })),
         }));
         setTasks(hydrated);
+        setUseLocalData(false);
       } catch (error) {
         toast.error('Failed to load requests');
+        setUseLocalData(true);
       } finally {
         setIsLoading(false);
       }
@@ -70,20 +77,45 @@ export default function MyRequests() {
     loadTasks();
   }, [apiUrl, user?.id]);
 
+  useEffect(() => {
+    if (!useLocalData) return;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key.startsWith('designhub.task.')) {
+        setStorageTick((prev) => prev + 1);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [useLocalData]);
+
+  const hydratedTasks = useMemo(() => {
+    if (!useLocalData) return tasks;
+    if (typeof window === 'undefined') return mockTasks;
+    return mergeLocalTasks(mockTasks);
+  }, [useLocalData, storageTick, tasks]);
+
   // Filter to only show user's own requests
   const userTasks = useMemo(() => {
-    return tasks.filter((task) => task.requesterId === user?.id);
-  }, [tasks, user?.id]);
+    return hydratedTasks.filter((task) => task.requesterId === user?.id);
+  }, [hydratedTasks, user?.id]);
+
+  useEffect(() => {
+    setScopeLabel('My Requests');
+    setItems(buildSearchItemsFromTasks(userTasks));
+  }, [setItems, setScopeLabel, userTasks]);
 
   const filteredTasks = useMemo(() => {
     return userTasks.filter((task) => {
       // Search filter
-      if (search) {
-        const searchLower = search.toLowerCase();
-        const matchesSearch =
-          task.title.toLowerCase().includes(searchLower) ||
-          task.description.toLowerCase().includes(searchLower);
-        if (!matchesSearch) return false;
+      if (
+        !matchesSearch(query, [
+          task.title,
+          task.description,
+          task.category,
+          task.status,
+        ])
+      ) {
+        return false;
       }
 
       // Status filter
@@ -97,10 +129,10 @@ export default function MyRequests() {
 
       return true;
     });
-  }, [userTasks, search, statusFilter, categoryFilter, urgencyFilter]);
+  }, [userTasks, query, statusFilter, categoryFilter, urgencyFilter]);
 
   const clearFilters = () => {
-    setSearch('');
+    setQuery('');
     setStatusFilter('all');
     setCategoryFilter('all');
     setUrgencyFilter('all');
@@ -127,8 +159,8 @@ export default function MyRequests() {
 
         {/* Filters */}
         <TaskFilters
-          search={search}
-          onSearchChange={setSearch}
+          search={query}
+          onSearchChange={setQuery}
           statusFilter={statusFilter}
           onStatusChange={setStatusFilter}
           categoryFilter={categoryFilter}

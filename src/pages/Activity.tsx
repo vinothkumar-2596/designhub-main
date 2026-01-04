@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Badge } from '@/components/ui/badge';
 import { Clock, User, FileText, CheckCircle2, MessageSquare, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter';
 import { DateRangeOption, getDateRange, isWithinRange } from '@/lib/dateRange';
+import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
+import { matchesSearch } from '@/lib/search';
 
 interface ActivityItem {
   id: string;
@@ -118,6 +120,7 @@ export default function Activity() {
   const [dateRange, setDateRange] = useState<DateRangeOption>('month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const { query, setItems, setScopeLabel } = useGlobalSearch();
 
   const activeRange = useMemo(
     () => getDateRange(dateRange, customStart, customEnd),
@@ -125,9 +128,33 @@ export default function Activity() {
   );
 
   const filteredActivity = useMemo(
-    () => mockActivity.filter((activity) => isWithinRange(activity.timestamp, activeRange)),
-    [activeRange]
+    () =>
+      mockActivity.filter(
+        (activity) =>
+          isWithinRange(activity.timestamp, activeRange) &&
+          matchesSearch(query, [
+            activity.taskTitle,
+            activity.userName,
+            activity.details,
+            activity.userRole,
+          ])
+      ),
+    [activeRange, query]
   );
+
+  useEffect(() => {
+    setScopeLabel('Activity');
+    setItems(
+      filteredActivity.map((activity) => ({
+        id: activity.id,
+        label: activity.taskTitle,
+        description: activity.details,
+        meta: `${activity.userName} • ${activity.userRole}`,
+        href: `/task/${activity.taskId}`,
+        kind: 'activity',
+      }))
+    );
+  }, [filteredActivity, setItems, setScopeLabel]);
 
   // Group activities by date
   const groupedActivities = filteredActivity.reduce((acc, activity) => {

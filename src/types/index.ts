@@ -28,6 +28,7 @@ export interface User {
   role: UserRole;
   avatar?: string;
   department?: string;
+  phone?: string;
 }
 
 export interface TaskComment {
@@ -37,6 +38,8 @@ export interface TaskComment {
   userName: string;
   userRole?: UserRole;
   content: string;
+  parentId?: string;
+  mentions?: UserRole[];
   createdAt: Date;
   receiverRoles?: UserRole[];
   seenBy?: CommentSeen[];
@@ -56,6 +59,15 @@ export interface TaskFile {
   uploadedBy: string;
 }
 
+export interface DesignVersion {
+  id: string;
+  name: string;
+  url: string;
+  version: number;
+  uploadedAt: Date;
+  uploadedBy: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -63,9 +75,16 @@ export interface Task {
   category: TaskCategory;
   urgency: TaskUrgency;
   status: TaskStatus;
+  isEmergency?: boolean;
+  emergencyApprovalStatus?: 'pending' | 'approved' | 'rejected';
+  emergencyApprovedBy?: string;
+  emergencyApprovedAt?: Date;
+  emergencyRequestedAt?: Date;
+  scheduleTaskId?: string;
   requesterId: string;
   requesterName: string;
   requesterEmail?: string;
+  requesterPhone?: string;
   requesterDepartment?: string;
   assignedTo?: string;
   assignedToName?: string;
@@ -81,6 +100,8 @@ export interface Task {
   changeCount: number;
   changeHistory: TaskChange[];
   files: TaskFile[];
+  designVersions?: DesignVersion[];
+  activeDesignVersionId?: string;
   comments: TaskComment[];
   createdAt: Date;
   updatedAt: Date;

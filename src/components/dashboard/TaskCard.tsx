@@ -40,6 +40,19 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   const deadlineText = isPast(task.deadline)
     ? `${formatDistanceToNow(task.deadline)} overdue`
     : `Due ${formatDistanceToNow(task.deadline, { addSuffix: true })}`;
+  const emergencyStatus = task.emergencyApprovalStatus;
+  const emergencyLabel =
+    emergencyStatus === 'approved'
+      ? 'Emergency Approved'
+      : emergencyStatus === 'rejected'
+        ? 'Emergency Rejected'
+        : 'Emergency Pending';
+  const emergencyVariant =
+    emergencyStatus === 'approved'
+      ? 'completed'
+      : emergencyStatus === 'rejected'
+        ? 'destructive'
+        : 'urgent';
   const assignedToId =
     (task as { assignedTo?: string; assignedToId?: string }).assignedTo ||
     (task as { assignedToId?: string }).assignedToId;
@@ -78,9 +91,12 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={status.variant}>{status.label}</Badge>
           {task.urgency === 'urgent' && <Badge variant="urgent">Urgent</Badge>}
-        {task.approvalStatus === 'pending' && (
-          <Badge variant="pending">Awaiting Approval</Badge>
-        )}
+          {task.approvalStatus === 'pending' && (
+            <Badge variant="pending">Awaiting Approval</Badge>
+          )}
+          {(task.isEmergency || emergencyStatus) && (
+            <Badge variant={emergencyVariant}>{emergencyLabel}</Badge>
+          )}
         </div>
         <Badge variant="secondary" className="text-xs font-semibold">
           {categoryLabels[task.category]}

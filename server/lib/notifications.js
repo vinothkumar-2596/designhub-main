@@ -1,5 +1,217 @@
 import nodemailer from "nodemailer";
 
+const normalizeWhatsAppNumber = (value) => {
+  if (!value) return "";
+  const trimmed = String(value).trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("whatsapp:") ? trimmed : `whatsapp:${trimmed}`;
+};
+
+const formatTemplateDate = (value) => {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
+};
+
+const formatTemplateTime = (value) => {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  const hours24 = date.getHours();
+  const minutes = date.getMinutes();
+  const period = hours24 >= 12 ? "pm" : "am";
+  const hours12 = hours24 % 12 || 12;
+  const minutePart = minutes === 0 ? "" : `:${String(minutes).padStart(2, "0")}`;
+  return `${hours12}${minutePart}${period}`;
+};
+
+const buildTemplateVariables = (dateSource) => ({
+  "1": formatTemplateDate(dateSource),
+  "2": formatTemplateTime(dateSource),
+});
+
+const parseTemplateVariables = (dateSource) => {
+  const raw = process.env.TWILIO_WHATSAPP_TEMPLATE_VARIABLES;
+  if (!raw) {
+    return buildTemplateVariables(dateSource);
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return buildTemplateVariables(dateSource);
+    }
+    const dateValue = formatTemplateDate(dateSource);
+    const timeValue = formatTemplateTime(dateSource);
+    return Object.fromEntries(
+      Object.entries(parsed).map(([key, value]) => {
+        if (typeof value !== "string") return [key, value];
+        return [
+          key,
+          value.replace(/\{\{date\}\}/gi, dateValue).replace(/\{\{time\}\}/gi, timeValue),
+        ];
+      })
+    );
+  } catch {
+    return buildTemplateVariables(dateSource);
+  }
+};
+
+const getTemplateVariables = (dateSource) => {
+  const raw = process.env.TWILIO_WHATSAPP_TEMPLATE_VARIABLES_RAW;
+  if (raw) {
+    return raw;
+  }
+  return parseTemplateVariables(dateSource);
+};
+
+const buildTwilioConfig = () => {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM_NUMBER;
+  if (!accountSid || !authToken || !from) {
+    return null;
+  }
+  const channel = (process.env.TWILIO_CHANNEL || "sms").toLowerCase();
+  const templateSid = process.env.TWILIO_WHATSAPP_TEMPLATE_SID;
+  return { accountSid, authToken, from, channel, templateSid };
+};
+
+const sendTwilioMessage = async ({
+  to,
+  body,
+  templateVariables,
+  forceNoTemplate = false
+}) => {
+  if (!to) {
+    console.warn("Twilio: missing recipient phone number.");
+    return false;
+  }
+  const config = buildTwilioConfig();
+  if (!config) {
+    console.warn("Twilio not configured; skipping message.");
+    return false;
+  }
+  const debugEnabled = process.env.TWILIO_DEBUG === "true";
+  const isWhatsApp = config.channel === "whatsapp";
+  const channelLabel = isWhatsApp ? "WhatsApp" : "SMS";
+  const fromNumber = isWhatsApp ? normalizeWhatsAppNumber(config.from) : config.from;
+  const toNumber = isWhatsApp ? normalizeWhatsAppNumber(to) : to;
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Messages.json`;
+  const payload = new URLSearchParams({
+    From: fromNumber,
+    To: toNumber
+  });
+  const useTemplate = isWhatsApp && config.templateSid && !forceNoTemplate;
+  let contentVariablesValue = null;
+  if (useTemplate) {
+    payload.set("ContentSid", config.templateSid);
+    if (templateVariables) {
+      if (typeof templateVariables === "string") {
+        contentVariablesValue = templateVariables;
+      } else if (typeof templateVariables === "object") {
+        const keys = Object.keys(templateVariables);
+        if (keys.length > 0) {
+          contentVariablesValue = JSON.stringify(templateVariables);
+        }
+      }
+      if (contentVariablesValue) {
+        payload.set("ContentVariables", contentVariablesValue);
+      }
+    }
+  } else {
+    payload.set("Body", body);
+  }
+  const auth = Buffer.from(`${config.accountSid}:${config.authToken}`).toString("base64");
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: payload
+    });
+    const responseText = await response.text();
+    if (!response.ok) {
+      console.error(`Twilio ${channelLabel} failed:`, response.status, responseText);
+      if (useTemplate && responseText?.includes?.("21656") && body) {
+        console.warn("Twilio template rejected; retrying as free-form WhatsApp.");
+        return sendTwilioMessage({ to, body, templateVariables: null, forceNoTemplate: true });
+      }
+      return false;
+    }
+    if (debugEnabled) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch {
+        parsed = null;
+      }
+      if (useTemplate && contentVariablesValue) {
+        console.log(`Twilio ${channelLabel} template variables:`, contentVariablesValue);
+      }
+      if (parsed) {
+        console.log(`Twilio ${channelLabel} sent:`, {
+          sid: parsed.sid,
+          status: parsed.status,
+          to: parsed.to,
+          from: parsed.from,
+        });
+      } else {
+        console.log(`Twilio ${channelLabel} sent:`, responseText);
+      }
+    }
+    return true;
+  } catch (error) {
+    console.error(`Twilio ${channelLabel} failed:`, error?.message || error);
+    return false;
+  }
+};
+
+const clampText = (value, max) => {
+  if (!value) return "";
+  if (value.length <= max) return value;
+  return `${value.slice(0, Math.max(0, max - 3))}...`;
+};
+
+export const sendTaskCreatedSms = async ({ to, taskTitle, taskUrl, deadline, requesterName, taskId }) => {
+  const title = taskTitle || "your request";
+  const safeTitle = clampText(title, 80);
+  const detail = deadline
+    ? `Deadline ${new Date(deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`
+    : "";
+  const nameLine = requesterName ? `Hi ${requesterName}, ` : "";
+  const urlLine = taskUrl ? ` View: ${taskUrl}` : taskId ? ` Task ID: ${taskId}` : "";
+  const body = clampText(`${nameLine}DesignDesk request created: ${safeTitle}. ${detail}${urlLine}`, 320);
+  const templateVariables = getTemplateVariables(deadline || new Date());
+  return sendTwilioMessage({ to, body, templateVariables });
+};
+
+export const sendFinalFilesSms = async ({
+  to,
+  taskTitle,
+  files = [],
+  designerName,
+  taskUrl,
+  deadline,
+  taskId
+}) => {
+  const title = taskTitle || "your task";
+  const safeTitle = clampText(title, 70);
+  const firstLink = Array.isArray(files) && files[0]?.url ? files[0].url : "";
+  const deadlineText = deadline
+    ? ` Deadline ${new Date(deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`
+    : "";
+  const designerText = designerName ? ` by ${designerName}` : "";
+  const fileText = firstLink ? ` File: ${firstLink}` : "";
+  const urlLine = taskUrl ? ` View: ${taskUrl}` : taskId ? ` Task ID: ${taskId}` : "";
+  const body = clampText(
+    `DesignDesk: Final files uploaded${designerText} for "${safeTitle}".${deadlineText}${fileText}${urlLine}`,
+    480
+  );
+  const templateVariables = getTemplateVariables(deadline || new Date());
+  return sendTwilioMessage({ to, body, templateVariables });
+};
+
 const buildMailer = () => {
   const user = process.env.GMAIL_SMTP_USER;
   const pass = process.env.GMAIL_SMTP_PASS;

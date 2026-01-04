@@ -48,9 +48,13 @@ export default function Login() {
   const { login, signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const glassInputClass =
-    'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
+    'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
   const glassButtonClass =
     'bg-white text-foreground hover:bg-[#F8FBFF]/95';
+  const selectContentClass =
+    'border border-[#C9D7FF] bg-white shadow-lg';
+  const selectTriggerClass =
+    'h-11 bg-white border border-[#D9E6FF] font-semibold text-foreground/90 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -253,13 +257,13 @@ export default function Login() {
               <div className="space-y-2">
                 <Label>Role</Label>
                 <Select value={role} onValueChange={(v) => handleRoleChange(v as UserRole)}>
-                  <SelectTrigger className={`h-11 ${glassInputClass}`}>
+                  <SelectTrigger className={selectTriggerClass}>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
+                  <SelectContent className={selectContentClass}>
                     {roleOptions.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        <div className="flex items-center gap-2 text-sm leading-none">
+                        <div className="flex items-center gap-2">
                           <option.icon className="h-4 w-4 text-muted-foreground" />
                           <span className="font-semibold text-foreground/90">{option.label}</span>
                           <span className="text-[11px] text-foreground/70">
@@ -421,26 +425,26 @@ export default function Login() {
             <div className="space-y-2">
               <Label>Role</Label>
               <Select value={signupRole} onValueChange={(value) => setSignupRole(value as UserRole)}>
-                <SelectTrigger className={`h-11 ${glassInputClass}`}>
+                <SelectTrigger className={selectTriggerClass}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
+                <SelectContent className={selectContentClass}>
                   <SelectItem value="staff">
-                    <div className="flex items-center gap-2 text-sm leading-none">
+                    <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-muted-foreground" />
                       <span className="font-semibold text-foreground/90">Staff</span>
                       <span className="text-[11px] text-foreground/70">- Submit design requests</span>
                     </div>
                   </SelectItem>
                   <SelectItem value="designer">
-                    <div className="flex items-center gap-2 text-sm leading-none">
+                    <div className="flex items-center gap-2">
                       <Palette className="h-4 w-4 text-muted-foreground" />
                       <span className="font-semibold text-foreground/90">Designer</span>
                       <span className="text-[11px] text-foreground/70">- Manage & complete tasks</span>
                     </div>
                   </SelectItem>
                   <SelectItem value="treasurer">
-                    <div className="flex items-center gap-2 text-sm leading-none">
+                    <div className="flex items-center gap-2">
                       <Briefcase className="h-4 w-4 text-muted-foreground" />
                       <span className="font-semibold text-foreground/90">Treasurer</span>
                       <span className="text-[11px] text-foreground/70">- Approve modifications</span>

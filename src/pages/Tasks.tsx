@@ -1,30 +1,124 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { StatsCard } from '@/components/dashboard/StatsCard';
 import { TaskCard } from '@/components/dashboard/TaskCard';
-import { TaskFilters } from '@/components/tasks/TaskFilters';
-import { mockTasks, calculateStats } from '@/data/mockTasks';
-import { TaskStatus, TaskCategory, TaskUrgency } from '@/types';
-import { ListTodo, Clock, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { DateRangeFilter } from '@/components/filters/DateRangeFilter';
-import { DateRangeOption, getDateRange, isWithinRange } from '@/lib/dateRange';
+import { mockTasks } from '@/data/mockTasks';
+import {
+  ListTodo,
+  CheckCircle2,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns';
+import type { Task as ScheduleTask } from '@/lib/designerSchedule';
+import {
+  approveEmergencyTask,
+  completeTask as completeScheduleTask,
+  getDefaultDesignerId,
+  getScheduleRequester,
+  loadScheduleTasks,
+  pushScheduleNotification,
+  saveScheduleTasks,
+} from '@/lib/designerSchedule';
+import { seedScheduleTasks } from '@/data/designerSchedule';
+import { cn } from '@/lib/utils';
+import { mergeLocalTasks } from '@/lib/taskStorage';
+import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
+import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
+
+const scheduleStatusStyles: Record<ScheduleTask['status'], string> = {
+  QUEUED: 'border border-border bg-secondary text-muted-foreground',
+  WORK_STARTED: 'bg-status-progress-bg text-status-progress',
+  COMPLETED: 'bg-status-completed-bg text-status-completed',
+  EMERGENCY_PENDING: 'bg-status-urgent-bg text-status-urgent',
+};
+
+const priorityStyles: Record<ScheduleTask['priority'], { bar: string; dot: string }> = {
+  VIP: { bar: 'bg-[#ef4444] text-white', dot: 'bg-[#ef4444]' },
+  HIGH: { bar: 'bg-[#f59e0b] text-slate-900', dot: 'bg-[#f59e0b]' },
+  NORMAL: { bar: 'bg-[#3b82f6] text-white', dot: 'bg-[#3b82f6]' },
+};
+
+const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const getScheduleDiff = (
+  prevTasks: ScheduleTask[],
+  nextTasks: ScheduleTask[],
+  designerId: string
+) => {
+  const previous = new Map(
+    prevTasks
+      .filter((task) => task.designerId === designerId)
+      .map((task) => [task.id, task])
+  );
+  const autoStarted: ScheduleTask[] = [];
+  const shifted: ScheduleTask[] = [];
+
+  nextTasks.forEach((task) => {
+    if (task.designerId !== designerId) return;
+    if (task.status === 'COMPLETED' || task.status === 'EMERGENCY_PENDING') return;
+    const before = previous.get(task.id);
+    if (!before) return;
+    if (before.status === 'QUEUED' && task.status === 'WORK_STARTED') {
+      autoStarted.push(task);
+    }
+    if (
+      before.actualStartDate &&
+      before.actualEndDate &&
+      task.actualStartDate &&
+      task.actualEndDate &&
+      (!isSameDay(before.actualStartDate, task.actualStartDate) ||
+        !isSameDay(before.actualEndDate, task.actualEndDate))
+    ) {
+      shifted.push(task);
+    }
+  });
+
+  return { autoStarted, shifted };
+};
 
 export default function Tasks() {
+  const { user } = useAuth();
+  const { query, setItems, setScopeLabel } = useGlobalSearch();
   const apiUrl =
     (import.meta.env.VITE_API_URL as string | undefined) ||
     (typeof window !== 'undefined' && window.location.hostname === 'localhost'
       ? 'http://localhost:4000'
       : undefined);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<TaskCategory | 'all'>('all');
-  const [urgencyFilter, setUrgencyFilter] = useState<TaskUrgency | 'all'>('all');
-  const [dateRange, setDateRange] = useState<DateRangeOption>('month');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
   const [tasks, setTasks] = useState(mockTasks);
+  const [storageTick, setStorageTick] = useState(0);
+  const [scheduleTasks, setScheduleTasks] = useState(() =>
+    loadScheduleTasks(seedScheduleTasks)
+  );
   const [isLoading, setIsLoading] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
+  const [useLocalData, setUseLocalData] = useState(!apiUrl);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key.startsWith('designhub.task.')) {
+        setStorageTick((prev) => prev + 1);
+      }
+      if (event.key !== 'designhub.schedule.tasks') return;
+      setScheduleTasks(loadScheduleTasks(seedScheduleTasks));
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -58,8 +152,10 @@ export default function Tasks() {
           })),
         }));
         setTasks(hydrated);
+        setUseLocalData(false);
       } catch (error) {
         toast.error('Failed to load tasks');
+        setUseLocalData(true);
       } finally {
         setIsLoading(false);
       }
@@ -67,49 +163,143 @@ export default function Tasks() {
     loadTasks();
   }, [apiUrl]);
 
-  const activeRange = useMemo(
-    () => getDateRange(dateRange, customStart, customEnd),
-    [dateRange, customStart, customEnd]
+  const hydratedTasks = useMemo(() => {
+    if (!useLocalData) return tasks;
+    if (typeof window === 'undefined') return mockTasks;
+    return mergeLocalTasks(mockTasks);
+  }, [useLocalData, storageTick, tasks]);
+
+  useEffect(() => {
+    setScopeLabel('Requests');
+    setItems(buildSearchItemsFromTasks(hydratedTasks));
+  }, [hydratedTasks, setItems, setScopeLabel]);
+
+  const filteredTasks = useMemo(
+    () =>
+      hydratedTasks.filter((task) =>
+        matchesSearch(query, [
+          task.title,
+          task.description,
+          task.requesterName,
+          task.assignedToName,
+          task.category,
+          task.status,
+          task.urgency,
+        ])
+      ),
+    [hydratedTasks, query]
   );
 
-  const dateFilteredTasks = useMemo(
-    () => tasks.filter((task) => isWithinRange(task.createdAt, activeRange)),
-    [activeRange, tasks]
+  const designerId = useMemo(
+    () => getDefaultDesignerId(scheduleTasks),
+    [scheduleTasks]
   );
-
-  const filteredTasks = useMemo(() => {
-    return dateFilteredTasks.filter((task) => {
-      // Search filter
-      if (search) {
-        const searchLower = search.toLowerCase();
-        const matchesSearch =
-          task.title.toLowerCase().includes(searchLower) ||
-          task.description.toLowerCase().includes(searchLower) ||
-          task.requesterName.toLowerCase().includes(searchLower);
-        if (!matchesSearch) return false;
-      }
-
-      // Status filter
-      if (statusFilter !== 'all' && task.status !== statusFilter) return false;
-
-      // Category filter
-      if (categoryFilter !== 'all' && task.category !== categoryFilter) return false;
-
-      // Urgency filter
-      if (urgencyFilter !== 'all' && task.urgency !== urgencyFilter) return false;
-
-      return true;
+  const designerScheduleTasks = useMemo(
+    () =>
+      scheduleTasks.filter((task) => task.designerId === designerId),
+    [designerId, scheduleTasks]
+  );
+  const scheduledTasks = useMemo(
+    () =>
+      designerScheduleTasks
+        .filter(
+          (task) =>
+            task.status !== 'COMPLETED' && task.status !== 'EMERGENCY_PENDING'
+        )
+        .sort((a, b) =>
+          (a.actualStartDate?.getTime() ?? 0) - (b.actualStartDate?.getTime() ?? 0)
+        ),
+    [designerScheduleTasks]
+  );
+  const emergencyTasks = useMemo(
+    () =>
+      designerScheduleTasks.filter(
+        (task) => task.status === 'EMERGENCY_PENDING'
+      ),
+    [designerScheduleTasks]
+  );
+  const calendarDays = useMemo(() => {
+    const start = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 0 });
+    const end = endOfWeek(endOfMonth(calendarMonth), { weekStartsOn: 0 });
+    return eachDayOfInterval({ start, end });
+  }, [calendarMonth]);
+  const weeks = useMemo(() => {
+    const rows: Date[][] = [];
+    for (let i = 0; i < calendarDays.length; i += 7) {
+      rows.push(calendarDays.slice(i, i + 7));
+    }
+    return rows;
+  }, [calendarDays]);
+  const scheduleMap = useMemo(() => {
+    const map = new Map<string, ScheduleTask>();
+    scheduledTasks.forEach((task) => {
+      if (!task.actualStartDate || !task.actualEndDate) return;
+      eachDayOfInterval({
+        start: task.actualStartDate,
+        end: task.actualEndDate,
+      }).forEach((day) => {
+        map.set(format(day, 'yyyy-MM-dd'), task);
+      });
     });
-  }, [search, statusFilter, categoryFilter, urgencyFilter, dateFilteredTasks]);
+    return map;
+  }, [scheduledTasks]);
 
-  const clearFilters = () => {
-    setSearch('');
-    setStatusFilter('all');
-    setCategoryFilter('all');
-    setUrgencyFilter('all');
+  const handleCompleteScheduleTask = (taskId: string) => {
+    const nextTasks = completeScheduleTask(scheduleTasks, taskId);
+    const diff = getScheduleDiff(scheduleTasks, nextTasks, designerId);
+    setScheduleTasks(nextTasks);
+    saveScheduleTasks(nextTasks);
+    toast.success('Task completed. Schedule recalculated.');
+    diff.autoStarted.forEach((task) => {
+      if (!task.actualStartDate) return;
+      toast.message(`"${task.title}" auto-started on ${format(task.actualStartDate, 'MMM d')}.`);
+    });
+    diff.shifted.forEach((task) => {
+      if (!task.actualStartDate) return;
+      toast.message(`"${task.title}" shifted to ${format(task.actualStartDate, 'MMM d')}.`);
+    });
   };
 
-  const stats = calculateStats(dateFilteredTasks);
+  const handleApproveEmergency = (taskId: string) => {
+    const requester = getScheduleRequester(taskId);
+    const task = scheduleTasks.find((entry) => entry.id === taskId);
+    const nextTasks = approveEmergencyTask(scheduleTasks, taskId);
+    const diff = getScheduleDiff(scheduleTasks, nextTasks, designerId);
+    setScheduleTasks(nextTasks);
+    saveScheduleTasks(nextTasks);
+    toast.success('Emergency task approved and scheduled.');
+    if (requester && task) {
+      pushScheduleNotification(
+        requester.requesterId,
+        taskId,
+        `Emergency request approved for "${task.title}".`
+      );
+    }
+    diff.autoStarted.forEach((task) => {
+      if (!task.actualStartDate) return;
+      toast.message(`"${task.title}" auto-started on ${format(task.actualStartDate, 'MMM d')}.`);
+    });
+    diff.shifted.forEach((task) => {
+      if (!task.actualStartDate) return;
+      toast.message(`"${task.title}" shifted to ${format(task.actualStartDate, 'MMM d')}.`);
+    });
+  };
+
+  const handleRejectEmergency = (taskId: string) => {
+    const requester = getScheduleRequester(taskId);
+    const task = scheduleTasks.find((entry) => entry.id === taskId);
+    const nextTasks = scheduleTasks.filter((task) => task.id !== taskId);
+    setScheduleTasks(nextTasks);
+    saveScheduleTasks(nextTasks);
+    toast.message('Emergency request rejected.');
+    if (requester && task) {
+      pushScheduleNotification(
+        requester.requesterId,
+        taskId,
+        `Emergency request rejected for "${task.title}".`
+      );
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -122,88 +312,287 @@ export default function Tasks() {
           </p>
         </div>
 
-        <DateRangeFilter
-          value={dateRange}
-          onChange={setDateRange}
-          startDate={customStart}
-          endDate={customEnd}
-          onStartDateChange={setCustomStart}
-          onEndDateChange={setCustomEnd}
-        />
-
-        {/* Stats Strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-          <StatsCard
-            title="Total Tasks"
-            value={stats.totalTasks}
-            icon={<ListTodo className="h-5 w-5" />}
-            variant="default"
-          />
-          <StatsCard
-            title="Pending"
-            value={stats.pendingTasks}
-            icon={<Clock className="h-5 w-5" />}
-            variant="warning"
-          />
-          <StatsCard
-            title="In Progress"
-            value={stats.inProgressTasks}
-            icon={<Loader2 className="h-5 w-5" />}
-            variant="primary"
-          />
-          <StatsCard
-            title="Completed"
-            value={stats.completedTasks}
-            icon={<CheckCircle2 className="h-5 w-5" />}
-            variant="success"
-          />
-          <StatsCard
-            title="Urgent Tasks"
-            value={stats.urgentTasks}
-            icon={<AlertTriangle className="h-5 w-5" />}
-            variant="urgent"
-          />
-        </div>
-
-        {/* Filters */}
-        <TaskFilters
-          search={search}
-          onSearchChange={setSearch}
-          statusFilter={statusFilter}
-          onStatusChange={setStatusFilter}
-          categoryFilter={categoryFilter}
-          onCategoryChange={setCategoryFilter}
-          urgencyFilter={urgencyFilter}
-          onUrgencyChange={setUrgencyFilter}
-          onClearFilters={clearFilters}
-        />
-
-        {/* Results Count */}
-        <p className="text-sm text-muted-foreground">
-          Showing {filteredTasks.length} of {dateFilteredTasks.length} tasks
-        </p>
-
-        {/* Task Grid */}
-        {isLoading ? (
-          <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
-            <p className="text-sm text-muted-foreground">Loading tasks...</p>
-          </div>
-        ) : filteredTasks.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {filteredTasks.map((task, index) => (
-              <div key={task.id} style={{ animationDelay: `${index * 50}ms` }}>
-                <TaskCard task={task} />
+        {user?.role === 'designer' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[#D9E6FF] bg-white p-4 shadow-card">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Delivery schedule
+                  </p>
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Designer availability calendar
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Requested deadlines are estimates. Actual starts follow availability.
+                  </p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="h-fit text-[10px] uppercase tracking-[0.2em] text-muted-foreground"
+                >
+                  Delivery Mode
+                </Badge>
               </div>
-            ))}
+              <div className="mt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCalendarMonth(addMonths(calendarMonth, -1))}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCalendarMonth(startOfMonth(new Date()))}
+                    >
+                      Today
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {format(calendarMonth, 'MMMM yyyy')}
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-7 gap-2 text-xs text-muted-foreground font-semibold">
+                  {weekdayLabels.map((label) => (
+                    <div key={label} className="text-center">
+                      {label}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 space-y-2">
+                  {weeks.map((week, rowIndex) => (
+                    <div key={`week-${rowIndex}`} className="grid grid-cols-7 gap-2">
+                      {week.map((day) => {
+                        const task = scheduleMap.get(format(day, 'yyyy-MM-dd'));
+                        const isStart =
+                          task?.actualStartDate &&
+                          isSameDay(day, task.actualStartDate);
+                        const isEnd =
+                          task?.actualEndDate && isSameDay(day, task.actualEndDate);
+                        const isToday = isSameDay(day, new Date());
+                        const isOutside = !isSameMonth(day, calendarMonth);
+                        return (
+                          <div
+                            key={day.toISOString()}
+                            className={cn(
+                              'relative min-h-[96px] rounded-xl border border-[#E4ECFF] bg-[#F9FBFF] p-2',
+                              isOutside && 'bg-white/70 text-muted-foreground',
+                              isToday && 'ring-1 ring-primary/40'
+                            )}
+                          >
+                            <div className="flex items-start justify-between">
+                              <span
+                                className={cn(
+                                  'text-xs font-semibold',
+                                  isToday && 'text-primary'
+                                )}
+                              >
+                                {format(day, 'd')}
+                              </span>
+                              {task && (
+                                <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                  {task.priority}
+                                </span>
+                              )}
+                            </div>
+                            {task && (
+                              <div
+                                title={task.title}
+                                className={cn(
+                                  'mt-3 h-6 w-full overflow-hidden text-ellipsis whitespace-nowrap px-2 text-[11px] font-semibold',
+                                  priorityStyles[task.priority].bar,
+                                  isStart && isEnd && 'rounded-md',
+                                  isStart && !isEnd && 'rounded-l-md',
+                                  !isStart && isEnd && 'rounded-r-md',
+                                  !isStart && !isEnd && 'rounded-none'
+                                )}
+                              >
+                                {isStart ? task.title : ''}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                  {(['VIP', 'HIGH', 'NORMAL'] as ScheduleTask['priority'][]).map(
+                    (level) => (
+                      <div key={level} className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            'h-2.5 w-2.5 rounded-full',
+                            priorityStyles[level].dot
+                          )}
+                        />
+                        <span>{level} Priority</span>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+              <div className="rounded-2xl border border-[#D9E6FF] bg-white p-4 shadow-card">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      Sequential queue
+                    </p>
+                    <h3 className="text-lg font-semibold text-foreground">
+                      Auto-shifting workload
+                    </h3>
+                  </div>
+                </div>
+                {scheduledTasks.length > 0 ? (
+                  <div className="mt-4 space-y-3">
+                    {scheduledTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="rounded-xl border border-[#E4ECFF] bg-[#F9FBFF] p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-semibold text-foreground">
+                                {task.title}
+                              </h4>
+                              <Badge className={scheduleStatusStyles[task.status]}>
+                                {task.status.replace('_', ' ')}
+                              </Badge>
+                            </div>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {task.actualStartDate && task.actualEndDate
+                                ? `${format(task.actualStartDate, 'MMM d')} - ${format(
+                                    task.actualEndDate,
+                                    'MMM d'
+                                  )}`
+                                : 'Scheduling...'}{' '}
+                              | {task.estimatedDays} days
+                              {task.requestedDeadline
+                                ? ` | Requested ${format(
+                                    task.requestedDeadline,
+                                    'MMM d'
+                                  )}`
+                                : ''}
+                            </p>
+                          </div>
+                          {task.status === 'WORK_STARTED' && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleCompleteScheduleTask(task.id)}
+                            >
+                              <CheckCircle2 className="h-4 w-4 mr-1" />
+                              Complete today
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                    No scheduled tasks in the queue.
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-[#D9E6FF] bg-white p-4 shadow-card">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      Emergency approvals
+                    </p>
+                    <h3 className="text-lg font-semibold text-foreground">
+                      Awaiting decision
+                    </h3>
+                  </div>
+                  <AlertTriangle className="h-4 w-4 text-status-urgent" />
+                </div>
+                {emergencyTasks.length > 0 ? (
+                  <div className="mt-4 space-y-3">
+                    {emergencyTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="rounded-xl border border-[#F7D7D9] bg-[#FFF5F5] p-4"
+                      >
+                        <p className="text-sm font-semibold text-foreground">
+                          {task.title}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Requested{' '}
+                          {task.requestedDeadline
+                            ? format(task.requestedDeadline, 'MMM d')
+                            : 'ASAP'}
+                        </p>
+                        <div className="mt-3 flex gap-2">
+                          <Button
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => handleApproveEmergency(task.id)}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => handleRejectEmergency(task.id)}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                    No emergency requests right now.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        ) : (
-          <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
-            <ListTodo className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <h3 className="font-medium text-foreground">No tasks found</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Try adjusting your filters or search terms
-            </p>
-          </div>
+        )}
+
+        {user?.role !== 'designer' && (
+          <>
+            {/* Task Grid */}
+            {isLoading ? (
+              <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
+                <p className="text-sm text-muted-foreground">Loading tasks...</p>
+              </div>
+            ) : filteredTasks.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {filteredTasks.map((task, index) => (
+                  <div key={task.id} style={{ animationDelay: `${index * 50}ms` }}>
+                    <TaskCard task={task} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
+                <ListTodo className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <h3 className="font-medium text-foreground">No tasks found</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Try adjusting your filters or search terms
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </DashboardLayout>

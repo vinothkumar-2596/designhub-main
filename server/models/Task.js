@@ -17,6 +17,8 @@ const TaskCommentSchema = new mongoose.Schema(
     userName: { type: String, default: "" },
     userRole: { type: String, default: "" },
     content: { type: String, required: true, trim: true },
+    parentId: { type: String, default: "" },
+    mentions: { type: [String], default: [] },
     createdAt: { type: Date, default: Date.now },
     receiverRoles: { type: [String], default: [] },
     seenBy: {
@@ -28,6 +30,17 @@ const TaskCommentSchema = new mongoose.Schema(
       ],
       default: []
     }
+  },
+  { _id: true }
+);
+
+const DesignVersionSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    url: { type: String, default: "" },
+    version: { type: Number, required: true },
+    uploadedAt: { type: Date, default: Date.now },
+    uploadedBy: { type: String, default: "" }
   },
   { _id: true }
 );
@@ -53,18 +66,25 @@ const TaskSchema = new mongoose.Schema(
     description: { type: String, default: "" },
     category: {
       type: String,
-      enum: ["poster", "social_media", "banner", "brochure", "others"],
+      enum: ["poster", "social_media", "banner", "brochure", "others", "campaign_or_others", "social_media_creative", "website_assets", "ui_ux", "led_backdrop", "flyer"],
       required: true
     },
     urgency: { type: String, enum: ["low", "intermediate", "normal", "urgent"], default: "normal" },
     status: {
       type: String,
-      enum: ["pending", "in_progress", "under_review", "completed", "clarification"],
+      enum: ["pending", "in_progress", "under_review", "completed", "clarification", "clarification_required"],
       default: "pending"
     },
+    isEmergency: { type: Boolean, default: false },
+    emergencyApprovalStatus: { type: String, enum: ["pending", "approved", "rejected"] },
+    emergencyApprovedBy: { type: String, default: "" },
+    emergencyApprovedAt: { type: Date },
+    emergencyRequestedAt: { type: Date },
+    scheduleTaskId: { type: String, default: "" },
     requesterId: { type: String, default: "" },
     requesterName: { type: String, default: "" },
     requesterEmail: { type: String, default: "" },
+    requesterPhone: { type: String, default: "" },
     requesterDepartment: { type: String, default: "" },
     assignedToId: { type: String, default: "" },
     assignedToName: { type: String, default: "" },
@@ -80,6 +100,8 @@ const TaskSchema = new mongoose.Schema(
     deadlineApprovedAt: { type: Date },
     changeHistory: { type: [ChangeHistorySchema], default: [] },
     files: { type: [TaskFileSchema], default: [] },
+    designVersions: { type: [DesignVersionSchema], default: [] },
+    activeDesignVersionId: { type: String, default: "" },
     comments: { type: [TaskCommentSchema], default: [] }
   },
   { timestamps: true }
@@ -96,3 +118,4 @@ TaskSchema.set("toJSON", {
 });
 
 export default mongoose.model("Task", TaskSchema);
+

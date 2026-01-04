@@ -17,9 +17,12 @@ import {
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
+import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
+import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
 export default function Approvals() {
   const { user } = useAuth();
+  const { query, setItems, setScopeLabel } = useGlobalSearch();
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [tasks, setTasks] = useState(mockTasks);
   const [isLoading, setIsLoading] = useState(false);
@@ -74,6 +77,26 @@ export default function Approvals() {
   const pendingApprovals = useMemo(() => {
     return tasks.filter((task) => task.approvalStatus === 'pending');
   }, [tasks]);
+
+  useEffect(() => {
+    setScopeLabel('Approvals');
+    setItems(buildSearchItemsFromTasks(pendingApprovals));
+  }, [pendingApprovals, setItems, setScopeLabel]);
+
+  const filteredApprovals = useMemo(
+    () =>
+      pendingApprovals.filter((task) =>
+        matchesSearch(query, [
+          task.title,
+          task.description,
+          task.requesterName,
+          task.requesterDepartment,
+          task.category,
+          task.status,
+        ])
+      ),
+    [pendingApprovals, query]
+  );
 
   const getStaffUpdatePreview = (task: (typeof tasks)[number]) => {
     const history = [...(task.changeHistory || [])].sort(
@@ -220,8 +243,8 @@ export default function Approvals() {
 
         {/* Results Count */}
         <p className="text-sm text-muted-foreground">
-          {pendingApprovals.length} pending approval
-          {pendingApprovals.length !== 1 ? 's' : ''}
+          {filteredApprovals.length} pending approval
+          {filteredApprovals.length !== 1 ? 's' : ''}
         </p>
 
         {/* Approval Cards */}
@@ -229,9 +252,9 @@ export default function Approvals() {
           <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
             <p className="text-sm text-muted-foreground">Loading approvals...</p>
           </div>
-        ) : pendingApprovals.length > 0 ? (
+        ) : filteredApprovals.length > 0 ? (
           <div className="space-y-4">
-            {pendingApprovals.map((task, index) => {
+            {filteredApprovals.map((task, index) => {
               const staffPreview = getStaffUpdatePreview(task);
               return (
                 <div

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -36,8 +37,8 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { TaskCategory, TaskUrgency } from '@/types';
-import { addDays, isBefore, startOfDay } from 'date-fns';
+import { Task, TaskCategory, TaskUrgency } from '@/types';
+import { addDays, isBefore, isWithinInterval, startOfDay } from 'date-fns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -45,6 +46,17 @@ import Box from '@mui/material/Box';
 import LinearProgress, { LinearProgressProps } from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  assignEmergencyTask,
+  assignTask,
+  buildInvalidRanges,
+  getDefaultDesignerId,
+  loadScheduleTasks,
+  recordScheduleRequest,
+  saveScheduleTasks,
+} from '@/lib/designerSchedule';
+import { seedScheduleTasks } from '@/data/designerSchedule';
+import { upsertLocalTask } from '@/lib/taskStorage';
 
 interface UploadedFile {
   id: string;
@@ -67,6 +79,12 @@ const categoryOptions: { value: TaskCategory; label: string; icon: React.Element
   { value: 'brochure', label: 'Brochure', icon: BookOpen },
   { value: 'flyer', label: 'Flyer', icon: FileText },
 ];
+
+const priorityFromUrgency = (value: TaskUrgency) => {
+  if (value === 'urgent') return 'VIP';
+  if (value === 'intermediate') return 'HIGH';
+  return 'NORMAL';
+};
 
 const getFileIcon = (fileName: string, className: string) => {
   const extension = fileName.split('.').pop()?.toLowerCase();
@@ -107,8 +125,13 @@ export default function NewRequest() {
   const [category, setCategory] = useState<TaskCategory | ''>('');
   const [urgency, setUrgency] = useState<TaskUrgency>('normal');
   const [deadline, setDeadline] = useState<Date | null>(null);
+  const [isEmergency, setIsEmergency] = useState(false);
+  const [requesterPhone, setRequesterPhone] = useState(user?.phone || '');
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [scheduleTasks, setScheduleTasks] = useState(() =>
+    loadScheduleTasks(seedScheduleTasks)
+  );
   const glassPanelClass =
     'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
   const glassInputClass =
@@ -121,9 +144,22 @@ export default function NewRequest() {
 
   // Minimum deadline is 3 days from now
   const minDeadlineDate = startOfDay(addDays(new Date(), 3));
+  const designerId = getDefaultDesignerId(scheduleTasks);
+  const invalidRanges = useMemo(
+    () => buildInvalidRanges(scheduleTasks, designerId),
+    [designerId, scheduleTasks]
+  );
+  const isDateBlocked = (value: Date) =>
+    !isEmergency &&
+    invalidRanges.some((range) =>
+      isWithinInterval(startOfDay(value), {
+        start: startOfDay(range.start),
+        end: startOfDay(range.end),
+      })
+    );
 
-  useEffect(() => {
-    let isActive = true;
+    useEffect(() => {
+      let isActive = true;
 
     const fetchAnimation = async (path: string) => {
       const response = await fetch(path);
@@ -143,7 +179,11 @@ export default function NewRequest() {
     return () => {
       isActive = false;
     };
-  }, []);
+    }, []);
+
+  useEffect(() => {
+    setRequesterPhone(user?.phone || '');
+  }, [user]);
 
   const updateFile = (id: string, updates: Partial<UploadedFile>) => {
     setFiles((prev) =>
@@ -278,14 +318,16 @@ export default function NewRequest() {
   const isFormValid = () => {
     const hasUploadsInProgress = files.some((file) => file.uploading);
     const hasUploadErrors = files.some((file) => file.error);
+    const deadlineValid =
+      deadline &&
+      (isEmergency || !isBefore(startOfDay(deadline), minDeadlineDate));
     return (
       title.trim() &&
       description.trim() &&
       category &&
-      deadline &&
+      deadlineValid &&
       !hasUploadsInProgress &&
-      !hasUploadErrors &&
-      !isBefore(startOfDay(deadline), minDeadlineDate)
+      !hasUploadErrors
     );
   };
 
@@ -299,8 +341,21 @@ export default function NewRequest() {
       return;
     }
 
-    setIsSubmitting(true);
-    let fallbackToMock = false;
+      setIsSubmitting(true);
+      let fallbackToMock = false;
+      const phoneValue = requesterPhone.trim() || user?.phone || '';
+      const nextScheduleTasks = isEmergency
+        ? assignEmergencyTask(scheduleTasks, designerId, title, deadline ?? undefined)
+        : assignTask(
+          scheduleTasks,
+          designerId,
+          title,
+          deadline ?? undefined,
+          priorityFromUrgency(urgency)
+        );
+    const createdScheduleTask = nextScheduleTasks.find(
+      (task) => !scheduleTasks.some((previous) => previous.id === task.id)
+    );
 
     if (apiUrl) {
       try {
@@ -311,14 +366,20 @@ export default function NewRequest() {
           urgency,
           deadline: deadline as Date,
           status: 'pending',
-          requesterId: user?.id || '',
-          requesterName: user?.name || '',
-          requesterEmail: user?.email || '',
-          requesterDepartment: user?.department || '',
-          files: files.map((file) => ({
-            name: file.name,
-            url: file.url || '',
-            type: 'input',
+          isEmergency,
+          emergencyApprovalStatus: isEmergency ? 'pending' : undefined,
+          emergencyRequestedAt: isEmergency ? new Date() : undefined,
+          scheduleTaskId: createdScheduleTask?.id,
+            requesterId: user?.id || '',
+            requesterName: user?.name || '',
+            requesterEmail: user?.email || '',
+            requesterPhone: phoneValue || undefined,
+            requesterDepartment: user?.department || '',
+            designVersions: [],
+            files: files.map((file) => ({
+              name: file.name,
+              url: file.url || '',
+              type: 'input',
             uploadedAt: new Date(),
             uploadedBy: user?.id || '',
           })),
@@ -334,6 +395,53 @@ export default function NewRequest() {
       } catch {
         fallbackToMock = true;
       }
+    }
+
+    setScheduleTasks(nextScheduleTasks);
+    saveScheduleTasks(nextScheduleTasks);
+    if (createdScheduleTask && user) {
+      recordScheduleRequest(createdScheduleTask.id, user.id, user.name);
+    }
+    if (isEmergency) {
+      toast.message('Emergency request sent for designer approval.');
+    }
+
+    if (!apiUrl || fallbackToMock) {
+      const now = new Date();
+      const localTask: Task = {
+        id: crypto.randomUUID(),
+        title: title.trim(),
+        description: description.trim(),
+        category: category as TaskCategory,
+        urgency,
+        status: 'pending',
+        isEmergency,
+        emergencyApprovalStatus: isEmergency ? 'pending' : undefined,
+        emergencyRequestedAt: isEmergency ? now : undefined,
+        scheduleTaskId: createdScheduleTask?.id,
+          requesterId: user?.id || '',
+          requesterName: user?.name || 'Staff',
+          requesterEmail: user?.email,
+          requesterPhone: phoneValue || undefined,
+          requesterDepartment: user?.department,
+        deadline: deadline as Date,
+          isModification: false,
+          changeCount: 0,
+          changeHistory: [],
+          designVersions: [],
+          files: files.map((file) => ({
+            id: file.driveId || file.id,
+            name: file.name,
+          url: file.url || '',
+          type: 'input',
+          uploadedAt: now,
+          uploadedBy: user?.id || '',
+        })),
+        comments: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      upsertLocalTask(localTask);
     }
 
     if (!apiUrl || fallbackToMock) {
@@ -486,17 +594,33 @@ export default function NewRequest() {
               </div>
             </div>
 
+            <div className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-white/70 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Emergency override</p>
+                <p className="text-xs text-muted-foreground">
+                  Requires designer approval
+                </p>
+              </div>
+              <Switch checked={isEmergency} onCheckedChange={setIsEmergency} />
+            </div>
+            {isEmergency && (
+              <p className="text-xs text-status-urgent">
+                Emergency requests can bypass blocked dates but must be approved.
+              </p>
+            )}
+
             {/* Deadline */}
-            <div className="space-y-2">
-              <Label htmlFor="deadline">
-                Deadline <span className="text-destructive">*</span>
-              </Label>
-              <div className="relative">
+              <div className="space-y-2">
+                <Label htmlFor="deadline">
+                  Deadline <span className="text-destructive">*</span>
+                </Label>
+                <div className="relative">
                 <LocalizationProvider dateAdapter={AdapterDateFns}>
                   <DatePicker
                     value={deadline}
                     onChange={(newValue) => setDeadline(newValue)}
-                    minDate={minDeadlineDate}
+                    minDate={isEmergency ? undefined : minDeadlineDate}
+                    shouldDisableDate={isDateBlocked}
                     slotProps={{
                       textField: {
                         size: 'small',
@@ -547,11 +671,28 @@ export default function NewRequest() {
                   />
                 </LocalizationProvider>
               </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                Minimum 3 days from today
-              </p>
-            </div>
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {isEmergency
+                    ? 'Emergency requests can bypass the 3-day minimum'
+                    : 'Minimum 3 days from today'}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="requester-phone">Phone (WhatsApp updates)</Label>
+                <Input
+                  id="requester-phone"
+                  type="tel"
+                  placeholder="+18005551234"
+                  value={requesterPhone}
+                  onChange={(event) => setRequesterPhone(event.target.value)}
+                  className={`h-11 ${glassInputClass}`}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Optional. Leave blank to use your profile phone number.
+                </p>
+              </div>
 
           </div>
 

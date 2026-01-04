@@ -1,7 +1,7 @@
 import express from "express";
 import Task from "../models/Task.js";
 import Activity from "../models/Activity.js";
-import { sendFinalFilesEmail } from "../lib/notifications.js";
+import { sendFinalFilesEmail, sendFinalFilesSms, sendTaskCreatedSms } from "../lib/notifications.js";
 
 const router = express.Router();
 
@@ -41,6 +41,19 @@ router.post("/", async (req, res) => {
       action: "created",
       userId: req.body.requesterId || "",
       userName: req.body.requesterName || ""
+    });
+    const baseUrl = process.env.FRONTEND_URL || "";
+    const taskUrl = baseUrl
+      ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}`
+      : "";
+    const smsTo = task.requesterPhone || process.env.TWILIO_DEFAULT_TO || "";
+    await sendTaskCreatedSms({
+      to: smsTo,
+      taskTitle: task.title,
+      taskUrl,
+      deadline: task.deadline,
+      requesterName: task.requesterName,
+      taskId: task.id || task._id?.toString?.()
     });
     res.status(201).json(task);
   } catch (error) {
@@ -87,7 +100,7 @@ router.patch("/:id", async (req, res) => {
 
 router.post("/:id/comments", async (req, res) => {
   try {
-    const { userId, userName, userRole, content, receiverRoles } = req.body;
+    const { userId, userName, userRole, content, receiverRoles, parentId, mentions } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({ error: "Comment content is required." });
@@ -95,11 +108,16 @@ router.post("/:id/comments", async (req, res) => {
 
     const validRoles = ["staff", "treasurer", "designer"];
     const senderRole = validRoles.includes(userRole) ? userRole : "";
+    const normalizedMentions = Array.isArray(mentions)
+      ? mentions.filter((role) => validRoles.includes(role))
+      : [];
     const normalizedReceivers = Array.isArray(receiverRoles)
       ? receiverRoles.filter((role) => validRoles.includes(role))
       : [];
     const resolvedReceivers =
-      normalizedReceivers.length > 0
+      normalizedMentions.length > 0
+        ? normalizedMentions
+        : normalizedReceivers.length > 0
         ? normalizedReceivers
         : senderRole
         ? validRoles.filter((role) => role !== senderRole)
@@ -121,6 +139,8 @@ router.post("/:id/comments", async (req, res) => {
             userName,
             userRole: senderRole,
             content,
+            parentId: parentId || "",
+            mentions: normalizedMentions,
             receiverRoles: uniqueReceivers
           }
         }
@@ -293,7 +313,7 @@ router.post("/:id/changes", async (req, res) => {
               change?.note === "Final file uploaded"
           )
         : [];
-    if (finalFileChanges.length > 0 && task.requesterEmail) {
+    if (finalFileChanges.length > 0) {
       const baseUrl = process.env.FRONTEND_URL || "";
       const taskUrl = baseUrl
         ? `${baseUrl.replace(/\/$/, "")}/task/${updatedTask.id || updatedTask._id}`
@@ -313,27 +333,41 @@ router.post("/:id/changes", async (req, res) => {
         });
       }
       const submittedAt = finalChangeEntries[0]?.createdAt;
-      try {
-        await sendFinalFilesEmail({
-          to: task.requesterEmail,
-          taskTitle: task.title,
-          files,
-          designerName: userName,
-          taskUrl,
-          submittedAt,
-          taskDetails: {
-            id: updatedTask.id || updatedTask._id?.toString?.() || updatedTask._id,
-            status: updatedTask.status,
-            category: updatedTask.category,
-            deadline: updatedTask.deadline,
-            requesterName: updatedTask.requesterName,
-            requesterEmail: updatedTask.requesterEmail,
-            requesterDepartment: updatedTask.requesterDepartment,
-          },
-        });
-      } catch (error) {
-        console.error("Final files notification error:", error?.message || error);
+
+      if (task.requesterEmail) {
+        try {
+          await sendFinalFilesEmail({
+            to: task.requesterEmail,
+            taskTitle: task.title,
+            files,
+            designerName: userName,
+            taskUrl,
+            submittedAt,
+            taskDetails: {
+              id: updatedTask.id || updatedTask._id?.toString?.() || updatedTask._id,
+              status: updatedTask.status,
+              category: updatedTask.category,
+              deadline: updatedTask.deadline,
+              requesterName: updatedTask.requesterName,
+              requesterEmail: updatedTask.requesterEmail,
+              requesterDepartment: updatedTask.requesterDepartment,
+            },
+          });
+        } catch (error) {
+          console.error("Final files notification error:", error?.message || error);
+        }
       }
+
+      const smsTo = updatedTask.requesterPhone || process.env.TWILIO_DEFAULT_TO || "";
+      await sendFinalFilesSms({
+        to: smsTo,
+        taskTitle: updatedTask.title,
+        files,
+        designerName: userName,
+        taskUrl,
+        deadline: updatedTask.deadline,
+        taskId: updatedTask.id || updatedTask._id?.toString?.()
+      });
     }
 
     res.json(updatedTask);

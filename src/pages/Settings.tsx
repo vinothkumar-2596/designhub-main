@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { UserRole } from '@/types';
 import { User, Bell, Palette, Users, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
+import { useEffect, useState } from 'react';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[] = [
   { value: 'designer', label: 'Designer', icon: Palette },
@@ -16,11 +17,29 @@ const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[]
 ];
 
 export default function Settings() {
-  const { user, switchRole } = useAuth();
+  const { user, switchRole, updateUser } = useAuth();
+  const [fullName, setFullName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+
+  useEffect(() => {
+    setFullName(user?.name || '');
+    setEmail(user?.email || '');
+    setPhone(user?.phone || '');
+  }, [user]);
 
   const handleRoleSwitch = (role: UserRole) => {
     switchRole(role);
     toast.success(`Switched to ${roleOptions.find(r => r.value === role)?.label} view`);
+  };
+
+  const handleSaveProfile = () => {
+    updateUser({
+      name: fullName.trim() || user?.name || '',
+      email: email.trim() || user?.email || '',
+      phone: phone.trim() || undefined,
+    });
+    toast.success('Profile updated locally');
   };
 
   return (
@@ -57,14 +76,36 @@ export default function Settings() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
-                <Input id="name" defaultValue={user?.name} />
+                <Input
+                  id="name"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" defaultValue={user?.email} />
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone (WhatsApp)</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+18005551234"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used for WhatsApp updates about requests and final files.
+                </p>
               </div>
             </div>
-            <Button>Save Changes</Button>
+            <Button onClick={handleSaveProfile}>Save Changes</Button>
           </div>
         </div>
 

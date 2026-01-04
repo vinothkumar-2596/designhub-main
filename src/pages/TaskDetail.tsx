@@ -32,8 +32,15 @@ import {
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { ApprovalStatus, TaskChange, TaskStatus, UserRole } from '@/types';
+import { ApprovalStatus, DesignVersion, TaskChange, TaskComment, TaskStatus, UserRole } from '@/types';
 import { cn } from '@/lib/utils';
+import { loadLocalTaskById } from '@/lib/taskStorage';
+import {
+  approveEmergencyTask as approveScheduleEmergency,
+  loadScheduleTasks,
+  pushScheduleNotification,
+  saveScheduleTasks,
+} from '@/lib/designerSchedule';
 
 const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
   pending: { label: 'Pending', variant: 'pending' },
@@ -58,6 +65,8 @@ const changeFieldLabels: Record<string, string> = {
   staff_note: 'staff note',
   approval_status: 'approval status',
   deadline_request: 'deadline request',
+  emergency_approval: 'emergency approval',
+  design_version: 'design version',
 };
 
 const formatChangeField = (field: string) => changeFieldLabels[field] || field.replace(/_/g, ' ');
@@ -92,10 +101,13 @@ export default function TaskDetail() {
       : undefined);
   const stateTask = locationState?.task;
   const highlightChangeId = locationState?.highlightChangeId;
-  const initialTask = stateTask || mockTasks.find((t) => t.id === id);
+  const localTask = id ? loadLocalTaskById(id) : undefined;
+  const initialTask = stateTask || localTask || mockTasks.find((t) => t.id === id);
   const [taskState, setTaskState] = useState<typeof mockTasks[number] | undefined>(initialTask);
   const [isLoading, setIsLoading] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const [replyToId, setReplyToId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
   const [newStatus, setNewStatus] = useState<TaskStatus | ''>('');
   const [changeCount, setChangeCount] = useState(initialTask?.changeCount ?? 0);
   const initialApprovalStatus: ApprovalStatus | undefined =
@@ -117,6 +129,9 @@ export default function TaskDetail() {
   const [newFileType, setNewFileType] = useState<'input' | 'output'>('input');
   const [isUploadingFinal, setIsUploadingFinal] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [isEmergencyUpdating, setIsEmergencyUpdating] = useState(false);
+  const [compareLeftId, setCompareLeftId] = useState('');
+  const [compareRightId, setCompareRightId] = useState('');
   const storageKey = id ? `designhub.task.${id}` : '';
   const staffChangeCount = useMemo(() => {
     const latestFinalApprovalAt = changeHistory.reduce((latest, entry) => {
@@ -138,7 +153,13 @@ export default function TaskDetail() {
   const canSendForApproval =
     user?.role === 'staff' && staffChangeCount >= 3 && approvalStatus !== 'pending';
   const staffChangeLimitReached = user?.role === 'staff' && staffChangeCount >= 3;
-
+  const designVersions = taskState?.designVersions ?? [];
+  const activeDesignVersionId =
+    taskState?.activeDesignVersionId || designVersions[designVersions.length - 1]?.id;
+  const activeDesignVersion = designVersions.find((version) => version.id === activeDesignVersionId);
+  const canManageVersions = user?.role === 'designer';
+  const compareLeft = designVersions.find((version) => version.id === compareLeftId);
+  const compareRight = designVersions.find((version) => version.id === compareRightId);
   useEffect(() => {
     if (!user || typeof window === 'undefined') return;
     const taskKey = taskState?.id || id;
@@ -154,6 +175,16 @@ export default function TaskDetail() {
     }
   }, [highlightChangeId, changeHistory.length]);
 
+  useEffect(() => {
+    if (designVersions.length < 2) return;
+    if (!compareLeftId && designVersions.length >= 2) {
+      setCompareLeftId(designVersions[Math.max(0, designVersions.length - 2)].id);
+    }
+    if (!compareRightId) {
+      setCompareRightId(designVersions[designVersions.length - 1].id);
+    }
+  }, [compareLeftId, compareRightId, designVersions]);
+
   const hydrateTask = (raw: typeof taskState) => {
     if (!raw) return raw;
     const toDate = (value?: string | Date) => (value ? new Date(value) : undefined);
@@ -166,6 +197,8 @@ export default function TaskDetail() {
       updatedAt: new Date(raw.updatedAt),
       proposedDeadline: raw.proposedDeadline ? toDate(raw.proposedDeadline as unknown as string) : undefined,
       deadlineApprovedAt: raw.deadlineApprovedAt ? toDate(raw.deadlineApprovedAt as unknown as string) : undefined,
+      emergencyApprovedAt: raw.emergencyApprovedAt ? toDate(raw.emergencyApprovedAt as unknown as string) : undefined,
+      emergencyRequestedAt: raw.emergencyRequestedAt ? toDate(raw.emergencyRequestedAt as unknown as string) : undefined,
       files: raw.files?.map((file, index) => ({
         ...file,
         id: file.id ?? `file-${index}-${file.name || 'attachment'}`,
@@ -177,6 +210,8 @@ export default function TaskDetail() {
           comment.id ||
           (comment as { _id?: string })._id ||
           `comment-${index}-${comment.userId || 'user'}`,
+        parentId: comment.parentId || '',
+        mentions: comment.mentions?.filter((role) => allRoles.includes(role as UserRole)) ?? [],
         userRole: normalizeRole(comment.userRole),
         receiverRoles:
           comment.receiverRoles?.filter((role) => allRoles.includes(role)) ?? [],
@@ -187,6 +222,14 @@ export default function TaskDetail() {
         })) ?? [],
         createdAt: new Date(comment.createdAt),
       })),
+      designVersions: raw.designVersions?.map((version, index) => ({
+        ...version,
+        id:
+          version.id ||
+          (version as { _id?: string })._id ||
+          `version-${index}-${version.name || 'design'}`,
+        uploadedAt: new Date(version.uploadedAt),
+      })) ?? [],
       changeHistory: raw.changeHistory?.map((entry) => ({
         ...entry,
         createdAt: new Date(entry.createdAt),
@@ -210,6 +253,9 @@ export default function TaskDetail() {
     if (comment.receiverRoles && comment.receiverRoles.length > 0) {
       return comment.receiverRoles;
     }
+    if (comment.mentions && comment.mentions.length > 0) {
+      return comment.mentions;
+    }
     if (comment.userRole) {
       return allRoles.filter((role) => role !== comment.userRole);
     }
@@ -225,6 +271,61 @@ export default function TaskDetail() {
       return !seenBy.some((entry) => entry.role === role);
     });
   };
+
+  const mentionRoleMap: Record<string, UserRole> = {
+    staff: 'staff',
+    treasurer: 'treasurer',
+    designer: 'designer',
+  };
+
+  const extractMentions = (content: string) => {
+    const matches = content.match(/@(?:Designer|Treasurer|Staff)/gi) ?? [];
+    const roles = matches
+      .map((match) => mentionRoleMap[match.replace('@', '').toLowerCase()])
+      .filter(Boolean) as UserRole[];
+    return Array.from(new Set(roles));
+  };
+
+  const buildReceiverRoles = (content: string) => {
+    const mentions = extractMentions(content);
+    return mentions.length > 0 ? mentions : getReceiverRoles(user?.role);
+  };
+
+  const renderCommentContent = (content: string) => {
+    const parts = content.split(/(@(?:Designer|Treasurer|Staff))/gi);
+    return parts.map((part, index) => {
+      const key = part.replace('@', '').toLowerCase();
+      if (mentionRoleMap[key as keyof typeof mentionRoleMap]) {
+        return (
+          <span
+            key={`${part}-${index}`}
+            className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary"
+          >
+            {part}
+          </span>
+        );
+      }
+      return <span key={`${part}-${index}`}>{part}</span>;
+    });
+  };
+
+  const { topLevelComments, repliesByParent } = useMemo(() => {
+    if (!taskState) {
+      return { topLevelComments: [], repliesByParent: new Map<string, TaskComment[]>() };
+    }
+    const sorted = [...(taskState.comments ?? [])].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    const replyMap = new Map<string, TaskComment[]>();
+    sorted.forEach((comment) => {
+      if (!comment.parentId) return;
+      const existing = replyMap.get(comment.parentId) ?? [];
+      existing.push(comment);
+      replyMap.set(comment.parentId, existing);
+    });
+    const roots = sorted.filter((comment) => !comment.parentId);
+    return { topLevelComments: roots, repliesByParent: replyMap };
+  }, [taskState]);
 
   if (!taskState) {
     return (
@@ -258,8 +359,31 @@ export default function TaskDetail() {
   const canEditTask = user?.role === 'staff';
   const canApproveDeadline = user?.role === 'designer';
   const minDeadlineDate = addWorkingDays(new Date(), 3);
+  const emergencyStatus =
+    taskState.isEmergency || taskState.emergencyApprovalStatus
+      ? taskState.emergencyApprovalStatus ?? 'pending'
+      : undefined;
+  const emergencyVariant =
+    emergencyStatus === 'approved'
+      ? 'completed'
+      : emergencyStatus === 'rejected'
+        ? 'destructive'
+        : 'urgent';
+  const emergencyLabel =
+    emergencyStatus === 'approved'
+      ? 'Emergency Approved'
+      : emergencyStatus === 'rejected'
+        ? 'Emergency Rejected'
+        : 'Emergency Pending';
   const inputFiles = taskState.files.filter((f) => f.type === 'input');
   const outputFiles = taskState.files.filter((f) => f.type === 'output');
+
+  const getVersionLabel = (version: DesignVersion) => `V${version.version}`;
+  const isImageVersion = (version?: DesignVersion) => {
+    if (!version?.name) return false;
+    const ext = version.name.split('.').pop()?.toLowerCase() ?? '';
+    return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext);
+  };
 
   const recordChanges = async (changes: ChangeInput[], updates: Partial<typeof taskState> = {}) => {
     if (changes.length === 0) return;
@@ -378,26 +502,20 @@ export default function TaskDetail() {
   }, [apiUrl, id]);
 
   useEffect(() => {
-    if (apiUrl) return;
-    if (!storageKey) return;
-    const stored = localStorage.getItem(storageKey);
-    if (!stored) return;
-    try {
-      const parsed = JSON.parse(stored);
-      const hydrated = hydrateTask(parsed);
-      setTaskState(hydrated);
-      setChangeHistory(hydrated?.changeHistory ?? []);
-      setChangeCount(hydrated?.changeCount ?? 0);
-      setApprovalStatus(hydrated?.approvalStatus);
-      setEditedDescription(hydrated?.description ?? '');
-      setEditedDeadline(hydrated ? format(hydrated.deadline, 'yyyy-MM-dd') : '');
-      setDeadlineRequest(
-        hydrated?.proposedDeadline ? format(hydrated.proposedDeadline, 'yyyy-MM-dd') : ''
-      );
-    } catch (error) {
-      localStorage.removeItem(storageKey);
-    }
-  }, [storageKey]);
+    if (apiUrl || !id) return;
+    const local = loadLocalTaskById(id);
+    if (!local) return;
+    const hydrated = hydrateTask(local);
+    setTaskState(hydrated);
+    setChangeHistory(hydrated?.changeHistory ?? []);
+    setChangeCount(hydrated?.changeCount ?? 0);
+    setApprovalStatus(hydrated?.approvalStatus);
+    setEditedDescription(hydrated?.description ?? '');
+    setEditedDeadline(hydrated ? format(hydrated.deadline, 'yyyy-MM-dd') : '');
+    setDeadlineRequest(
+      hydrated?.proposedDeadline ? format(hydrated.proposedDeadline, 'yyyy-MM-dd') : ''
+    );
+  }, [apiUrl, id]);
 
   useEffect(() => {
     if (!user || !taskState || !user.role) return;
@@ -439,10 +557,15 @@ export default function TaskDetail() {
     markSeen();
   }, [apiUrl, taskState, user]);
 
-  const handleAddComment = async () => {
-    if (!newComment.trim() || !taskState) return;
-    const content = newComment.trim();
-    const receiverRoles = getReceiverRoles(user?.role);
+  const submitComment = async (
+    content: string,
+    parentId?: string,
+    onSuccess?: () => void
+  ) => {
+    if (!content.trim() || !taskState) return;
+    const trimmed = content.trim();
+    const mentions = extractMentions(trimmed);
+    const receiverRoles = buildReceiverRoles(trimmed);
 
     if (apiUrl) {
       try {
@@ -453,8 +576,10 @@ export default function TaskDetail() {
             userId: user?.id || '',
             userName: user?.name || 'User',
             userRole: user?.role || 'staff',
-            content,
+            content: trimmed,
             receiverRoles,
+            parentId,
+            mentions,
           }),
         });
         if (!response.ok) {
@@ -463,7 +588,7 @@ export default function TaskDetail() {
         const updated = await response.json();
         const hydrated = hydrateTask(updated);
         setTaskState(hydrated);
-        setNewComment('');
+        onSuccess?.();
         toast.success('Comment added');
         return;
       } catch {
@@ -478,7 +603,9 @@ export default function TaskDetail() {
       userId: user?.id || '',
       userName: user?.name || 'User',
       userRole: user?.role || 'staff',
-      content,
+      content: trimmed,
+      parentId: parentId || '',
+      mentions,
       createdAt: new Date(),
       receiverRoles,
       seenBy: [],
@@ -490,8 +617,19 @@ export default function TaskDetail() {
     };
     setTaskState(nextTask);
     persistTask(nextTask);
-    setNewComment('');
+    onSuccess?.();
     toast.success('Comment added');
+  };
+
+  const handleAddComment = () => {
+    submitComment(newComment, undefined, () => setNewComment(''));
+  };
+
+  const handleReplySubmit = (parentId: string) => {
+    submitComment(replyText, parentId, () => {
+      setReplyText('');
+      setReplyToId(null);
+    });
   };
 
   const handleStatusChange = (status: TaskStatus) => {
@@ -509,6 +647,94 @@ export default function TaskDetail() {
       { status }
     );
     setNewStatus('');
+  };
+
+  const handleEmergencyDecision = async (decision: 'approved' | 'rejected') => {
+    if (!taskState) return;
+    if (!user) return;
+    setIsEmergencyUpdating(true);
+    const now = new Date();
+    const prevStatus = emergencyStatus ?? 'pending';
+    const entry: TaskChange = {
+      id: `ch-${Date.now()}-0`,
+      type: 'status',
+      field: 'emergency_approval',
+      oldValue: prevStatus,
+      newValue: decision === 'approved' ? 'Approved' : 'Rejected',
+      note: `Emergency ${decision} by ${user.name || 'Designer'}`,
+      userId: user.id,
+      userName: user.name || 'Designer',
+      userRole: user.role || 'designer',
+      createdAt: now,
+    };
+    const nextTask = {
+      ...taskState,
+      isEmergency: true,
+      emergencyApprovalStatus: decision,
+      emergencyApprovedBy: user.name || 'Designer',
+      emergencyApprovedAt: now,
+      updatedAt: now,
+      changeHistory: [entry, ...(taskState.changeHistory || [])],
+    };
+    const apiUpdates = {
+      isEmergency: true,
+      emergencyApprovalStatus: decision,
+      emergencyApprovedBy: user.name || 'Designer',
+      emergencyApprovedAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      if (apiUrl) {
+        const response = await fetch(`${apiUrl}/api/tasks/${taskState.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiUpdates),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to update emergency status');
+        }
+        const updated = await response.json();
+        const hydrated = hydrateTask({
+          ...updated,
+          changeHistory: nextTask.changeHistory,
+        });
+        setTaskState(hydrated);
+        setChangeHistory(hydrated?.changeHistory ?? []);
+        persistTask(hydrated);
+      } else {
+        setTaskState(nextTask);
+        setChangeHistory(nextTask.changeHistory);
+        persistTask(nextTask);
+      }
+
+      if (taskState.scheduleTaskId) {
+        const scheduleTasks = loadScheduleTasks();
+        const updatedSchedule =
+          decision === 'approved'
+            ? approveScheduleEmergency(scheduleTasks, taskState.scheduleTaskId)
+            : scheduleTasks.filter((task) => task.id !== taskState.scheduleTaskId);
+        saveScheduleTasks(updatedSchedule);
+      }
+
+      if (taskState.requesterId) {
+        pushScheduleNotification(
+          taskState.requesterId,
+          taskState.id,
+          `Emergency request ${decision} for "${taskState.title}".`
+        );
+      }
+
+      toast.success(
+        decision === 'approved'
+          ? 'Emergency request approved.'
+          : 'Emergency request rejected.'
+      );
+    } catch (error) {
+      toast.error('Failed to update emergency status.');
+    } finally {
+      setIsEmergencyUpdating(false);
+    }
   };
 
   const handleRequestApproval = () => {
@@ -675,6 +901,9 @@ export default function TaskDetail() {
 
     setIsUploadingFinal(true);
     const uploads = Array.from(selectedFiles);
+    let updatedFiles = [...taskState.files];
+    let updatedVersions = [...designVersions];
+    let nextVersion = updatedVersions.length;
     try {
       for (const file of uploads) {
         const formData = new FormData();
@@ -696,6 +925,20 @@ export default function TaskDetail() {
           uploadedAt: new Date(),
           uploadedBy: user?.id || '',
         };
+        const previousActive =
+          updatedVersions.find((version) => version.id === activeDesignVersionId) ??
+          updatedVersions[updatedVersions.length - 1];
+        nextVersion += 1;
+        const newVersion = {
+          id: `ver-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: file.name,
+          url: data.webViewLink || data.webContentLink || '',
+          version: nextVersion,
+          uploadedAt: new Date(),
+          uploadedBy: user?.id || '',
+        };
+        updatedFiles = [...updatedFiles, newFile];
+        updatedVersions = [...updatedVersions, newVersion];
         recordChanges(
           [
             {
@@ -705,8 +948,19 @@ export default function TaskDetail() {
               newValue: newFile.name,
               note: 'Final file uploaded',
             },
+            {
+              type: 'update',
+              field: 'design_version',
+              oldValue: previousActive ? `${getVersionLabel(previousActive)} - ${previousActive.name}` : '',
+              newValue: `${getVersionLabel(newVersion)} - ${newVersion.name}`,
+              note: 'Design version uploaded',
+            },
           ],
-          { files: [...taskState.files, newFile] }
+          {
+            files: updatedFiles,
+            designVersions: updatedVersions,
+            activeDesignVersionId: newVersion.id,
+          }
         );
       }
       toast.success('Final files uploaded.');
@@ -716,6 +970,26 @@ export default function TaskDetail() {
       setIsUploadingFinal(false);
       e.target.value = '';
     }
+  };
+
+  const handleRollbackVersion = (versionId: string) => {
+    if (!canManageVersions) return;
+    const selected = designVersions.find((version) => version.id === versionId);
+    if (!selected) return;
+    const current = activeDesignVersion ?? designVersions[designVersions.length - 1];
+    recordChanges(
+      [
+        {
+          type: 'update',
+          field: 'design_version',
+          oldValue: current ? `${getVersionLabel(current)} - ${current.name}` : '',
+          newValue: `${getVersionLabel(selected)} - ${selected.name}`,
+          note: `Rolled back to ${getVersionLabel(selected)}`,
+        },
+      ],
+      { activeDesignVersionId: selected.id }
+    );
+    toast.message('Design version restored.');
   };
 
   const handleEditAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -863,6 +1137,114 @@ export default function TaskDetail() {
       );
       toast.message('Deadline request rejected.');
     }
+  };
+
+  const renderCommentThread = (comment: TaskComment, depth = 0) => {
+    const replies = repliesByParent.get(comment.id) ?? [];
+    const isReply = depth > 0;
+    return (
+      <div key={comment.id} className={cn('flex gap-3', isReply && 'pl-6 border-l border-border/60')}>
+        <div
+          className={cn(
+            'rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium flex-shrink-0',
+            isReply ? 'h-7 w-7 text-xs' : 'h-8 w-8 text-sm'
+          )}
+        >
+          {comment.userName.charAt(0)}
+        </div>
+        <div className="flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-sm">{comment.userName}</span>
+            {comment.userRole && (
+              <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                {roleLabels[comment.userRole] ?? comment.userRole}
+              </span>
+            )}
+          </div>
+          <div className="text-sm text-muted-foreground flex flex-wrap gap-1">
+            {renderCommentContent(comment.content)}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-3">
+            <span>{format(comment.createdAt, 'MMM d, yyyy - h:mm a')}</span>
+            <button
+              type="button"
+              className="text-primary/80 hover:text-primary font-medium"
+              onClick={() => {
+                setReplyToId(comment.id);
+                setReplyText('');
+              }}
+            >
+              Reply
+            </button>
+            {comment.userId === user?.id && (
+              <span>
+                {(() => {
+                  const receivers = resolveCommentReceivers(comment);
+                  const seenBy = comment.seenBy ?? [];
+                  const seenRoles = receivers.filter((role) =>
+                    seenBy.some((entry) => entry.role === role)
+                  );
+                  const pendingRoles = receivers.filter(
+                    (role) => !seenRoles.includes(role)
+                  );
+                  if (receivers.length === 0) {
+                    return null;
+                  }
+                  if (seenRoles.length === 0) {
+                    return 'Sent';
+                  }
+                  if (pendingRoles.length === 0) {
+                    return `Seen by ${seenRoles
+                      .map((role) => roleLabels[role] ?? role)
+                      .join(', ')}`;
+                  }
+                  return `Seen by ${seenRoles
+                    .map((role) => roleLabels[role] ?? role)
+                    .join(', ')} - Pending ${pendingRoles
+                    .map((role) => roleLabels[role] ?? role)
+                    .join(', ')}`;
+                })()}
+              </span>
+            )}
+          </div>
+          {replyToId === comment.id && (
+            <div className="mt-3 flex gap-2">
+              <Textarea
+                placeholder="Reply with @Designer, @Treasurer, @Staff..."
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                rows={2}
+                className="flex-1 select-text"
+              />
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={() => handleReplySubmit(comment.id)}
+                  disabled={!replyText.trim()}
+                  size="sm"
+                >
+                  Send
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setReplyToId(null);
+                    setReplyText('');
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+          {replies.length > 0 && (
+            <div className="mt-4 space-y-4">
+              {replies.map((reply) => renderCommentThread(reply, depth + 1))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1174,8 +1556,8 @@ export default function TaskDetail() {
               )}
 
               {/* Output Files */}
-              {outputFiles.length > 0 && (
-                <div className="mb-6">
+                {outputFiles.length > 0 && (
+                  <div className="mb-6">
                   <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-status-completed" />
                     Final Deliverables
@@ -1279,74 +1661,26 @@ export default function TaskDetail() {
               )}
             </div>
 
-            {/* Comments */}
+            {/* Internal Chat */}
             <div className={`${glassPanelClass} p-6 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
-                Comments ({taskState.comments.length})
+                Internal Chat ({taskState.comments.length})
               </h2>
 
-              {/* Comment List */}
-              {taskState.comments.length > 0 && (
-                <div className="space-y-4 mb-6">
-                  {taskState.comments.map((comment) => (
-                    <div key={comment.id} className="flex gap-3">
-                      <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium flex-shrink-0">
-                        {comment.userName.charAt(0)}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="font-medium text-sm">{comment.userName}</span>
-                          {comment.userRole && (
-                            <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                              {roleLabels[comment.userRole] ?? comment.userRole}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{comment.content}</p>
-                        <div className="mt-2 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
-                          <span>{format(comment.createdAt, 'MMM d, yyyy • h:mm a')}</span>
-                          {comment.userId === user?.id && (
-                            <span>
-                              {(() => {
-                                const receivers = resolveCommentReceivers(comment);
-                                const seenBy = comment.seenBy ?? [];
-                                const seenRoles = receivers.filter((role) =>
-                                  seenBy.some((entry) => entry.role === role)
-                                );
-                                const pendingRoles = receivers.filter(
-                                  (role) => !seenRoles.includes(role)
-                                );
-                                if (receivers.length === 0) {
-                                  return null;
-                                }
-                                if (seenRoles.length === 0) {
-                                  return 'Sent';
-                                }
-                                if (pendingRoles.length === 0) {
-                                  return `Seen by ${seenRoles
-                                    .map((role) => roleLabels[role] ?? role)
-                                    .join(', ')}`;
-                                }
-                                return `Seen by ${seenRoles
-                                  .map((role) => roleLabels[role] ?? role)
-                                  .join(', ')} • Pending ${pendingRoles
-                                  .map((role) => roleLabels[role] ?? role)
-                                  .join(', ')}`;
-                              })()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+              {topLevelComments.length > 0 ? (
+                <div className="space-y-5 mb-6">
+                  {topLevelComments.map((comment) => renderCommentThread(comment))}
+                </div>
+              ) : (
+                <div className="mb-6 text-sm text-muted-foreground">
+                  No messages yet. Start a thread with @Designer, @Treasurer, or @Staff.
                 </div>
               )}
 
-              {/* Add Comment */}
               <div className="flex gap-3">
                 <Textarea
-                  placeholder="Add a comment..."
+                  placeholder="Write a message with @Designer, @Treasurer, @Staff..."
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   rows={2}
@@ -1361,10 +1695,10 @@ export default function TaskDetail() {
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
+              </div>
             </div>
-          </div>
 
-          {/* Right Column - Metadata */}
+            {/* Right Column - Metadata */}
           <div className="space-y-6">
             {/* Task Info */}
             <div className={`${glassPanelClass} p-6 animate-slide-up`}>
@@ -1494,6 +1828,179 @@ export default function TaskDetail() {
                 </div>
               </div>
             </div>
+            {emergencyStatus && (
+              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-semibold text-foreground">Emergency Approval</h2>
+                  <Badge variant={emergencyVariant}>{emergencyLabel}</Badge>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Requested{' '}
+                  {format(
+                    taskState.emergencyRequestedAt || taskState.createdAt,
+                    'MMM d, yyyy'
+                  )}
+                </div>
+                {taskState.emergencyApprovedAt && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {emergencyStatus === 'approved' ? 'Approved' : 'Rejected'} by{' '}
+                    {taskState.emergencyApprovedBy || 'Designer'} on{' '}
+                    {format(taskState.emergencyApprovedAt, 'MMM d, yyyy')}
+                  </p>
+                )}
+                {user?.role === 'designer' && emergencyStatus === 'pending' && (
+                  <div className="mt-4 flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleEmergencyDecision('approved')}
+                      disabled={isEmergencyUpdating}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleEmergencyDecision('rejected')}
+                      disabled={isEmergencyUpdating}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                )}
+
+                {designVersions.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                      <History className="h-4 w-4 text-primary" />
+                      Version History
+                    </h3>
+                    <div className="space-y-2">
+                      {designVersions.map((version) => (
+                        <div key={version.id} className={fileRowClass}>
+                          <div>
+                            <div className="text-sm font-medium">
+                              {getVersionLabel(version)} - {version.name}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Uploaded {format(version.uploadedAt, 'MMM d, yyyy')}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {activeDesignVersionId === version.id && (
+                              <Badge variant="secondary">Active</Badge>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              disabled={!version.url}
+                              className={fileActionButtonClass}
+                              onClick={() => {
+                                if (version.url) {
+                                  window.open(version.url, '_blank', 'noopener,noreferrer');
+                                }
+                              }}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            {canManageVersions && activeDesignVersionId !== version.id && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRollbackVersion(version.id)}
+                              >
+                                Rollback
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {designVersions.length > 1 && (
+                      <div className="mt-4 rounded-lg border border-border/60 bg-secondary/30 p-4">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                              Compare Left
+                            </span>
+                            <Select value={compareLeftId} onValueChange={setCompareLeftId}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select version" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {designVersions.map((version) => (
+                                  <SelectItem key={version.id} value={version.id}>
+                                    {getVersionLabel(version)} - {version.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                              Compare Right
+                            </span>
+                            <Select value={compareRightId} onValueChange={setCompareRightId}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select version" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {designVersions.map((version) => (
+                                  <SelectItem key={version.id} value={version.id}>
+                                    {getVersionLabel(version)} - {version.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        {compareLeft && compareRight && (
+                          <div className="mt-4 grid gap-4 md:grid-cols-2">
+                            {[compareLeft, compareRight].map((version) => (
+                              <div
+                                key={version.id}
+                                className="rounded-lg border border-border/60 bg-background p-3"
+                              >
+                                <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                  {getVersionLabel(version)} - {version.name}
+                                </div>
+                                {version.url && isImageVersion(version) ? (
+                                  <img
+                                    src={version.url}
+                                    alt={version.name}
+                                    className="w-full rounded-md border border-border/40"
+                                  />
+                                ) : (
+                                  <div className="text-sm text-muted-foreground">
+                                    {version.url ? (
+                                      <>
+                                        Preview not available.{' '}
+                                        <button
+                                          type="button"
+                                          className="text-primary hover:underline"
+                                          onClick={() =>
+                                            window.open(version.url, '_blank', 'noopener,noreferrer')
+                                          }
+                                        >
+                                          Open file
+                                        </button>
+                                      </>
+                                    ) : (
+                                      'No file URL available for this version.'
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {user?.role === 'staff' && changeHistory.length > 0 && (
               <div className={`${glassPanelClass} p-6 animate-slide-up`}>
@@ -1569,3 +2076,5 @@ export default function TaskDetail() {
     </DashboardLayout>
   );
 }
+
+

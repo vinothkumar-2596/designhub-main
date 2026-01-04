@@ -23,14 +23,15 @@ import {
   UserCheck,
   Calendar,
   Paperclip,
-  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { PlusCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Textarea } from '@/components/ui/textarea';
+import { mergeLocalTasks } from '@/lib/taskStorage';
+import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
+import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
 const roleLabels: Record<string, string> = {
   designer: 'Designer',
@@ -41,6 +42,7 @@ const roleLabels: Record<string, string> = {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { query, setItems, setScopeLabel } = useGlobalSearch();
   const apiUrl =
     (import.meta.env.VITE_API_URL as string | undefined) ||
     (typeof window !== 'undefined' && window.location.hostname === 'localhost'
@@ -54,8 +56,8 @@ export default function Dashboard() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [tasks, setTasks] = useState(mockTasks);
   const [isLoading, setIsLoading] = useState(false);
+  const [useLocalData, setUseLocalData] = useState(!apiUrl);
   const [processingApprovalId, setProcessingApprovalId] = useState<string | null>(null);
-  const [appreciationMessage, setAppreciationMessage] = useState('');
   const autoPreviewShownRef = useRef(false);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewOpenDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,7 +96,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (apiUrl) return;
+    if (!useLocalData) return;
     const onStorage = (event: StorageEvent) => {
       if (event.key && event.key.startsWith('designhub.task.')) {
         setStorageTick((prev) => prev + 1);
@@ -102,7 +104,7 @@ export default function Dashboard() {
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, [apiUrl]);
+  }, [useLocalData]);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -136,8 +138,10 @@ export default function Dashboard() {
           })),
         }));
         setTasks(hydrated);
+        setUseLocalData(false);
       } catch (error) {
         toast.error('Failed to load dashboard data');
+        setUseLocalData(true);
       } finally {
         setIsLoading(false);
       }
@@ -146,20 +150,10 @@ export default function Dashboard() {
   }, [apiUrl]);
 
   const hydratedTasks = useMemo(() => {
-    if (apiUrl) return tasks;
+    if (!useLocalData) return tasks;
     if (typeof window === 'undefined') return mockTasks;
-    return mockTasks.map((task) => {
-      const key = `designhub.task.${task.id}`;
-      const stored = localStorage.getItem(key);
-      if (!stored) return task;
-      try {
-        const parsed = JSON.parse(stored);
-        return hydrateTask(parsed);
-      } catch {
-        return task;
-      }
-    });
-  }, [apiUrl, storageTick, tasks]);
+    return mergeLocalTasks(mockTasks);
+  }, [useLocalData, storageTick, tasks]);
 
   const activeRange = useMemo(
     () => getDateRange(dateRange, customStart, customEnd),
@@ -186,20 +180,61 @@ export default function Dashboard() {
   };
 
   const relevantTasks = getRelevantTasks();
-  const recentTasks = relevantTasks.slice(0, 4);
+  const searchFilteredTasks = useMemo(
+    () =>
+      relevantTasks.filter((task) =>
+        matchesSearch(query, [
+          task.title,
+          task.description,
+          task.requesterName,
+          task.assignedToName,
+          task.category,
+          task.status,
+        ])
+      ),
+    [query, relevantTasks]
+  );
+  const recentTasks = searchFilteredTasks.slice(0, 4);
   const treasurerRecentTasks = useMemo(() => {
     if (user.role !== 'treasurer') return [];
     return [...dateFilteredTasks]
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .filter((task) =>
+        matchesSearch(query, [
+          task.title,
+          task.description,
+          task.requesterName,
+          task.category,
+          task.status,
+        ])
+      )
       .slice(0, 4);
-  }, [dateFilteredTasks, user.role]);
+  }, [dateFilteredTasks, query, user.role]);
   const pendingApprovals = useMemo(() => {
     return hydratedTasks.filter((task) => task.approvalStatus === 'pending');
   }, [hydratedTasks]);
+  const filteredApprovals = useMemo(
+    () =>
+      pendingApprovals.filter((task) =>
+        matchesSearch(query, [
+          task.title,
+          task.description,
+          task.requesterName,
+          task.category,
+          task.status,
+        ])
+      ),
+    [pendingApprovals, query]
+  );
   const assignedDesignTasks = useMemo(
     () => dateFilteredTasks.filter((task) => Boolean(task.assignedTo)),
     [dateFilteredTasks]
   );
+
+  useEffect(() => {
+    setScopeLabel('Dashboard');
+    setItems(buildSearchItemsFromTasks(relevantTasks));
+  }, [relevantTasks, setItems, setScopeLabel]);
 
   const getLatestEntry = (entries: any[]) => {
     if (entries.length === 0) return null;
@@ -226,9 +261,16 @@ export default function Dashboard() {
                 entry.userRole === 'designer' &&
                 entry.field === 'deadline_request' &&
                 entry.newValue === 'Approved';
-              const isTreasurerApproval =
-                entry.userRole === 'treasurer' && entry.field === 'approval_status';
-              return isDesignerCompletion || isDesignerDeadlineApproval || isTreasurerApproval;
+            const isTreasurerApproval =
+              entry.userRole === 'treasurer' && entry.field === 'approval_status';
+            const isEmergencyApproval =
+              entry.userRole === 'designer' && entry.field === 'emergency_approval';
+            return (
+              isDesignerCompletion ||
+              isDesignerDeadlineApproval ||
+              isTreasurerApproval ||
+              isEmergencyApproval
+            );
             }
           )
           .map((entry) => ({ ...entry, taskId: task.id, taskTitle: task.title, task }))
@@ -501,16 +543,6 @@ export default function Dashboard() {
     } finally {
       setProcessingApprovalId(null);
     }
-  };
-
-  const handleSendAppreciation = async () => {
-    const message = appreciationMessage.trim();
-    if (!message) return;
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    toast.success('Appreciation sent', {
-      description: 'The design team has been notified.',
-    });
-    setAppreciationMessage('');
   };
 
   const getWelcomeMessage = () => {
@@ -843,7 +875,7 @@ export default function Dashboard() {
                     Pending Approvals
                   </p>
                   <h3 className="text-lg font-semibold text-foreground">
-                    {pendingApprovals.length} request{pendingApprovals.length === 1 ? '' : 's'} awaiting review
+                    {filteredApprovals.length} request{filteredApprovals.length === 1 ? '' : 's'} awaiting review
                   </h3>
                 </div>
                 <Button variant="ghost" size="sm" asChild>
@@ -851,9 +883,9 @@ export default function Dashboard() {
                 </Button>
               </div>
 
-              {pendingApprovals.length > 0 ? (
+              {filteredApprovals.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {pendingApprovals.slice(0, 4).map((task) => {
+                  {filteredApprovals.slice(0, 4).map((task) => {
                     const staffPreview = getStaffUpdatePreview(task);
                     return (
                       <div key={task.id} className="bg-white border border-[#D9E6FF] rounded-2xl p-5 shadow-card">
@@ -940,35 +972,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="mt-8 rounded-2xl border border-[#D9E6FF] bg-white p-5 shadow-card">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EEF3FF] text-primary ring-1 ring-[#D9E6FF]">
-                    <Sparkles className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      Appreciation
-                    </p>
-                    <h3 className="text-base font-semibold text-foreground">Share positive feedback</h3>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Send a quick note to recognize the design team's effort.
-                </p>
-                <div className="mt-4 space-y-3">
-                  <Textarea
-                    value={appreciationMessage}
-                    onChange={(event) => setAppreciationMessage(event.target.value)}
-                    placeholder="Write a short appreciation message..."
-                    className="min-h-[90px] border-[#D9E6FF] bg-[#F9FBFF]"
-                  />
-                  <div className="flex justify-end">
-                    <Button onClick={handleSendAppreciation} disabled={!appreciationMessage.trim()}>
-                      Send Appreciation
-                    </Button>
-                  </div>
-                </div>
-              </div>
             </>
           ) : recentTasks.length > 0 ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
