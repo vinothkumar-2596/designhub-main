@@ -146,7 +146,7 @@ export const uploadToDrive = async ({ buffer, filename, mimeType, folderId, make
       mimeType,
       body: stream,
     },
-    fields: "id,name,webViewLink,webContentLink",
+    fields: "id,name,webViewLink,webContentLink,size,thumbnailLink",
   });
 
   const file = createResponse.data;

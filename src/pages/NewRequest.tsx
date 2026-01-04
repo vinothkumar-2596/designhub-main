@@ -64,6 +64,7 @@ interface UploadedFile {
   size: number;
   driveId?: string;
   url?: string;
+  thumbnailUrl?: string;
   uploading?: boolean;
   progress?: number;
   error?: string;
@@ -222,13 +223,21 @@ export default function NewRequest() {
           return;
         }
 
-        let data: { id?: string; webViewLink?: string; webContentLink?: string } | null =
+        let data: {
+          id?: string;
+          webViewLink?: string;
+          webContentLink?: string;
+          size?: number | string;
+          thumbnailLink?: string;
+        } | null =
           null;
         try {
           data = JSON.parse(xhr.responseText) as {
             id?: string;
             webViewLink?: string;
             webContentLink?: string;
+            size?: number | string;
+            thumbnailLink?: string;
           };
         } catch {
           data = null;
@@ -237,6 +246,7 @@ export default function NewRequest() {
         updateFile(localId, {
           driveId: data?.id,
           url: data?.webViewLink || data?.webContentLink,
+          thumbnailUrl: data?.thumbnailLink,
           uploading: false,
           progress: 100,
         });
@@ -380,6 +390,8 @@ export default function NewRequest() {
               name: file.name,
               url: file.url || '',
               type: 'input',
+              size: file.size,
+              thumbnailUrl: file.thumbnailUrl,
             uploadedAt: new Date(),
             uploadedBy: user?.id || '',
           })),
@@ -432,11 +444,13 @@ export default function NewRequest() {
           files: files.map((file) => ({
             id: file.driveId || file.id,
             name: file.name,
-          url: file.url || '',
-          type: 'input',
-          uploadedAt: now,
-          uploadedBy: user?.id || '',
-        })),
+            url: file.url || '',
+            type: 'input',
+            size: file.size,
+            thumbnailUrl: file.thumbnailUrl,
+            uploadedAt: now,
+            uploadedBy: user?.id || '',
+          })),
         comments: [],
         createdAt: now,
         updatedAt: now,

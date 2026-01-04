@@ -35,8 +35,8 @@ export const mockTasks: Task[] = [
       },
     ],
     files: [
-      { id: 'f1', name: 'brand_guidelines.pdf', url: '#', type: 'input', uploadedAt: new Date(), uploadedBy: '3' },
-      { id: 'f2', name: 'previous_cover.jpg', url: '#', type: 'input', uploadedAt: new Date(), uploadedBy: '3' },
+      { id: 'f1', name: 'brand_guidelines.pdf', url: '#', type: 'input', size: 1677722, uploadedAt: new Date(), uploadedBy: '3' },
+      { id: 'f2', name: 'previous_cover.jpg', url: '#', type: 'input', size: 862208, uploadedAt: new Date(), uploadedBy: '3' },
     ],
     comments: [
       {
@@ -69,8 +69,8 @@ export const mockTasks: Task[] = [
     changeCount: 1,
     changeHistory: [],
     files: [
-      { id: 'f3', name: 'product_photos.zip', url: '#', type: 'input', uploadedAt: new Date(), uploadedBy: '3' },
-      { id: 'f4', name: 'campaign_brief.docx', url: '#', type: 'input', uploadedAt: new Date(), uploadedBy: '3' },
+      { id: 'f3', name: 'product_photos.zip', url: '#', type: 'input', size: 13002342, uploadedAt: new Date(), uploadedBy: '3' },
+      { id: 'f4', name: 'campaign_brief.docx', url: '#', type: 'input', size: 430080, uploadedAt: new Date(), uploadedBy: '3' },
     ],
     comments: [],
     createdAt: addDays(-1),
@@ -107,7 +107,7 @@ export const mockTasks: Task[] = [
       },
     ],
     files: [
-      { id: 'f5', name: 'event_details.pdf', url: '#', type: 'input', uploadedAt: new Date(), uploadedBy: '3' },
+      { id: 'f5', name: 'event_details.pdf', url: '#', type: 'input', size: 1003520, uploadedAt: new Date(), uploadedBy: '3' },
     ],
     comments: [
       {
@@ -141,8 +141,8 @@ export const mockTasks: Task[] = [
     changeCount: 4,
     changeHistory: [],
     files: [
-      { id: 'f6', name: 'original_poster.pdf', url: '#', type: 'input', uploadedAt: new Date(), uploadedBy: '3' },
-      { id: 'f7', name: 'new_details.txt', url: '#', type: 'input', uploadedAt: new Date(), uploadedBy: '3' },
+      { id: 'f6', name: 'original_poster.pdf', url: '#', type: 'input', size: 2411725, uploadedAt: new Date(), uploadedBy: '3' },
+      { id: 'f7', name: 'new_details.txt', url: '#', type: 'input', size: 12288, uploadedAt: new Date(), uploadedBy: '3' },
     ],
     comments: [],
     createdAt: today,
@@ -167,7 +167,7 @@ export const mockTasks: Task[] = [
     changeCount: 2,
     changeHistory: [],
     files: [
-      { id: 'f8', name: 'template_draft_v1.pdf', url: '#', type: 'output', uploadedAt: new Date(), uploadedBy: '2' },
+      { id: 'f8', name: 'template_draft_v1.pdf', url: '#', type: 'output', size: 3250586, uploadedAt: new Date(), uploadedBy: '2' },
     ],
     comments: [
       {
@@ -202,8 +202,8 @@ export const mockTasks: Task[] = [
     changeCount: 1,
     changeHistory: [],
     files: [
-      { id: 'f9', name: 'final_poster.pdf', url: '#', type: 'output', uploadedAt: new Date(), uploadedBy: '2' },
-      { id: 'f10', name: 'final_poster.png', url: '#', type: 'output', uploadedAt: new Date(), uploadedBy: '2' },
+      { id: 'f9', name: 'final_poster.pdf', url: '#', type: 'output', size: 1468006, uploadedAt: new Date(), uploadedBy: '2' },
+      { id: 'f10', name: 'final_poster.png', url: '#', type: 'output', size: 778240, uploadedAt: new Date(), uploadedBy: '2' },
     ],
     comments: [
       {

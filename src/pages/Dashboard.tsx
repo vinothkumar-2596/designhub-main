@@ -62,6 +62,7 @@ export default function Dashboard() {
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewOpenDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasNotificationsRef = useRef(false);
+  const notificationsRef = useRef<HTMLDivElement | null>(null);
 
   if (!user) {
     return (
@@ -357,6 +358,21 @@ export default function Dashboard() {
     };
   }, [hasNotifications, user.role]);
 
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!notificationsRef.current) return;
+      if (notificationsRef.current.contains(event.target as Node)) return;
+      closeNotificationsPreview();
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [notificationsOpen]);
+
   const closeNotificationsPreview = () => {
     if (previewOpenDelayRef.current) {
       clearTimeout(previewOpenDelayRef.current);
@@ -583,8 +599,65 @@ export default function Dashboard() {
     });
   }
 
+  const headerActions =
+    user.role === 'staff' || user.role === 'designer' ? (
+      <div className="relative" ref={notificationsRef}>
+        <button
+          type="button"
+          className="relative h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/90 text-muted-foreground hover:text-foreground shadow-sm flex items-center justify-center"
+          onClick={toggleNotifications}
+          aria-label="Notifications"
+        >
+          <Bell className="h-4 w-4" />
+          {hasNotifications && (
+            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary" />
+          )}
+        </button>
+        {notificationsOpen && hasNotifications && (
+          <div className="absolute right-0 mt-2 w-72 rounded-xl border border-[#C9D7FF] bg-[#F2F6FF]/95 backdrop-blur-xl p-3 shadow-lg z-50 animate-dropdown origin-top-right">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
+                Notifications
+              </span>
+              <button
+                className="text-primary/60 hover:text-primary"
+                onClick={closeNotificationsPreview}
+                type="button"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {activeNotifications.map((entry) => (
+                <Link
+                  key={entry.id}
+                  to={`/task/${entry.taskId}`}
+                  state={{ task: entry.task, highlightChangeId: entry.id }}
+                  onClick={closeNotificationsPreview}
+                  className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {getNotificationTitle(entry)}
+                    </p>
+                    <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {getNotificationNote(entry)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    ) : null;
+
   return (
-    <DashboardLayout>
+    <DashboardLayout headerActions={headerActions}>
       <div className="space-y-8">
         <div className="sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-white/70 supports-[backdrop-filter]:bg-white/60 backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -594,60 +667,6 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {(user.role === 'staff' || user.role === 'designer') && (
-                <div className="relative">
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-9 w-9"
-                    onClick={toggleNotifications}
-                  >
-                    <Bell className="h-4 w-4" />
-                  </Button>
-                  {hasNotifications && (
-                    <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-primary" />
-                  )}
-                  {notificationsOpen && hasNotifications && (
-                    <div className="absolute right-0 mt-2 w-72 rounded-xl border border-[#C9D7FF] bg-[#F2F6FF]/95 backdrop-blur-xl p-3 shadow-lg z-50 animate-dropdown origin-top-right">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
-                          Notifications
-                        </span>
-                        <button
-                          className="text-primary/60 hover:text-primary"
-                          onClick={closeNotificationsPreview}
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        {activeNotifications.map((entry) => (
-                          <Link
-                            key={entry.id}
-                            to={`/task/${entry.taskId}`}
-                            state={{ task: entry.task, highlightChangeId: entry.id }}
-                            onClick={closeNotificationsPreview}
-                            className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm font-semibold text-foreground">
-                                {getNotificationTitle(entry)}
-                              </p>
-                              <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {getNotificationNote(entry)}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
-                            </p>
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
               <DateRangeFilter
                 value={dateRange}
                 onChange={setDateRange}

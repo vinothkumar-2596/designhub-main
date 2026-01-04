@@ -24,9 +24,10 @@ import {
 
 interface DashboardLayoutProps {
   children: ReactNode;
+  headerActions?: ReactNode;
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
+export function DashboardLayout({ children, headerActions }: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
 
   useEffect(() => {
@@ -56,7 +57,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <DashboardShell userInitial={user?.name?.charAt(0) || 'U'}>
+    <DashboardShell
+      userInitial={user?.name?.charAt(0) || 'U'}
+      headerActions={headerActions}
+    >
       {children}
     </DashboardShell>
   );
@@ -65,9 +69,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 function DashboardShell({
   children,
   userInitial,
+  headerActions,
 }: {
   children: ReactNode;
   userInitial: string;
+  headerActions?: ReactNode;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
   const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'people' | 'files' | 'categories' | 'more'>('all');
@@ -342,6 +348,7 @@ function DashboardShell({
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  {headerActions}
                   <Link
                     to="/help"
                     className="h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/90 text-muted-foreground hover:text-foreground shadow-sm flex items-center justify-center"

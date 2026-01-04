@@ -57,6 +57,8 @@ export interface TaskFile {
   type: 'input' | 'output';
   uploadedAt: Date;
   uploadedBy: string;
+  size?: number;
+  thumbnailUrl?: string;
 }
 
 export interface DesignVersion {

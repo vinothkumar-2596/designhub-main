@@ -1,5 +1,6 @@
 import express from "express";
 import Task from "../models/Task.js";
+import { getDriveClient } from "../lib/drive.js";
 import Activity from "../models/Activity.js";
 import { sendFinalFilesEmail, sendFinalFilesSms, sendTaskCreatedSms } from "../lib/notifications.js";
 
@@ -61,12 +62,65 @@ router.post("/", async (req, res) => {
   }
 });
 
+const extractDriveId = (url) => {
+  if (!url || typeof url !== "string") return null;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.includes("drive.google.com")) return null;
+    const idFromQuery = parsed.searchParams.get("id");
+    if (idFromQuery) return idFromQuery;
+    const match = parsed.pathname.match(/\/file\/d\/([^/]+)/);
+    return match?.[1] || null;
+  } catch {
+    return null;
+  }
+};
+
+const hydrateMissingFileMeta = async (task) => {
+  if (!task?.files?.length) return task;
+  const pending = task.files.filter(
+    (file) =>
+      (file.size === undefined || !file.thumbnailUrl) && extractDriveId(file.url)
+  );
+  if (pending.length === 0) return task;
+  try {
+    const drive = getDriveClient();
+    let changed = false;
+    for (const file of pending) {
+      const fileId = extractDriveId(file.url);
+      if (!fileId) continue;
+      const response = await drive.files.get({
+        fileId,
+        fields: "id,size,thumbnailLink",
+      });
+      const sizeValue = response?.data?.size ? Number(response.data.size) : undefined;
+      if (!Number.isFinite(sizeValue)) continue;
+      if (Number.isFinite(sizeValue)) {
+        file.size = sizeValue;
+        changed = true;
+      }
+      if (response?.data?.thumbnailLink && !file.thumbnailUrl) {
+        file.thumbnailUrl = response.data.thumbnailLink;
+        changed = true;
+      }
+    }
+    if (changed) {
+      task.markModified("files");
+      await task.save();
+    }
+  } catch (error) {
+    console.error("Drive metadata hydration failed:", error?.message || error);
+  }
+  return task;
+};
+
 router.get("/:id", async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id);
+    let task = await Task.findById(req.params.id);
     if (!task) {
       return res.status(404).json({ error: "Task not found." });
     }
+    task = await hydrateMissingFileMeta(task);
     res.json(task);
   } catch (error) {
     res.status(400).json({ error: "Invalid task id." });

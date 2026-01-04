@@ -6,7 +6,9 @@ const TaskFileSchema = new mongoose.Schema(
     url: { type: String, default: "" },
     type: { type: String, enum: ["input", "output"], default: "input" },
     uploadedAt: { type: Date },
-    uploadedBy: { type: String, default: "" }
+    uploadedBy: { type: String, default: "" },
+    size: { type: Number },
+    thumbnailUrl: { type: String, default: "" }
   },
   { _id: false }
 );

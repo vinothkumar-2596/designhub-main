@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { uploadToDrive } from "../lib/drive.js";
+import { uploadToDrive, getDriveClient } from "../lib/drive.js";
 
 const router = express.Router();
 
@@ -38,10 +38,35 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       name: file.name,
       webViewLink: file.webViewLink,
       webContentLink: file.webContentLink,
+      size: req.file.size,
+      thumbnailLink: file.thumbnailLink,
     });
   } catch (error) {
     console.error("File upload failed:", error?.message || error);
     res.status(500).json({ error: error?.message || "Upload failed." });
+  }
+});
+
+router.post("/metadata", async (req, res) => {
+  try {
+    const fileId = req.body?.fileId;
+    if (!fileId) {
+      return res.status(400).json({ error: "File id is required." });
+    }
+    const drive = getDriveClient();
+    const response = await drive.files.get({
+      fileId,
+      fields: "id,size,thumbnailLink",
+    });
+    const sizeValue = response?.data?.size ? Number(response.data.size) : undefined;
+    res.json({
+      id: response?.data?.id,
+      size: Number.isNaN(sizeValue) ? undefined : sizeValue,
+      thumbnailLink: response?.data?.thumbnailLink,
+    });
+  } catch (error) {
+    console.error("Drive metadata lookup failed:", error?.message || error);
+    res.status(500).json({ error: "Failed to load file metadata." });
   }
 });
 
