@@ -38,7 +38,14 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Task, TaskCategory, TaskChange, TaskUrgency } from '@/types';
-import { addDays, isBefore, isWithinInterval, startOfDay } from 'date-fns';
+import {
+  addDays,
+  differenceInCalendarDays,
+  format,
+  isBefore,
+  isWithinInterval,
+  startOfDay,
+} from 'date-fns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -46,6 +53,13 @@ import Box from '@mui/material/Box';
 import LinearProgress, { LinearProgressProps } from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import {
   assignEmergencyTask,
   assignTask,
@@ -69,6 +83,276 @@ interface UploadedFile {
   progress?: number;
   error?: string;
 }
+
+type AiFollowUp = 'size' | 'deadline' | 'language';
+
+interface AiMessage {
+  role: 'assistant' | 'user';
+  content: string;
+}
+
+interface AiDraft {
+  title: string;
+  category: TaskCategory;
+  urgency: TaskUrgency;
+  deadline: string;
+  description: string;
+  requiresApproval: boolean;
+  attachmentChecklist: string[];
+}
+
+const aiFollowUpPrompts: Record<AiFollowUp, string> = {
+  size: 'What is the size?',
+  deadline: 'Final date?',
+  language: 'Language: Tamil / English / Both?',
+};
+
+const aiFollowUpOrder: AiFollowUp[] = ['size', 'deadline', 'language'];
+
+const colorKeywords = [
+  'dark blue',
+  'navy',
+  'blue',
+  'red',
+  'green',
+  'orange',
+  'yellow',
+  'purple',
+  'black',
+  'white',
+  'gold',
+  'silver',
+];
+
+const modificationKeywords = ['edit', 'change', 'revise', 'modify', 'update', 'rework'];
+
+const toCleanText = (value: string) => value.replace(/\s+/g, ' ').trim();
+
+const extractSize = (text: string) => {
+  const sizeMatch = text.match(
+    /(\d+(?:\.\d+)?)\s*(ft|feet|in|cm|mm|px)\s*(?:x|×)\s*(\d+(?:\.\d+)?)\s*(ft|feet|in|cm|mm|px)?/i
+  );
+  if (sizeMatch) {
+    const width = Number(sizeMatch[1]);
+    const height = Number(sizeMatch[3]);
+    const unit = (sizeMatch[4] || sizeMatch[2]).toLowerCase();
+    return {
+      value: `${sizeMatch[1]} ${unit} x ${sizeMatch[3]} ${unit}`,
+      width,
+      height,
+      unit,
+    };
+  }
+
+  const altMatch = text.match(
+    /(\d+(?:\.\d+)?)\s*(?:x|×)\s*(\d+(?:\.\d+)?)\s*(ft|feet|in|cm|mm|px)/i
+  );
+  if (altMatch) {
+    const width = Number(altMatch[1]);
+    const height = Number(altMatch[2]);
+    const unit = altMatch[3].toLowerCase();
+    return {
+      value: `${altMatch[1]} ${unit} x ${altMatch[2]} ${unit}`,
+      width,
+      height,
+      unit,
+    };
+  }
+
+  return null;
+};
+
+const extractDateFromText = (text: string) => {
+  const numericMatch = text.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if (numericMatch) {
+    const day = Number(numericMatch[1]);
+    const month = Number(numericMatch[2]);
+    let year = Number(numericMatch[3]);
+    if (year < 100) year += 2000;
+    return new Date(year, month - 1, day);
+  }
+
+  const monthMatch = text.match(
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|sept|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?,?\s*(\d{1,2})(?:,?\s*(\d{4}))?/i
+  );
+  if (monthMatch) {
+    const monthName = monthMatch[1].toLowerCase();
+    const day = Number(monthMatch[2]);
+    const year = monthMatch[3] ? Number(monthMatch[3]) : new Date().getFullYear();
+    const monthMap: Record<string, number> = {
+      jan: 0,
+      january: 0,
+      feb: 1,
+      february: 1,
+      mar: 2,
+      march: 2,
+      apr: 3,
+      april: 3,
+      may: 4,
+      jun: 5,
+      june: 5,
+      jul: 6,
+      july: 6,
+      aug: 7,
+      august: 7,
+      sep: 8,
+      sept: 8,
+      september: 8,
+      oct: 9,
+      october: 9,
+      nov: 10,
+      november: 10,
+      dec: 11,
+      december: 11,
+    };
+    const monthIndex = monthMap[monthName];
+    if (typeof monthIndex === 'number') {
+      return new Date(year, monthIndex, day);
+    }
+  }
+
+  return null;
+};
+
+const extractTimeRange = (text: string) => {
+  const timeMatch = text.match(
+    /(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*(?:-|–|to)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i
+  );
+  if (timeMatch) {
+    return `${timeMatch[1].toUpperCase()} – ${timeMatch[2].toUpperCase()}`;
+  }
+
+  return null;
+};
+
+const extractLanguage = (text: string) => {
+  const lower = text.toLowerCase();
+  if (lower.includes('both')) return 'Tamil / English (Both)';
+  if (lower.includes('tamil') || text.includes('தமிழ்') || text.includes('தமிழர்')) return 'Tamil';
+  if (lower.includes('english')) return 'English';
+  return null;
+};
+
+const extractEventName = (text: string) => {
+  const eventMatch = text.match(/event\s*(?:name)?\s*[:\-]\s*([^\n,]+)/i);
+  if (eventMatch) return toCleanText(eventMatch[1]);
+
+  const forMatch = text.match(
+    /for\s+([^\n,]+?)\s+(banner|poster|flyer|brochure|reel|certificate|design|invite|invitation)/i
+  );
+  if (forMatch) return toCleanText(forMatch[1]);
+
+  const quotedMatch = text.match(/["'“”‘’]([^"'“”‘’]+)["'“”‘’]/);
+  if (quotedMatch) return toCleanText(quotedMatch[1]);
+
+  return null;
+};
+
+const extractVenue = (text: string) => {
+  const venueMatch = text.match(/venue\s*[:\-]\s*([^\n,]+)/i);
+  if (venueMatch) return toCleanText(venueMatch[1]);
+  return null;
+};
+
+const extractTagline = (text: string) => {
+  const taglineMatch = text.match(/tagline\s*[:\-]\s*([^\n]+)/i);
+  if (taglineMatch) return toCleanText(taglineMatch[1]);
+  return null;
+};
+
+const extractThemeColor = (text: string) => {
+  const lower = text.toLowerCase();
+  return colorKeywords.find((color) => lower.includes(color)) || null;
+};
+
+const extractCategory = (text: string): TaskCategory => {
+  const lower = text.toLowerCase();
+  const matches = [
+    { value: 'banner', keywords: ['banner', 'standee', 'flex'] },
+    { value: 'social_media_creative', keywords: ['social', 'instagram', 'facebook', 'post', 'story', 'reel', 'video'] },
+    { value: 'flyer', keywords: ['flyer', 'handbill', 'leaflet'] },
+    { value: 'brochure', keywords: ['brochure', 'catalog'] },
+    { value: 'website_assets', keywords: ['website', 'web', 'landing page', 'landing', 'hero'] },
+    { value: 'ui_ux', keywords: ['ui', 'ux', 'app', 'dashboard', 'prototype'] },
+    { value: 'led_backdrop', keywords: ['led', 'backdrop', 'stage'] },
+    { value: 'campaign_or_others', keywords: ['campaign', 'certificate', 'poster', 'logo', 'branding', 'invite', 'invitation'] },
+  ] as const;
+
+  for (const match of matches) {
+    if (match.keywords.some((keyword) => lower.includes(keyword))) {
+      return match.value;
+    }
+  }
+
+  return 'campaign_or_others';
+};
+
+const getCategoryLabel = (category: TaskCategory) =>
+  categoryOptions.find((option) => option.value === category)?.label || 'Design';
+
+const getAssetLabel = (category: TaskCategory) => {
+  switch (category) {
+    case 'social_media_creative':
+      return 'social media creative';
+    case 'website_assets':
+      return 'website asset';
+    case 'ui_ux':
+      return 'UI/UX layout';
+    case 'led_backdrop':
+      return 'LED backdrop';
+    case 'campaign_or_others':
+      return 'campaign asset';
+    default:
+      return category;
+  }
+};
+
+const getDeliverablesForCategory = (category: TaskCategory) => {
+  switch (category) {
+    case 'social_media_creative':
+      return ['Social media post (1080x1080)', 'Story/Reel version (1080x1920)'];
+    case 'website_assets':
+      return ['Primary web banner/hero asset', 'Mobile-friendly variant'];
+    case 'ui_ux':
+      return ['High-fidelity UI screens', 'Prototype-ready assets (if required)'];
+    case 'brochure':
+      return ['Print-ready brochure PDF', 'Editable source file (if applicable)'];
+    case 'flyer':
+      return ['Print-ready flyer PDF', 'Web-friendly version'];
+    case 'led_backdrop':
+      return ['Stage-ready LED backdrop design', 'Scaled preview version'];
+    case 'banner':
+      return ['Event banner (print-ready)', 'Optional digital version for social media'];
+    default:
+      return ['Primary design output', 'Optional digital version'];
+  }
+};
+
+const buildAttachmentChecklist = (text: string) => {
+  const lower = text.toLowerCase();
+  const checklist = new Set<string>();
+  if (lower.includes('smvec')) checklist.add('SMVEC logo');
+  if (text.includes('ழ') || lower.includes('zha')) checklist.add("‘ழ’ logo");
+  checklist.add('Primary logo (mandatory)');
+
+  if (lower.includes('brand guideline') || lower.includes('brand guide') || lower.includes('brandbook')) {
+    checklist.add('Brand guidelines (if available)');
+  }
+
+  if (lower.includes('reference') || lower.includes('sample') || lower.includes('example')) {
+    checklist.add('Reference design (optional)');
+  } else {
+    checklist.add('Reference design (optional)');
+  }
+
+  return Array.from(checklist);
+};
+
+const parseIsoDate = (value: string) => {
+  const match = value.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+};
 
 const categoryOptions: { value: TaskCategory; label: string; icon: React.ElementType }[] = [
   { value: 'banner', label: 'Banner', icon: Flag },
@@ -119,6 +403,22 @@ export default function NewRequest() {
   const [showThankYou, setShowThankYou] = useState(false);
   const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
   const [uploadAnimation, setUploadAnimation] = useState<object | null>(null);
+  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [aiInput, setAiInput] = useState('');
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([
+    {
+      role: 'assistant',
+      content:
+        'Describe your requirement in simple words. We’ll generate a submission-ready request that follows DesignDesk standards.',
+    },
+  ]);
+  const [aiFollowUps, setAiFollowUps] = useState<AiFollowUp[]>([]);
+  const [aiQuestionIndex, setAiQuestionIndex] = useState(0);
+  const [aiAnswers, setAiAnswers] = useState<Partial<Record<AiFollowUp, string>>>({});
+  const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
+  const [aiWarnings, setAiWarnings] = useState<string[]>([]);
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -323,6 +623,229 @@ export default function NewRequest() {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const resetAiAssistant = () => {
+    setAiInput('');
+    setAiPrompt('');
+    setAiFollowUps([]);
+    setAiQuestionIndex(0);
+    setAiAnswers({});
+    setAiDraft(null);
+    setAiWarnings([]);
+    setIsEditingDraft(false);
+    setAiMessages([
+      {
+        role: 'assistant',
+        content:
+          'Describe your requirement in simple words. We’ll generate a submission-ready request that follows DesignDesk standards.',
+      },
+    ]);
+  };
+
+  const getMissingAiFields = (text: string): AiFollowUp[] => {
+    const missing: AiFollowUp[] = [];
+    if (!extractSize(text)) missing.push('size');
+    if (!extractDateFromText(text)) missing.push('deadline');
+    if (!extractLanguage(text)) missing.push('language');
+    return missing;
+  };
+
+  const buildAiDraft = (prompt: string, answers: Partial<Record<AiFollowUp, string>>) => {
+    const combined = [prompt, answers.size, answers.deadline, answers.language]
+      .filter(Boolean)
+      .join(' ');
+    const lower = combined.toLowerCase();
+    const size = extractSize(combined);
+    const sizeText = answers.size || size?.value || 'To be confirmed';
+    const orientation =
+      size && typeof size.width === 'number' && typeof size.height === 'number'
+        ? size.width >= size.height
+          ? 'Landscape'
+          : 'Portrait'
+        : null;
+    const deadlineDate = extractDateFromText(answers.deadline || combined);
+    const language = answers.language || extractLanguage(combined) || 'Tamil / English (confirm)';
+    const eventName = extractEventName(combined) || 'the requested project';
+    const tagline = extractTagline(combined) || 'To be confirmed';
+    const venue = extractVenue(combined) || 'To be confirmed';
+    const timeRange = extractTimeRange(combined);
+    const themeColor = extractThemeColor(combined);
+    const categoryValue = extractCategory(combined);
+    const categoryLabel = getCategoryLabel(categoryValue);
+    const assetLabel = getAssetLabel(categoryValue);
+    const deliverables = getDeliverablesForCategory(categoryValue);
+    const formattedDate = deadlineDate ? format(deadlineDate, 'dd.MM.yyyy') : 'To be confirmed';
+    const dateLine = `${formattedDate} | ${timeRange || 'Time to be confirmed'}`;
+    const attachmentChecklist = buildAttachmentChecklist(combined);
+    const mentionsModification = modificationKeywords.some((keyword) => lower.includes(keyword));
+    const hasAssetMentions = /(logo|brand|reference|sample|example|attachment|file)/i.test(combined);
+    const warnings: string[] = [];
+
+    if (deadlineDate && isBefore(startOfDay(deadlineDate), minDeadlineDate)) {
+      warnings.push(
+        'Minimum recommended timeline is 3 working days. Please revise deadline or mark urgency.'
+      );
+    }
+    if (mentionsModification) {
+      warnings.push('Modifications to approved designs require Treasurer approval.');
+    }
+    if (!hasAssetMentions) {
+      warnings.push('Please upload logos and reference files before submission.');
+    }
+
+    const urgencyFromDeadline = (() => {
+      if (!deadlineDate) return 'normal';
+      const daysAway = differenceInCalendarDays(startOfDay(deadlineDate), startOfDay(new Date()));
+      if (daysAway <= 3) return 'urgent';
+      if (daysAway <= 5) return 'intermediate';
+      if (daysAway <= 9) return 'normal';
+      return 'low';
+    })();
+
+    const styleTone = lower.includes('cultural') || lower.includes('festival') || lower.includes('traditional')
+      ? 'Formal and cultural'
+      : lower.includes('modern') || lower.includes('minimal')
+        ? 'Modern and minimal'
+        : 'Clean and professional';
+    const styleColor = themeColor ? `${themeColor} theme` : 'Balanced color palette';
+    const styleTypography =
+      language === 'Tamil'
+        ? 'Clean typography with Tamil emphasis'
+        : language.includes('Both')
+          ? 'Balanced Tamil and English typography'
+          : language === 'English'
+            ? 'Clean typography with English emphasis'
+            : 'Clean typography with brand emphasis';
+
+    const description = [
+      'Objective:',
+      `Design a professional ${assetLabel} for ${eventName} highlighting key information and brand identity.`,
+      '',
+      'Deliverables:',
+      `• ${deliverables[0]}`,
+      `• ${deliverables[1]}`,
+      '',
+      'Size & Orientation:',
+      `• ${sizeText}`,
+      orientation ? `• ${orientation}` : '• Orientation to be confirmed',
+      '',
+      'Content:',
+      `• Event Name: ${eventName}`,
+      `• Tagline: ${tagline}`,
+      `• Date & Time: ${dateLine}`,
+      `• Venue: ${venue}`,
+      '',
+      'Design Style:',
+      `• ${styleTone}`,
+      `• ${styleColor}`,
+      `• ${styleTypography}`,
+      '',
+      'Branding:',
+      `• ${attachmentChecklist[0] || 'Primary logo (mandatory)'}`,
+      attachmentChecklist[1] ? `• ${attachmentChecklist[1]}` : '• Use official brand colors if provided',
+      '',
+      'References Required:',
+      ...attachmentChecklist.map((item) => `• ${item}`),
+      '',
+      'Notes:',
+      '• Ensure high readability for stage backdrop',
+      '• Treasurer approval required if content changes after approval',
+    ].join('\n');
+
+    const draft: AiDraft = {
+      title: `${eventName} ${categoryLabel} Design`.trim(),
+      category: categoryValue,
+      urgency: urgencyFromDeadline,
+      deadline: deadlineDate ? format(deadlineDate, 'yyyy-MM-dd') : '',
+      description,
+      requiresApproval: mentionsModification,
+      attachmentChecklist,
+    };
+
+    return { draft, warnings };
+  };
+
+  const handleOpenAi = () => {
+    resetAiAssistant();
+    setIsAiOpen(true);
+  };
+
+  const handleAiSend = () => {
+    const trimmed = aiInput.trim();
+    if (!trimmed) return;
+
+    setAiMessages((prev) => [...prev, { role: 'user', content: trimmed }]);
+    setAiInput('');
+
+    if (!aiPrompt) {
+      setAiPrompt(trimmed);
+      const missing = getMissingAiFields(trimmed);
+      if (missing.length > 0) {
+        setAiFollowUps(missing);
+        setAiQuestionIndex(0);
+        setAiMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: aiFollowUpPrompts[missing[0]] },
+        ]);
+        return;
+      }
+      const { draft, warnings } = buildAiDraft(trimmed, {});
+      setAiDraft(draft);
+      setAiWarnings(warnings);
+      setAiMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Draft ready. Review the preview and apply it to the form.' },
+      ]);
+      return;
+    }
+
+    if (aiDraft) return;
+
+    const currentField = aiFollowUps[aiQuestionIndex];
+    const nextAnswers = { ...aiAnswers, [currentField]: trimmed };
+    setAiAnswers(nextAnswers);
+    const nextIndex = aiQuestionIndex + 1;
+    if (nextIndex < aiFollowUps.length) {
+      setAiQuestionIndex(nextIndex);
+      setAiMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: aiFollowUpPrompts[aiFollowUps[nextIndex]] },
+      ]);
+      return;
+    }
+
+    const { draft, warnings } = buildAiDraft(aiPrompt, nextAnswers);
+    setAiDraft(draft);
+    setAiWarnings(warnings);
+    setAiMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: 'Draft ready. Review the preview and apply it to the form.' },
+    ]);
+  };
+
+  const handleApplyAiDraft = () => {
+    if (!aiDraft) return;
+    setTitle(aiDraft.title);
+    setDescription(aiDraft.description);
+    setCategory(aiDraft.category);
+    setUrgency(aiDraft.urgency);
+    setIsEmergency(false);
+    setDeadline(aiDraft.deadline ? parseIsoDate(aiDraft.deadline) : null);
+    setIsAiOpen(false);
+    toast.message('AI draft applied to the form. Review and submit when ready.');
+  };
+
+  const handleRegenerateAiDraft = () => {
+    if (!aiPrompt) return;
+    const { draft, warnings } = buildAiDraft(aiPrompt, aiAnswers);
+    setAiDraft(draft);
+    setAiWarnings(warnings);
+    setIsEditingDraft(false);
+    setAiMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: 'Draft regenerated. Review the updated version below.' },
+    ]);
   };
 
   const isFormValid = () => {
