@@ -125,7 +125,7 @@ export function AppSidebar() {
             <img
               src="/favicon.png"
               alt="DesignDesk"
-              className="h-9 w-9 rounded-xl object-contain p-1 bg-[#1E2A5A]"
+              className="h-9 w-9 rounded-xl object-contain p-1 bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 border border-[#C9D7FF] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)] backdrop-blur"
             />
             <div>
               <h1 className="text-lg font-bold text-[#1E2A5A]">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { TaskCard } from '@/components/dashboard/TaskCard';
@@ -14,9 +14,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileCheck,
-  Bell,
   X,
-  ArrowUpRight,
   XCircle,
   Eye,
   User,
@@ -53,16 +51,10 @@ export default function Dashboard() {
   const [customEnd, setCustomEnd] = useState('');
   const [storageTick, setStorageTick] = useState(0);
   const [showNotifications, setShowNotifications] = useState(true);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [tasks, setTasks] = useState(mockTasks);
   const [isLoading, setIsLoading] = useState(false);
   const [useLocalData, setUseLocalData] = useState(!apiUrl);
   const [processingApprovalId, setProcessingApprovalId] = useState<string | null>(null);
-  const autoPreviewShownRef = useRef(false);
-  const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previewOpenDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hasNotificationsRef = useRef(false);
-  const notificationsRef = useRef<HTMLDivElement | null>(null);
 
   if (!user) {
     return (
@@ -297,13 +289,38 @@ export default function Dashboard() {
         const staffEntries = history.filter(
           (entry) =>
             entry.userRole === 'staff' &&
-            ['description', 'files', 'deadline_request', 'status', 'staff_note'].includes(
-              entry.field
-            )
+            [
+              'description',
+              'files',
+              'deadline_request',
+              'status',
+              'staff_note',
+              'created',
+            ].includes(entry.field)
         );
         const latestStaff = getLatestEntry(staffEntries);
         return latestStaff
           ? [{ ...latestStaff, taskId: task.id, taskTitle: task.title, task }]
+          : [];
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 3);
+  }, [hydratedTasks, user.role]);
+
+  const treasurerNotifications = useMemo(() => {
+    if (user.role !== 'treasurer') return [];
+    return hydratedTasks
+      .flatMap((task) => {
+        const history = task.changeHistory || [];
+        const createdEntries = history.filter(
+          (entry) => entry.userRole === 'staff' && entry.field === 'created'
+        );
+        if (createdEntries.length === 0) {
+          return [];
+        }
+        const latestCreated = getLatestEntry(createdEntries);
+        return latestCreated
+          ? [{ ...latestCreated, taskId: task.id, taskTitle: task.title, task }]
           : [];
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -315,92 +332,14 @@ export default function Dashboard() {
       ? staffNotifications
       : user.role === 'designer'
         ? designerNotifications
+        : user.role === 'treasurer'
+          ? treasurerNotifications
         : [];
 
-  const hasNotifications = activeNotifications.length > 0;
-
-  useEffect(() => {
-    hasNotificationsRef.current = hasNotifications;
-  }, [hasNotifications]);
-
-  useEffect(() => {
-    if (user.role !== 'designer' || !hasNotifications || autoPreviewShownRef.current) {
-      return;
-    }
-    autoPreviewShownRef.current = true;
-    if (previewOpenDelayRef.current) {
-      clearTimeout(previewOpenDelayRef.current);
-    }
-    previewOpenDelayRef.current = setTimeout(() => {
-      if (!hasNotificationsRef.current) {
-        previewOpenDelayRef.current = null;
-        return;
-      }
-      setNotificationsOpen(true);
-      if (previewTimeoutRef.current) {
-        clearTimeout(previewTimeoutRef.current);
-      }
-      previewTimeoutRef.current = setTimeout(() => {
-        setNotificationsOpen(false);
-        previewTimeoutRef.current = null;
-      }, 30000);
-      previewOpenDelayRef.current = null;
-    }, 5000);
-    return () => {
-      if (previewOpenDelayRef.current) {
-        clearTimeout(previewOpenDelayRef.current);
-        previewOpenDelayRef.current = null;
-      }
-      if (previewTimeoutRef.current) {
-        clearTimeout(previewTimeoutRef.current);
-        previewTimeoutRef.current = null;
-      }
-    };
-  }, [hasNotifications, user.role]);
-
-  useEffect(() => {
-    if (!notificationsOpen) return;
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      if (!notificationsRef.current) return;
-      if (notificationsRef.current.contains(event.target as Node)) return;
-      closeNotificationsPreview();
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('touchstart', handlePointerDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('touchstart', handlePointerDown);
-    };
-  }, [notificationsOpen]);
-
-  const closeNotificationsPreview = () => {
-    if (previewOpenDelayRef.current) {
-      clearTimeout(previewOpenDelayRef.current);
-      previewOpenDelayRef.current = null;
-    }
-    if (previewTimeoutRef.current) {
-      clearTimeout(previewTimeoutRef.current);
-      previewTimeoutRef.current = null;
-    }
-    setNotificationsOpen(false);
-  };
-
-  const toggleNotifications = () => {
-    setNotificationsOpen((prev) => {
-      const next = !prev;
-      if (previewOpenDelayRef.current) {
-        clearTimeout(previewOpenDelayRef.current);
-        previewOpenDelayRef.current = null;
-      }
-      if (!next && previewTimeoutRef.current) {
-        clearTimeout(previewTimeoutRef.current);
-        previewTimeoutRef.current = null;
-      }
-      return next;
-    });
-  };
-
   const getNotificationTitle = (entry: any) => {
+    if (entry.field === 'created') {
+      return `New request: ${entry.taskTitle}`;
+    }
     if (user.role === 'staff') {
       if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
         const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
@@ -420,6 +359,9 @@ export default function Dashboard() {
   };
 
   const getNotificationNote = (entry: any) => {
+    if (entry.field === 'created') {
+      return entry.note || `Submitted by ${entry.userName}`;
+    }
     if (user.role === 'staff') {
       if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
         const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
@@ -599,65 +541,8 @@ export default function Dashboard() {
     });
   }
 
-  const headerActions =
-    user.role === 'staff' || user.role === 'designer' ? (
-      <div className="relative" ref={notificationsRef}>
-        <button
-          type="button"
-          className="relative h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/90 text-muted-foreground hover:text-foreground shadow-sm flex items-center justify-center"
-          onClick={toggleNotifications}
-          aria-label="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-          {hasNotifications && (
-            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary" />
-          )}
-        </button>
-        {notificationsOpen && hasNotifications && (
-          <div className="absolute right-0 mt-2 w-72 rounded-xl border border-[#C9D7FF] bg-[#F2F6FF]/95 backdrop-blur-xl p-3 shadow-lg z-50 animate-dropdown origin-top-right">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
-                Notifications
-              </span>
-              <button
-                className="text-primary/60 hover:text-primary"
-                onClick={closeNotificationsPreview}
-                type="button"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-3 space-y-2">
-              {activeNotifications.map((entry) => (
-                <Link
-                  key={entry.id}
-                  to={`/task/${entry.taskId}`}
-                  state={{ task: entry.task, highlightChangeId: entry.id }}
-                  onClick={closeNotificationsPreview}
-                  className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-semibold text-foreground">
-                      {getNotificationTitle(entry)}
-                    </p>
-                    <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {getNotificationNote(entry)}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    ) : null;
-
   return (
-    <DashboardLayout headerActions={headerActions}>
+    <DashboardLayout>
       <div className="space-y-8">
         <div className="sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-white/70 supports-[backdrop-filter]:bg-white/60 backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-4">

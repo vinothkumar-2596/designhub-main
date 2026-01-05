@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
@@ -8,6 +9,7 @@ import authRoutes from "./routes/auth.js";
 import fileRoutes from "./routes/files.js";
 import driveAuthRoutes from "./routes/drive-auth.js";
 import User from "./models/User.js";
+import { initSocket } from "./socket.js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url) });
 
@@ -69,7 +71,9 @@ mongoose
   .connect(mongoUri, dbName ? { dbName } : undefined)
   .then(async () => {
     await ensureDemoUser();
-    app.listen(port, () => {
+    const server = http.createServer(app);
+    initSocket(server);
+    server.listen(port, () => {
       console.log(`API listening on port ${port}`);
     });
   })

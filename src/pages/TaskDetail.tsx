@@ -25,11 +25,15 @@ import {
   ArrowLeft,
   Calendar,
   Clock,
+  ClipboardCheck,
   User,
   Download,
+  ShieldCheck,
+  Tag,
   MessageSquare,
   Send,
   FileText,
+  Edit3,
   Upload,
   Loader2,
   CheckCircle2,
@@ -43,6 +47,8 @@ import { toast } from 'sonner';
 import { ApprovalStatus, DesignVersion, TaskChange, TaskComment, TaskStatus, UserRole } from '@/types';
 import { cn } from '@/lib/utils';
 import { loadLocalTaskById } from '@/lib/taskStorage';
+import { createSocket } from '@/lib/socket';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import {
   approveEmergencyTask as approveScheduleEmergency,
   loadScheduleTasks,
@@ -56,6 +62,14 @@ const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'pr
   clarification_required: { label: 'Clarification Required', variant: 'clarification' },
   under_review: { label: 'Under Review', variant: 'review' },
   completed: { label: 'Completed', variant: 'completed' },
+};
+
+const statusDetails: Record<TaskStatus, string> = {
+  pending: 'Request submitted',
+  in_progress: 'Design work in motion',
+  clarification_required: 'Waiting on clarifications',
+  under_review: 'Review in progress',
+  completed: 'Delivery complete',
 };
 
 const categoryLabels: Record<string, string> = {
@@ -84,6 +98,8 @@ const formatChangeField = (field: string) => changeFieldLabels[field] || field.r
     designer: 'Designer',
   };
 const allRoles: UserRole[] = ['staff', 'treasurer', 'designer'];
+const normalizeUserRole = (role?: string) =>
+  allRoles.includes(role as UserRole) ? (role as UserRole) : 'staff';
 
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 
@@ -93,6 +109,8 @@ const fileRowClass =
   'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-4 py-1.5 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl';
 const fileActionButtonClass =
   'border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.35)]';
+const badgeGlassClass =
+  'rounded-full border border-[#BFD3FF] bg-gradient-to-br from-[#EFF4FF]/85 via-[#DCE8FF]/80 to-[#C9DCFF]/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2D4F9A] shadow-[0_12px_24px_-20px_rgba(30,58,138,0.35)] backdrop-blur';
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -116,6 +134,9 @@ export default function TaskDetail() {
   const [newComment, setNewComment] = useState('');
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [typingUsers, setTypingUsers] = useState<Record<string, { name: string; role: UserRole }>>(
+    {}
+  );
   const [newStatus, setNewStatus] = useState<TaskStatus | ''>('');
   const [changeCount, setChangeCount] = useState(initialTask?.changeCount ?? 0);
   const initialApprovalStatus: ApprovalStatus | undefined =
@@ -144,6 +165,10 @@ export default function TaskDetail() {
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const sizeFetchRef = useRef(new Set<string>());
+  const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const clientIdRef = useRef<string>('');
   const [compareLeftId, setCompareLeftId] = useState('');
   const [compareRightId, setCompareRightId] = useState('');
   const storageKey = id ? `designhub.task.${id}` : '';
@@ -158,6 +183,7 @@ export default function TaskDetail() {
     return changeHistory.filter((entry) => {
       if (entry.userRole !== 'staff') return false;
       if (entry.field === 'approval_status') return false;
+      if (entry.field === 'created') return false;
       const time = new Date(entry.createdAt ?? 0).getTime();
       return latestFinalApprovalAt ? time > latestFinalApprovalAt : true;
     }).length;
@@ -219,8 +245,6 @@ export default function TaskDetail() {
   const hydrateTask = (raw: typeof taskState) => {
     if (!raw) return raw;
     const toDate = (value?: string | Date) => (value ? new Date(value) : undefined);
-    const normalizeRole = (role?: string) =>
-      allRoles.includes(role as UserRole) ? (role as UserRole) : 'staff';
     return {
       ...raw,
       deadline: new Date(raw.deadline),
@@ -243,12 +267,12 @@ export default function TaskDetail() {
           `comment-${index}-${comment.userId || 'user'}`,
         parentId: comment.parentId || '',
         mentions: comment.mentions?.filter((role) => allRoles.includes(role as UserRole)) ?? [],
-        userRole: normalizeRole(comment.userRole),
+        userRole: normalizeUserRole(comment.userRole),
         receiverRoles:
           comment.receiverRoles?.filter((role) => allRoles.includes(role)) ?? [],
         seenBy: comment.seenBy?.map((entry) => ({
           ...entry,
-          role: normalizeRole(entry.role),
+          role: normalizeUserRole(entry.role),
           seenAt: new Date(entry.seenAt),
         })) ?? [],
         createdAt: new Date(comment.createdAt),
@@ -267,6 +291,136 @@ export default function TaskDetail() {
       })),
     };
   };
+
+  const normalizeIncomingComment = (comment: any): TaskComment => ({
+    ...comment,
+    id:
+      comment?.id ||
+      comment?._id ||
+      `comment-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    parentId: comment?.parentId || '',
+    mentions: comment?.mentions?.filter((role: string) => allRoles.includes(role as UserRole)) ?? [],
+    userRole: normalizeUserRole(comment?.userRole),
+    receiverRoles:
+      comment?.receiverRoles?.filter((role: string) => allRoles.includes(role as UserRole)) ?? [],
+    seenBy:
+      comment?.seenBy?.map((entry: any) => ({
+        ...entry,
+        role: normalizeUserRole(entry.role),
+        seenAt: new Date(entry.seenAt),
+      })) ?? [],
+    createdAt: new Date(comment?.createdAt ?? Date.now()),
+  });
+
+  const emitTyping = (isTyping: boolean) => {
+    const roomId = taskState?.id || (taskState as { _id?: string } | undefined)?._id || id;
+    if (!socketRef.current || !roomId || !user) return;
+    socketRef.current.emit('comment:typing', {
+      taskId: roomId,
+      clientId: clientIdRef.current,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      isTyping,
+    });
+  };
+
+  const clearTyping = () => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    emitTyping(false);
+  };
+
+  useEffect(() => {
+    const roomId = taskState?.id || (taskState as { _id?: string } | undefined)?._id || id;
+    if (!apiUrl || !roomId || !user) return;
+    if (!clientIdRef.current && typeof window !== 'undefined') {
+      const stored = window.sessionStorage.getItem('designhub.clientId');
+      const nextId =
+        stored || `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      clientIdRef.current = nextId;
+      window.sessionStorage.setItem('designhub.clientId', nextId);
+    }
+    const socket = createSocket(apiUrl);
+    socketRef.current = socket;
+    socket.emit('task:join', { taskId: roomId, userId: user.id });
+
+    socket.on('comment:typing', (payload: any) => {
+      if (!payload || payload.taskId !== roomId) return;
+      if (payload.clientId && payload.clientId === clientIdRef.current) return;
+      setTypingUsers((prev) => {
+        const next = { ...prev };
+        const key = payload.clientId || payload.userId;
+        if (payload.isTyping && key) {
+          next[key] = {
+            name: payload.userName || 'Someone',
+            role: normalizeUserRole(payload.userRole),
+          };
+        } else {
+          if (key) {
+            delete next[key];
+          }
+        }
+        return next;
+      });
+      const timeoutKey = payload.clientId || payload.userId;
+      if (!timeoutKey) return;
+      const existingTimeout = typingTimeoutsRef.current.get(timeoutKey);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+      }
+      if (payload.isTyping) {
+        const timeout = setTimeout(() => {
+          setTypingUsers((prev) => {
+            const next = { ...prev };
+            delete next[timeoutKey];
+            return next;
+          });
+          typingTimeoutsRef.current.delete(timeoutKey);
+        }, 2000);
+        typingTimeoutsRef.current.set(timeoutKey, timeout);
+      } else {
+        typingTimeoutsRef.current.delete(timeoutKey);
+      }
+    });
+
+    socket.on('comment:new', (payload: any) => {
+      if (!payload || payload.taskId !== roomId || !payload.comment) return;
+      const incoming = normalizeIncomingComment(payload.comment);
+      setTaskState((prev) => {
+        if (!prev) return prev;
+        if (prev.comments.some((comment) => comment.id === incoming.id)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          comments: [...prev.comments, incoming],
+          updatedAt: new Date(),
+        };
+      });
+    });
+
+    socket.on('task:updated', (payload: any) => {
+      if (!payload || payload.taskId !== roomId || !payload.task) return;
+      const hydrated = hydrateTask(payload.task);
+      setTaskState(hydrated);
+      setChangeHistory(hydrated?.changeHistory ?? []);
+      setChangeCount(hydrated?.changeCount ?? 0);
+      setApprovalStatus(hydrated?.approvalStatus);
+    });
+
+    return () => {
+      clearTyping();
+      socket.emit('task:leave', { taskId: roomId, userId: user.id });
+      socket.disconnect();
+      socketRef.current = null;
+      typingTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+      typingTimeoutsRef.current.clear();
+      setTypingUsers({});
+    };
+  }, [apiUrl, taskState?.id, taskState?._id, id, user?.id]);
 
   const persistTask = (nextTask: typeof taskState, nextHistory?: TaskChange[]) => {
     if (!nextTask || !storageKey) return;
@@ -802,19 +956,20 @@ export default function TaskDetail() {
             mentions,
           }),
         });
-        if (!response.ok) {
-          throw new Error('Failed to add comment');
-        }
-        const updated = await response.json();
-        const hydrated = hydrateTask(updated);
-        setTaskState(hydrated);
-        onSuccess?.();
-        toast.success('Comment added');
-        return;
-      } catch {
-        toast.error('Failed to add comment');
-        return;
+      if (!response.ok) {
+        throw new Error('Failed to add comment');
       }
+      const updated = await response.json();
+      const hydrated = hydrateTask(updated);
+      setTaskState(hydrated);
+      onSuccess?.();
+      clearTyping();
+      toast.success('Comment added');
+      return;
+    } catch {
+      toast.error('Failed to add comment');
+      return;
+    }
     }
 
     const nextComment = {
@@ -838,6 +993,7 @@ export default function TaskDetail() {
     setTaskState(nextTask);
     persistTask(nextTask);
     onSuccess?.();
+    clearTyping();
     toast.success('Comment added');
   };
 
@@ -1532,7 +1688,18 @@ export default function TaskDetail() {
               <Textarea
                 placeholder={getMentionPlaceholder(user?.role, 'Reply with')}
                 value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setReplyText(value);
+                  if (!apiUrl) return;
+                  emitTyping(true);
+                  if (typingTimeoutRef.current) {
+                    clearTimeout(typingTimeoutRef.current);
+                  }
+                  typingTimeoutRef.current = setTimeout(() => {
+                    emitTyping(false);
+                  }, 1200);
+                }}
                 rows={2}
                 className="flex-1 select-text"
               />
@@ -1584,9 +1751,26 @@ export default function TaskDetail() {
         {/* Header */}
         <div className="animate-slide-up">
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <Badge variant={status.variant}>{status.label}</Badge>
-            {taskState.urgency === 'urgent' && <Badge variant="urgent">Urgent</Badge>}
-            <Badge variant="secondary">Changes: {changeCount}</Badge>
+            <Badge variant={status.variant} className={badgeGlassClass}>
+              <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                <ClipboardCheck className="h-3 w-3" />
+              </span>
+              {status.label}
+            </Badge>
+            {taskState.urgency === 'urgent' && (
+              <Badge variant="urgent" className={badgeGlassClass}>
+                <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                  <AlertTriangle className="h-3 w-3" />
+                </span>
+                Urgent
+              </Badge>
+            )}
+            <Badge variant="secondary" className={badgeGlassClass}>
+              <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                <Edit3 className="h-3 w-3" />
+              </span>
+              Changes: {changeCount}
+            </Badge>
             {approvalStatus && (
               <Badge
                 variant={
@@ -1596,7 +1780,11 @@ export default function TaskDetail() {
                       ? 'urgent'
                       : 'pending'
                 }
+                className={badgeGlassClass}
               >
+                <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                  <ShieldCheck className="h-3 w-3" />
+                </span>
                 {approvalStatus === 'approved'
                   ? 'Approved'
                   : approvalStatus === 'rejected'
@@ -1604,7 +1792,10 @@ export default function TaskDetail() {
                     : 'Awaiting Approval'}
               </Badge>
             )}
-            <span className="text-sm text-muted-foreground bg-secondary px-2 py-0.5 rounded-md">
+            <span className={badgeGlassClass}>
+              <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                <Tag className="h-3 w-3" />
+              </span>
               {categoryLabels[taskState.category]}
             </span>
           </div>
@@ -1839,10 +2030,10 @@ export default function TaskDetail() {
                         key={file.id}
                         className={fileRowClass}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
                           {renderFilePreview(file)}
-                          <div className="min-w-0">
-                            <span className="text-sm font-medium block truncate">
+                          <div className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">
                               {toTitleCaseFileName(file.name)}
                             </span>
                             <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -1853,7 +2044,7 @@ export default function TaskDetail() {
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 items-center gap-2">
                           {canEditTask && (
                             <Button
                               variant="ghost"
@@ -1898,10 +2089,10 @@ export default function TaskDetail() {
                         key={file.id}
                         className={fileRowClass}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
                           {renderFilePreview(file)}
-                          <div className="min-w-0">
-                            <span className="text-sm font-medium block truncate">
+                          <div className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">
                               {toTitleCaseFileName(file.name)}
                             </span>
                             <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -1912,7 +2103,7 @@ export default function TaskDetail() {
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 items-center gap-2">
                           {canEditTask && (
                             <Button
                               variant="ghost"
@@ -1977,7 +2168,8 @@ export default function TaskDetail() {
 
               {/* Upload (Designer only) */}
               {isDesignerOrAdmin && (
-                <div className="mt-6 rounded-2xl border-2 border-dashed border-[#D9E6FF] bg-[#F8FAFF] p-6 text-center">
+                <>
+                  <div className="mt-6 rounded-2xl border-2 border-dashed border-[#D9E6FF] bg-[#F8FAFF] p-6 text-center">
                   <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
                   <p className="text-xs text-muted-foreground">
@@ -2024,17 +2216,22 @@ export default function TaskDetail() {
                       </Button>
                     </div>
                   </div>
+                  </div>
                   {taskState.status !== 'completed' && (
                     <div className="mt-4 flex flex-col items-center gap-2">
-                      <Button onClick={handleHandoverTask} disabled={!canHandover}>
-                        Handover Task
+                      <Button
+                        onClick={handleHandoverTask}
+                        disabled={!canHandover}
+                        className="min-w-[180px] px-6"
+                      >
+                        Submit
                       </Button>
                       <span className="text-xs text-muted-foreground">
                         Mark the task as completed after uploading final files.
                       </span>
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
 
@@ -2059,7 +2256,18 @@ export default function TaskDetail() {
                 <Textarea
                   placeholder={getMentionPlaceholder(user?.role)}
                   value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNewComment(value);
+                    if (!apiUrl) return;
+                    emitTyping(true);
+                    if (typingTimeoutRef.current) {
+                      clearTimeout(typingTimeoutRef.current);
+                    }
+                    typingTimeoutRef.current = setTimeout(() => {
+                      emitTyping(false);
+                    }, 1200);
+                  }}
                   rows={2}
                   className="flex-1 select-text"
                 />
@@ -2072,6 +2280,27 @@ export default function TaskDetail() {
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
+              {Object.keys(typingUsers).length > 0 && (
+                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/80 px-3 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm">
+                  <span>
+                    {(() => {
+                      const entries = Object.values(typingUsers);
+                      const names = entries
+                        .map((entry) =>
+                          `${entry.name}${entry.role ? ` (${roleLabels[entry.role]})` : ''}`
+                        )
+                        .join(', ');
+                      const verb = entries.length === 1 ? 'is' : 'are';
+                      return `${names} ${verb} typing`;
+                    })()}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:300ms]" />
+                  </span>
+                </div>
+              )}
               </div>
             </div>
 
@@ -2150,60 +2379,81 @@ export default function TaskDetail() {
               </dl>
             </div>
 
-            {/* Status Timeline (simplified) */}
-            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+            {/* Status Timeline */}
+            <div className={`${glassPanelClass} p-6 overflow-hidden animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Status</h2>
-              <div className="relative">
-                <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-border" />
-                <div className="space-y-4">
-                  {(['pending', 'in_progress', 'under_review', 'completed'] as TaskStatus[]).map(
-                    (s, index) => {
-                      const isCurrent = taskState.status === s;
-                      const isPast =
-                        ['pending', 'in_progress', 'under_review', 'completed'].indexOf(
-                          taskState.status
-                        ) > index;
+              {(() => {
+                const steps: TaskStatus[] = ['pending', 'in_progress', 'under_review', 'completed'];
+                const currentIndex = steps.indexOf(taskState.status);
+                return (
+                  <div className="space-y-3 sm:space-y-4">
+                    {steps.map((step, index) => {
+                      const isCurrent = index === currentIndex;
+                      const isPast = index < currentIndex;
+                      const isUpcoming = index > currentIndex;
                       return (
-                        <div key={s} className="flex items-center gap-3 relative">
-                          <div
-                            className={cn(
-                              'h-6 w-6 rounded-full border-2 flex items-center justify-center z-10',
-                              isCurrent
-                                ? 'bg-primary border-primary'
-                                : isPast
-                                  ? 'bg-status-completed border-status-completed'
-                                  : 'bg-card border-border'
-                            )}
-                          >
-                            {(isPast || isCurrent) && (
-                              <CheckCircle2
+                        <div key={step} className="flex items-start gap-3 sm:gap-4">
+                          <div className="relative flex flex-col items-center">
+                            <div className="flex h-9 w-9 sm:h-12 sm:w-12 items-center justify-center">
+                              {isCurrent ? (
+                                <div className="h-9 w-9 sm:h-12 sm:w-12 rounded-full overflow-hidden bg-white">
+                                  <DotLottieReact
+                                    src="https://lottie.host/31b5d829-4d1f-42a6-ba16-3560e550c0ac/KTsiywVfWC.lottie"
+                                    loop
+                                    autoplay
+                                    className="h-9 w-9 sm:h-12 sm:w-12"
+                                  />
+                                </div>
+                              ) : (
+                                <span
+                                  className={cn(
+                                    'h-4 w-4 sm:h-6 sm:w-6 rounded-full',
+                                    isPast ? 'bg-primary/70' : 'bg-[#D6DFEF]'
+                                  )}
+                                />
+                              )}
+                            </div>
+                            {index !== steps.length - 1 && (
+                              <div
                                 className={cn(
-                                  'h-3 w-3',
-                                  isCurrent
-                                    ? 'text-primary-foreground'
-                                    : 'text-status-completed-foreground'
+                                  'mt-1 h-8 sm:h-10 w-[2px]',
+                                  isPast ? 'bg-primary' : 'bg-[#E6EEFF]'
                                 )}
                               />
                             )}
                           </div>
-                          <span
-                            className={cn(
-                              'text-sm',
-                              isCurrent
-                                ? 'font-medium text-foreground'
-                                : isPast
+                          <div className="w-full min-w-0 flex-1 rounded-2xl border border-[#D9E6FF] bg-gradient-to-br from-white/90 via-[#F2F7FF]/85 to-[#E8F0FF]/75 px-3 py-2 sm:px-4 sm:py-3 shadow-[0_16px_36px_-26px_rgba(15,23,42,0.35)] backdrop-blur">
+                            <div
+                              className={cn(
+                                'min-w-0 text-xs sm:text-sm font-semibold',
+                                isCurrent
+                                  ? 'text-foreground'
+                                  : isPast
+                                    ? 'text-muted-foreground'
+                                    : 'text-muted-foreground/60'
+                              )}
+                            >
+                              {statusConfig[step].label}
+                            </div>
+                            <div
+                              className={cn(
+                                'mt-1 text-[11px] sm:text-xs',
+                                isCurrent
                                   ? 'text-muted-foreground'
-                                  : 'text-muted-foreground/50'
-                            )}
-                          >
-                            {statusConfig[s].label}
-                          </span>
+                                  : isPast
+                                    ? 'text-muted-foreground/80'
+                                    : 'text-muted-foreground/60'
+                              )}
+                            >
+                              {statusDetails[step]}
+                            </div>
+                          </div>
                         </div>
                       );
-                    }
-                  )}
-                </div>
-              </div>
+                    })}
+                  </div>
+                );
+              })()}
             </div>
             {emergencyStatus && (
               <div className={`${glassPanelClass} p-6 animate-slide-up`}>

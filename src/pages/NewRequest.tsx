@@ -37,7 +37,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Task, TaskCategory, TaskUrgency } from '@/types';
+import { Task, TaskCategory, TaskChange, TaskUrgency } from '@/types';
 import { addDays, isBefore, isWithinInterval, startOfDay } from 'date-fns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -420,6 +420,18 @@ export default function NewRequest() {
 
     if (!apiUrl || fallbackToMock) {
       const now = new Date();
+      const createdChange: TaskChange = {
+        id: `ch-${Date.now()}-0`,
+        type: 'status',
+        field: 'created',
+        oldValue: undefined,
+        newValue: 'Created',
+        note: `New request submitted by ${user?.name || 'Staff'}`,
+        userId: user?.id || '',
+        userName: user?.name || 'Staff',
+        userRole: user?.role || 'staff',
+        createdAt: now,
+      };
       const localTask: Task = {
         id: crypto.randomUUID(),
         title: title.trim(),
@@ -439,7 +451,7 @@ export default function NewRequest() {
         deadline: deadline as Date,
           isModification: false,
           changeCount: 0,
-          changeHistory: [],
+          changeHistory: [createdChange],
           designVersions: [],
           files: files.map((file) => ({
             id: file.driveId || file.id,

@@ -3,6 +3,7 @@ import Task from "../models/Task.js";
 import { getDriveClient } from "../lib/drive.js";
 import Activity from "../models/Activity.js";
 import { sendFinalFilesEmail, sendFinalFilesSms, sendTaskCreatedSms } from "../lib/notifications.js";
+import { getSocket } from "../socket.js";
 
 const router = express.Router();
 
@@ -146,6 +147,14 @@ router.patch("/:id", async (req, res) => {
       userName: req.body.userName || ""
     });
 
+    const io = getSocket();
+    if (io) {
+      io.to(task.id || task._id?.toString?.()).emit("task:updated", {
+        taskId: task.id || task._id?.toString?.(),
+        task
+      });
+    }
+
     res.json(task);
   } catch (error) {
     res.status(400).json({ error: "Failed to update task." });
@@ -213,6 +222,17 @@ router.post("/:id/comments", async (req, res) => {
       userId: userId || "",
       userName: userName || ""
     });
+
+    const createdComment = Array.isArray(task.comments)
+      ? task.comments[task.comments.length - 1]
+      : null;
+    const io = getSocket();
+    if (io && createdComment) {
+      io.to(task.id || task._id?.toString?.()).emit("comment:new", {
+        taskId: task.id || task._id?.toString?.(),
+        comment: createdComment
+      });
+    }
 
     res.json(task);
   } catch (error) {
@@ -421,6 +441,14 @@ router.post("/:id/changes", async (req, res) => {
         taskUrl,
         deadline: updatedTask.deadline,
         taskId: updatedTask.id || updatedTask._id?.toString?.()
+      });
+    }
+
+    const io = getSocket();
+    if (io) {
+      io.to(updatedTask.id || updatedTask._id?.toString?.()).emit("task:updated", {
+        taskId: updatedTask.id || updatedTask._id?.toString?.(),
+        task: updatedTask
       });
     }
 

@@ -25,6 +25,7 @@ import {
   startOfWeek,
 } from 'date-fns';
 import type { Task as ScheduleTask } from '@/lib/designerSchedule';
+import type { TaskStatus } from '@/types';
 import {
   approveEmergencyTask,
   completeTask as completeScheduleTask,
@@ -36,7 +37,7 @@ import {
 } from '@/lib/designerSchedule';
 import { seedScheduleTasks } from '@/data/designerSchedule';
 import { cn } from '@/lib/utils';
-import { mergeLocalTasks } from '@/lib/taskStorage';
+import { loadLocalTaskList, mergeLocalTasks, upsertLocalTask } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
@@ -51,6 +52,14 @@ const priorityStyles: Record<ScheduleTask['priority'], { bar: string; dot: strin
   VIP: { bar: 'bg-[#ef4444] text-white', dot: 'bg-[#ef4444]' },
   HIGH: { bar: 'bg-[#f59e0b] text-slate-900', dot: 'bg-[#f59e0b]' },
   NORMAL: { bar: 'bg-[#3b82f6] text-white', dot: 'bg-[#3b82f6]' },
+};
+
+const taskStatusLabels: Record<TaskStatus, string> = {
+  pending: 'Pending',
+  in_progress: 'In Progress',
+  clarification_required: 'Clarification Required',
+  under_review: 'Under Review',
+  completed: 'Completed',
 };
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -245,11 +254,47 @@ export default function Tasks() {
   }, [scheduledTasks]);
 
   const handleCompleteScheduleTask = (taskId: string) => {
+    const linkedTask = loadLocalTaskList().find(
+      (task) => task.scheduleTaskId === taskId
+    );
     const nextTasks = completeScheduleTask(scheduleTasks, taskId);
     const diff = getScheduleDiff(scheduleTasks, nextTasks, designerId);
     setScheduleTasks(nextTasks);
     saveScheduleTasks(nextTasks);
     toast.success('Task completed. Schedule recalculated.');
+    if (linkedTask && linkedTask.status !== 'completed') {
+      const now = new Date();
+      const entry = {
+        id: `ch-${Date.now()}-0`,
+        type: 'status' as const,
+        field: 'status',
+        oldValue: taskStatusLabels[linkedTask.status],
+        newValue: taskStatusLabels.completed,
+        note: `Completed by ${user?.name || 'Designer'}`,
+        userId: user?.id || '',
+        userName: user?.name || 'Designer',
+        userRole: user?.role || 'designer',
+        createdAt: now,
+      };
+      upsertLocalTask({
+        ...linkedTask,
+        status: 'completed',
+        updatedAt: now,
+        changeHistory: [entry, ...(linkedTask.changeHistory || [])],
+        changeCount: (linkedTask.changeCount ?? 0) + 1,
+      });
+    } else {
+      const requester = getScheduleRequester(taskId);
+      const task = scheduleTasks.find((entry) => entry.id === taskId);
+      if (requester && task) {
+        const designerName = user?.name ? ` by ${user.name}` : '';
+        pushScheduleNotification(
+          requester.requesterId,
+          taskId,
+          `Designer completed "${task.title}"${designerName}.`
+        );
+      }
+    }
     diff.autoStarted.forEach((task) => {
       if (!task.actualStartDate) return;
       toast.message(`"${task.title}" auto-started on ${format(task.actualStartDate, 'MMM d')}.`);
