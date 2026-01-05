@@ -36,7 +36,24 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const task = await Task.create(req.body);
+    const now = new Date();
+    const requesterName = req.body.requesterName || "";
+    const createdEntry = {
+      type: "status",
+      field: "created",
+      oldValue: "",
+      newValue: "Created",
+      note: `New request submitted by ${requesterName || "Staff"}`,
+      userId: req.body.requesterId || "",
+      userName: requesterName || "",
+      userRole: req.body.userRole || "staff",
+      createdAt: now
+    };
+    const payload = {
+      ...req.body,
+      changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
+    };
+    const task = await Task.create(payload);
     await Activity.create({
       taskId: task._id,
       taskTitle: task.title,

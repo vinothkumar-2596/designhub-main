@@ -1,4 +1,9 @@
 import nodemailer from "nodemailer";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const normalizeWhatsAppNumber = (value) => {
   if (!value) return "";
@@ -275,14 +280,25 @@ export const sendFinalFilesEmail = async ({
     });
   };
 
-  const from = process.env.GMAIL_SMTP_FROM || process.env.GMAIL_SMTP_USER;
+  const brandName = process.env.BRAND_NAME || "DesignDesk";
+  const fromAddress = process.env.GMAIL_SMTP_FROM || process.env.GMAIL_SMTP_USER;
+  const from = fromAddress
+    ? fromAddress.includes("<")
+      ? fromAddress
+      : `"${brandName}" <${fromAddress}>`
+    : undefined;
   const safeTitle = taskTitle || "your task";
   const displayDesigner = designerName || "A designer";
   const fileItems = Array.isArray(files) ? files : [];
   const brandColor = process.env.BRAND_PRIMARY_HEX || "#34429D";
   const brandSoft = process.env.BRAND_PRIMARY_SOFT || "#EEF1FF";
   const baseUrl = process.env.FRONTEND_URL || "";
-  const logoUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/favicon.png` : "";
+  const logoUrl =
+    process.env.BRAND_LOGO_URL ||
+    (baseUrl ? `${baseUrl.replace(/\/$/, "")}/favicon.png` : "");
+  const localLogoPath = path.resolve(__dirname, "../../public/favicon.png");
+  const hasLocalLogo = fs.existsSync(localLogoPath);
+  const logoCid = "design-desk-logo";
   const requesterLabel = taskDetails?.requesterName
     ? `${taskDetails.requesterName}${taskDetails.requesterEmail ? ` (${taskDetails.requesterEmail})` : ""}${
         taskDetails.requesterDepartment ? ` - ${taskDetails.requesterDepartment}` : ""
@@ -348,9 +364,11 @@ export const sendFinalFilesEmail = async ({
       `
     : "";
 
-  const logoMark = logoUrl
-    ? `<img src="${logoUrl}" width="40" height="40" alt="DesignDesk" style="display:block;border-radius:10px;background:${brandSoft};" />`
-    : "";
+  const logoMark = hasLocalLogo
+    ? `<img src="cid:${logoCid}" width="40" height="40" alt="${brandName}" style="display:block;border-radius:10px;background:${brandSoft};" />`
+    : logoUrl
+      ? `<img src="${logoUrl}" width="40" height="40" alt="${brandName}" style="display:block;border-radius:10px;background:${brandSoft};" />`
+      : "";
 
   const viewInBrowser = taskUrl
     ? `<a href="${taskUrl}" style="color:${brandColor};text-decoration:none;">View this email in your browser</a>`
@@ -401,7 +419,7 @@ export const sendFinalFilesEmail = async ({
           <td style="text-align:center;padding-bottom:18px;">
             ${logoMark}
             <div style="margin-top:10px;font-weight:700;font-size:18px;color:${brandColor};letter-spacing:0.5px;">
-              DesignDesk
+              ${brandName}
             </div>
           </td>
         </tr>
@@ -461,7 +479,7 @@ export const sendFinalFilesEmail = async ({
               </tr>
               <tr>
                 <td style="padding:18px 32px;border-top:1px solid #e6e9f2;text-align:center;font-size:12px;color:#98a2b3;">
-                  This message was sent by DesignDesk.
+                  This message was sent by ${brandName}.
                 </td>
               </tr>
             </table>
@@ -478,6 +496,15 @@ export const sendFinalFilesEmail = async ({
       subject: `DesignDesk: Final files uploaded for ${safeTitle}`,
       text: lines.join("\n"),
       html,
+      attachments: hasLocalLogo
+        ? [
+            {
+              filename: "logo.png",
+              path: localLogoPath,
+              cid: logoCid,
+            },
+          ]
+        : [],
     });
     console.log("Final files email sent:", info?.response || info?.messageId || "ok");
     return true;

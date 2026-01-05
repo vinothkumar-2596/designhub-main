@@ -43,6 +43,8 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
   const [useLocalData, setUseLocalData] = useState(!apiUrl);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
+  const autoPreviewShownRef = useRef(false);
+  const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -163,9 +165,44 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
       .slice(0, 3);
   }, [hydratedTasks, user]);
 
+  const buildCommentNotifications = (role: 'designer' | 'treasurer') =>
+    hydratedTasks
+      .flatMap((task) => {
+        const comments = task.comments || [];
+        const roleComments = comments.filter((comment: any) => {
+          if (comment.userRole !== 'staff') return false;
+          if (Array.isArray(comment.receiverRoles) && comment.receiverRoles.length > 0) {
+            return comment.receiverRoles.includes(role);
+          }
+          return true;
+        });
+        if (roleComments.length === 0) {
+          return [];
+        }
+        const latest = roleComments.reduce((current: any, next: any) => {
+          const currentTime = new Date(current.createdAt ?? 0).getTime();
+          const nextTime = new Date(next.createdAt ?? 0).getTime();
+          return nextTime > currentTime ? next : current;
+        });
+        return [
+          {
+            id: latest.id || `${task.id}-comment-${latest.createdAt ?? ''}`,
+            taskId: task.id,
+            taskTitle: task.title,
+            task,
+            field: 'comment',
+            note: latest.content,
+            userName: latest.userName,
+            userRole: latest.userRole,
+            createdAt: latest.createdAt,
+          },
+        ];
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   const designerNotifications = useMemo(() => {
     if (!user || user.role !== 'designer') return [];
-    return hydratedTasks
+    const base = hydratedTasks
       .flatMap((task) => {
         const history = task.changeHistory || [];
         const treasurerEntries = history.filter(
@@ -194,13 +231,16 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
           ? [{ ...latestStaff, taskId: task.id, taskTitle: task.title, task }]
           : [];
       })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const comments = buildCommentNotifications('designer');
+    return [...base, ...comments]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
   }, [hydratedTasks, user]);
 
   const treasurerNotifications = useMemo(() => {
     if (!user || user.role !== 'treasurer') return [];
-    return hydratedTasks
+    const base = hydratedTasks
       .flatMap((task) => {
         const history = task.changeHistory || [];
         const createdEntries = history.filter(
@@ -214,6 +254,9 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
           ? [{ ...latestCreated, taskId: task.id, taskTitle: task.title, task }]
           : [];
       })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const comments = buildCommentNotifications('treasurer');
+    return [...base, ...comments]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
   }, [hydratedTasks, user]);
@@ -232,6 +275,39 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
     user?.role === 'staff' || user?.role === 'designer' || user?.role === 'treasurer';
 
   useEffect(() => {
+    if (!user || !hasNotifications) return;
+    if (user.role === 'staff') return;
+    if (autoPreviewShownRef.current) return;
+    if (typeof window === 'undefined') return;
+    const lastSeenKey = `designhub.notifications.lastSeen.${user.id}`;
+    const lastSeenValue = Number(window.localStorage.getItem(lastSeenKey) || 0);
+    const latestCreatedAt = Math.max(
+      ...activeNotifications.map((entry: any) =>
+        new Date(entry.createdAt ?? 0).getTime()
+      )
+    );
+    if (!Number.isFinite(latestCreatedAt) || latestCreatedAt <= lastSeenValue) {
+      return;
+    }
+    autoPreviewShownRef.current = true;
+    setNotificationsOpen(true);
+    window.localStorage.setItem(lastSeenKey, String(latestCreatedAt));
+    if (previewTimeoutRef.current) {
+      clearTimeout(previewTimeoutRef.current);
+    }
+    previewTimeoutRef.current = setTimeout(() => {
+      setNotificationsOpen(false);
+      previewTimeoutRef.current = null;
+    }, 10000);
+    return () => {
+      if (previewTimeoutRef.current) {
+        clearTimeout(previewTimeoutRef.current);
+        previewTimeoutRef.current = null;
+      }
+    };
+  }, [hasNotifications, user]);
+
+  useEffect(() => {
     if (!notificationsOpen) return;
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
       if (!notificationsRef.current) return;
@@ -247,6 +323,9 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
   }, [notificationsOpen]);
 
   const getNotificationTitle = (entry: any) => {
+    if (entry.field === 'comment') {
+      return `${entry.userName || 'Staff'} messaged ${entry.taskTitle}`;
+    }
     if (entry.field === 'created') {
       return `New request: ${entry.taskTitle}`;
     }
@@ -269,6 +348,9 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
   };
 
   const getNotificationNote = (entry: any) => {
+    if (entry.field === 'comment') {
+      return entry.note || 'New message received.';
+    }
     if (entry.field === 'created') {
       return entry.note || `Submitted by ${entry.userName}`;
     }
@@ -295,7 +377,21 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
       <button
         type="button"
         className="relative h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/90 text-muted-foreground hover:text-foreground shadow-sm flex items-center justify-center"
-        onClick={() => setNotificationsOpen((prev) => !prev)}
+        onClick={() => {
+          const nextOpen = !notificationsOpen;
+          setNotificationsOpen(nextOpen);
+          if (nextOpen && user && typeof window !== 'undefined') {
+            const lastSeenKey = `designhub.notifications.lastSeen.${user.id}`;
+            const latestCreatedAt = Math.max(
+              ...activeNotifications.map((entry: any) =>
+                new Date(entry.createdAt ?? 0).getTime()
+              )
+            );
+            if (Number.isFinite(latestCreatedAt)) {
+              window.localStorage.setItem(lastSeenKey, String(latestCreatedAt));
+            }
+          }
+        }}
         aria-label="Notifications"
       >
         <Bell className="h-4 w-4" />
@@ -303,7 +399,7 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
           <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary" />
         )}
       </button>
-      {notificationsOpen && hasNotifications && (
+      {notificationsOpen && (
         <div className="absolute right-0 mt-2 w-72 rounded-xl border border-[#C9D7FF] bg-[#F2F6FF]/95 backdrop-blur-xl p-3 shadow-lg z-50 animate-dropdown origin-top-right">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
@@ -318,28 +414,34 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
             </button>
           </div>
           <div className="mt-3 space-y-2">
-            {activeNotifications.map((entry: any) => (
-              <Link
-                key={entry.id}
-                to={`/task/${entry.taskId}`}
-                state={{ task: entry.task, highlightChangeId: entry.id }}
-                onClick={() => setNotificationsOpen(false)}
-                className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-foreground">
-                    {getNotificationTitle(entry)}
+            {activeNotifications.length > 0 ? (
+              activeNotifications.map((entry: any) => (
+                <Link
+                  key={entry.id}
+                  to={`/task/${entry.taskId}`}
+                  state={{ task: entry.task, highlightChangeId: entry.id }}
+                  onClick={() => setNotificationsOpen(false)}
+                  className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {getNotificationTitle(entry)}
+                    </p>
+                    <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {getNotificationNote(entry)}
                   </p>
-                  <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {getNotificationNote(entry)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
-                </p>
-              </Link>
-            ))}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
+                  </p>
+                </Link>
+              ))
+            ) : (
+              <div className="rounded-lg border border-dashed border-[#D9E6FF] bg-white/70 px-3 py-4 text-xs text-muted-foreground text-center">
+                No notifications yet.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -353,6 +455,13 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
   return (
     <DashboardShell
       userInitial={user?.name?.charAt(0) || 'U'}
+      onContentScroll={() => {
+        if (previewTimeoutRef.current) {
+          clearTimeout(previewTimeoutRef.current);
+          previewTimeoutRef.current = null;
+        }
+        setNotificationsOpen(false);
+      }}
       headerActions={
         notificationAction || headerActions ? (
           <>
@@ -371,10 +480,12 @@ function DashboardShell({
   children,
   userInitial,
   headerActions,
+  onContentScroll,
 }: {
   children: ReactNode;
   userInitial: string;
   headerActions?: ReactNode;
+  onContentScroll?: () => void;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
   const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'people' | 'files' | 'categories' | 'more'>('all');
@@ -472,6 +583,7 @@ function DashboardShell({
   const handleContentScroll = () => {
     setIsSearchDismissed(true);
     setIsSearchOpen(false);
+    onContentScroll?.();
   };
 
   useEffect(() => {

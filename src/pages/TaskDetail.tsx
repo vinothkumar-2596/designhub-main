@@ -110,7 +110,7 @@ const fileRowClass =
 const fileActionButtonClass =
   'border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.35)]';
 const badgeGlassClass =
-  'rounded-full border border-[#BFD3FF] bg-gradient-to-br from-[#EFF4FF]/85 via-[#DCE8FF]/80 to-[#C9DCFF]/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2D4F9A] shadow-[0_12px_24px_-20px_rgba(30,58,138,0.35)] backdrop-blur';
+  'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] shadow-[0_16px_30px_-22px_rgba(30,58,138,0.38)] backdrop-blur-xl';
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -727,6 +727,14 @@ export default function TaskDetail() {
       return `https://drive.google.com/thumbnail?id=${driveId}&sz=w200-h200`;
     }
     return '';
+  };
+  const getDownloadUrl = (file: (typeof taskState)['files'][number]) => {
+    if (!file.url) return '';
+    const driveId = getDriveFileId(file.url);
+    if (driveId) {
+      return `https://drive.google.com/uc?export=download&id=${driveId}`;
+    }
+    return file.url;
   };
   const renderFilePreview = (file: (typeof taskState)['files'][number]) => {
     const extLabel = getFileExtension(file.name);
@@ -2056,19 +2064,24 @@ export default function TaskDetail() {
                                 <Trash2 className="h-4 w-4 text-status-urgent" />
                             </Button>
                           )}
+                          {(() => {
+                            const downloadUrl = getDownloadUrl(file);
+                            return (
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            disabled={!file.url || file.url === '#'}
+                            disabled={!downloadUrl || downloadUrl === '#'}
                             className={fileActionButtonClass}
                             onClick={() => {
-                              if (file.url && file.url !== '#') {
-                                window.open(file.url, '_blank', 'noopener,noreferrer');
+                              if (downloadUrl && downloadUrl !== '#') {
+                                window.open(downloadUrl, '_blank', 'noopener,noreferrer');
                               }
                             }}
                           >
                             <Download className="h-4 w-4" />
                           </Button>
+                            );
+                          })()}
                         </div>
                       </div>
                     ))}
@@ -2115,19 +2128,24 @@ export default function TaskDetail() {
                                 <Trash2 className="h-4 w-4 text-status-urgent" />
                             </Button>
                           )}
+                          {(() => {
+                            const downloadUrl = getDownloadUrl(file);
+                            return (
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            disabled={!file.url || file.url === '#'}
+                            disabled={!downloadUrl || downloadUrl === '#'}
                             className={fileActionButtonClass}
                             onClick={() => {
-                              if (file.url && file.url !== '#') {
-                                window.open(file.url, '_blank', 'noopener,noreferrer');
+                              if (downloadUrl && downloadUrl !== '#') {
+                                window.open(downloadUrl, '_blank', 'noopener,noreferrer');
                               }
                             }}
                           >
                             <Download className="h-4 w-4" />
                           </Button>
+                            );
+                          })()}
                         </div>
                       </div>
                     ))}
