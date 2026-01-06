@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   Plus,
   HelpCircle,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -69,6 +70,7 @@ const navItems: NavItem[] = [
     icon: CheckSquare,
     roles: ['treasurer'],
   },
+
 ];
 
 export function AppSidebar() {
@@ -97,6 +99,17 @@ export function AppSidebar() {
       return <Shield className="h-3 w-3" />;
     }
     return <User className="h-3 w-3" />;
+  };
+
+  const getNavLinkClass = (path: string | null) => {
+    const isActive = path ? location.pathname === path : false;
+    return cn(
+      'flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent transition-all duration-200',
+      isActive
+        ? 'bg-primary/75 bg-gradient-to-br from-white/20 via-primary/80 to-primary/90 text-primary-foreground border border-white/40 shadow-[0_22px_44px_-26px_hsl(var(--primary)/0.5)] backdrop-blur-2xl ring-1 ring-white/30'
+        : 'text-[#475569] hover:border hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:shadow-[0_16px_34px_-22px_rgba(30,58,138,0.35)] hover:backdrop-blur-xl',
+      collapsed && 'justify-center px-2'
+    );
   };
 
   return (
@@ -172,11 +185,7 @@ export function AppSidebar() {
               key={item.href}
               to={item.href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent transition-all duration-200',
-                isActive
-                  ? 'bg-primary/75 bg-gradient-to-br from-white/20 via-primary/80 to-primary/90 text-primary-foreground border border-white/40 shadow-[0_22px_44px_-26px_hsl(var(--primary)/0.5)] backdrop-blur-2xl ring-1 ring-white/30'
-                  : 'text-[#475569] hover:border hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:shadow-[0_16px_34px_-22px_rgba(30,58,138,0.35)] hover:backdrop-blur-xl',
-                collapsed && 'justify-center px-2'
+                getNavLinkClass(item.href)
               )}
             >
               <item.icon className="h-5 w-5 flex-shrink-0" />
@@ -259,8 +268,7 @@ export function AppSidebar() {
         <Link
           to="/settings"
           className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent text-[#475569] transition-all duration-200 hover:border hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:shadow-[0_16px_34px_-22px_rgba(30,58,138,0.35)] hover:backdrop-blur-xl',
-            collapsed && 'justify-center px-2'
+            getNavLinkClass('/settings')
           )}
         >
           <Settings className="h-5 w-5" />
@@ -269,8 +277,7 @@ export function AppSidebar() {
         <Link
           to="/help"
           className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent text-[#475569] transition-all duration-200 hover:border hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:shadow-[0_16px_34px_-22px_rgba(30,58,138,0.35)] hover:backdrop-blur-xl',
-            collapsed && 'justify-center px-2'
+            getNavLinkClass('/help')
           )}
         >
           <HelpCircle className="h-5 w-5" />
@@ -285,8 +292,7 @@ export function AppSidebar() {
             }, 0);
           }}
           className={cn(
-            'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent text-[#475569] transition-all duration-200 hover:border hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:shadow-[0_16px_34px_-22px_rgba(30,58,138,0.35)] hover:backdrop-blur-xl',
-            collapsed && 'justify-center px-2'
+            getNavLinkClass(null)
           )}
         >
           <LogOut className="h-5 w-5" />

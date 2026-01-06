@@ -83,7 +83,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   return (
     <div
       className={cn(
-        'group rounded-2xl border p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up',
+        'group rounded-2xl border p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up h-full flex flex-col',
         isHighlighted ? 'border-[#A9BFFF] bg-[#F3F7FF]' : 'border-[#D9E6FF] bg-white'
       )}
     >
@@ -104,7 +104,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
       </div>
 
       <div className="mt-3 space-y-2">
-        <h3 className="text-lg font-semibold text-foreground transition-colors group-hover:text-primary">
+        <h3 className="text-lg font-semibold text-foreground transition-colors group-hover:text-primary break-words">
           {task.title}
         </h3>
         <p className="text-sm text-muted-foreground line-clamp-2">{task.description}</p>
@@ -143,7 +143,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
         )}
       </div>
 
-      <div className="mt-4 flex items-center justify-between border-t border-[#D9E6FF] pt-3">
+      <div className="mt-auto flex items-center justify-between border-t border-[#D9E6FF] pt-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Clock className="h-3.5 w-3.5" />
           <span>Created {format(task.createdAt, 'MMM d, yyyy h:mm a')}</span>

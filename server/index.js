@@ -8,6 +8,7 @@ import activityRoutes from "./routes/activity.js";
 import authRoutes from "./routes/auth.js";
 import fileRoutes from "./routes/files.js";
 import driveAuthRoutes from "./routes/drive-auth.js";
+import aiRoutes from "./routes/ai.js";
 import User from "./models/User.js";
 import { initSocket } from "./socket.js";
 
@@ -26,6 +27,7 @@ app.use("/api/activity", activityRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/drive", driveAuthRoutes);
+app.use("/api/ai", aiRoutes);
 
 const port = process.env.PORT || 4000;
 const mongoUri = process.env.MONGODB_URI;

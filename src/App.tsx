@@ -16,6 +16,7 @@ import TaskDetail from "./pages/TaskDetail";
 import Activity from "./pages/Activity";
 import Settings from "./pages/Settings";
 import Help from "./pages/Help";
+import AIMode from "./pages/AIMode";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
               <Route path="/task/:id" element={<TaskDetail />} />
               <Route path="/activity" element={<Activity />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/ai-mode" element={<AIMode />} />
               <Route path="/help" element={<Help />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

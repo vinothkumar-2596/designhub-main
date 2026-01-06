@@ -15,6 +15,7 @@ import {
   User,
   Users,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { Link } from 'react-router-dom';
@@ -415,9 +416,9 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
           </div>
           <div className="mt-3 space-y-2">
             {activeNotifications.length > 0 ? (
-              activeNotifications.map((entry: any) => (
+              activeNotifications.map((entry: any, idx: number) => (
                 <Link
-                  key={entry.id}
+                  key={entry.id || `notif-${idx}`}
                   to={`/task/${entry.taskId}`}
                   state={{ task: entry.task, highlightChangeId: entry.id }}
                   onClick={() => setNotificationsOpen(false)}
@@ -463,12 +464,25 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
         setNotificationsOpen(false);
       }}
       headerActions={
-        notificationAction || headerActions ? (
-          <>
-            {notificationAction}
-            {headerActions}
-          </>
-        ) : null
+        <>
+          <Link
+            to="/ai-mode"
+            className="group relative h-9 px-4 rounded-full border border-primary/20 bg-primary/10 text-primary hover:text-white transition-all duration-300 flex items-center justify-center gap-2 overflow-hidden"
+            aria-label="Task Buddy AI Assistant"
+            title="Task Buddy AI Assistant"
+          >
+            {/* AI Glow Effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/40 via-violet-400/40 to-primary/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+            {/* Shimmer Effect */}
+            <div className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+
+            <Sparkles className="relative h-4 w-4 transition-all duration-300 group-hover:scale-110 group-hover:rotate-12 group-hover:text-amber-300" />
+            <span className="relative text-sm font-semibold tracking-tight">Task Buddy</span>
+          </Link>
+          {notificationAction}
+          {headerActions}
+        </>
       }
     >
       {children}
@@ -779,23 +793,10 @@ function DashboardShell({
                 </div>
                 <div className="flex items-center gap-2">
                   {headerActions}
-                  <Link
-                    to="/help"
-                    className="h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/90 text-muted-foreground hover:text-foreground shadow-sm flex items-center justify-center"
-                    aria-label="Help Center"
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                  </Link>
-                  <div className="h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/95 text-foreground font-semibold flex items-center justify-center shadow-sm">
-                    {userInitial}
-                  </div>
                 </div>
               </div>
             </div>
-            <div
-              className="flex-1 overflow-auto scrollbar-none px-4 md:px-6"
-              onScroll={handleContentScroll}
-            >
+            <div className="flex-1 overflow-auto" onScroll={handleContentScroll}>
               <div className="container py-6 px-4 md:px-8 max-w-6xl mx-auto">
                 {children}
               </div>

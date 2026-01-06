@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,6 +68,7 @@ import {
   loadScheduleTasks,
   recordScheduleRequest,
   saveScheduleTasks,
+  Task as ScheduleTask,
 } from '@/lib/designerSchedule';
 import { seedScheduleTasks } from '@/data/designerSchedule';
 import { upsertLocalTask } from '@/lib/taskStorage';
@@ -365,7 +366,7 @@ const categoryOptions: { value: TaskCategory; label: string; icon: React.Element
   { value: 'flyer', label: 'Flyer', icon: FileText },
 ];
 
-const priorityFromUrgency = (value: TaskUrgency) => {
+const priorityFromUrgency = (value: TaskUrgency): "VIP" | "HIGH" | "NORMAL" => {
   if (value === 'urgent') return 'VIP';
   if (value === 'intermediate') return 'HIGH';
   return 'NORMAL';
@@ -397,6 +398,7 @@ function LinearProgressWithLabel(props: LinearProgressProps & { value: number })
 
 export default function NewRequest() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showGuidelines, setShowGuidelines] = useState(true);
@@ -419,7 +421,7 @@ export default function NewRequest() {
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
   const [aiWarnings, setAiWarnings] = useState<string[]>([]);
   const [isEditingDraft, setIsEditingDraft] = useState(false);
-  
+
   // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -430,9 +432,30 @@ export default function NewRequest() {
   const [requesterPhone, setRequesterPhone] = useState(user?.phone || '');
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [scheduleTasks, setScheduleTasks] = useState(() =>
+  const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>(() =>
     loadScheduleTasks(seedScheduleTasks)
   );
+
+  // Initialize from AI Buddy state if provided
+  useEffect(() => {
+    if (location.state?.aiDraft) {
+      const draft = location.state.aiDraft as any;
+      if (draft.requestTitle) setTitle(draft.requestTitle);
+      if (draft.description) setDescription(draft.description);
+      if (draft.category) setCategory(draft.category as TaskCategory);
+      if (draft.urgency) setUrgency(draft.urgency.toLowerCase() as TaskUrgency);
+      if (draft.deadline) {
+        const parsedDate = parseIsoDate(draft.deadline) || new Date(draft.deadline);
+        if (!isNaN(parsedDate.getTime())) setDeadline(parsedDate);
+      }
+      if (draft.phone) setRequesterPhone(draft.phone);
+      if (Array.isArray(draft.files) && draft.files.length > 0) {
+        setFiles(draft.files);
+      }
+
+      toast.success("AI Buddy: Draft applied to form!");
+    }
+  }, [location.state]);
   const glassPanelClass =
     'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
   const glassInputClass =
@@ -459,8 +482,8 @@ export default function NewRequest() {
       })
     );
 
-    useEffect(() => {
-      let isActive = true;
+  useEffect(() => {
+    let isActive = true;
 
     const fetchAnimation = async (path: string) => {
       const response = await fetch(path);
@@ -476,11 +499,11 @@ export default function NewRequest() {
         if (thankYouData) setThankYouAnimation(thankYouData);
         if (uploadData) setUploadAnimation(uploadData);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       isActive = false;
     };
-    }, []);
+  }, []);
 
   useEffect(() => {
     setRequesterPhone(user?.phone || '');
@@ -866,7 +889,7 @@ export default function NewRequest() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!isFormValid()) {
       toast.error('Please complete all required fields', {
         description: 'Ensure all required fields are filled in.',
@@ -874,18 +897,18 @@ export default function NewRequest() {
       return;
     }
 
-      setIsSubmitting(true);
-      let fallbackToMock = false;
-      const phoneValue = requesterPhone.trim() || user?.phone || '';
-      const nextScheduleTasks = isEmergency
-        ? assignEmergencyTask(scheduleTasks, designerId, title, deadline ?? undefined)
-        : assignTask(
-          scheduleTasks,
-          designerId,
-          title,
-          deadline ?? undefined,
-          priorityFromUrgency(urgency)
-        );
+    setIsSubmitting(true);
+    let fallbackToMock = false;
+    const phoneValue = requesterPhone.trim() || user?.phone || '';
+    const nextScheduleTasks = (isEmergency
+      ? assignEmergencyTask(scheduleTasks, designerId, title, deadline ?? undefined)
+      : assignTask(
+        scheduleTasks,
+        designerId,
+        title,
+        deadline ?? undefined,
+        priorityFromUrgency(urgency)
+      )) as ScheduleTask[];
     const createdScheduleTask = nextScheduleTasks.find(
       (task) => !scheduleTasks.some((previous) => previous.id === task.id)
     );
@@ -903,18 +926,18 @@ export default function NewRequest() {
           emergencyApprovalStatus: isEmergency ? 'pending' : undefined,
           emergencyRequestedAt: isEmergency ? new Date() : undefined,
           scheduleTaskId: createdScheduleTask?.id,
-            requesterId: user?.id || '',
-            requesterName: user?.name || '',
-            requesterEmail: user?.email || '',
-            requesterPhone: phoneValue || undefined,
-            requesterDepartment: user?.department || '',
-            designVersions: [],
-            files: files.map((file) => ({
-              name: file.name,
-              url: file.url || '',
-              type: 'input',
-              size: file.size,
-              thumbnailUrl: file.thumbnailUrl,
+          requesterId: user?.id || '',
+          requesterName: user?.name || '',
+          requesterEmail: user?.email || '',
+          requesterPhone: phoneValue || undefined,
+          requesterDepartment: user?.department || '',
+          designVersions: [],
+          files: files.map((file) => ({
+            name: file.name,
+            url: file.url || '',
+            type: 'input',
+            size: file.size,
+            thumbnailUrl: file.thumbnailUrl,
             uploadedAt: new Date(),
             uploadedBy: user?.id || '',
           })),
@@ -966,26 +989,26 @@ export default function NewRequest() {
         emergencyApprovalStatus: isEmergency ? 'pending' : undefined,
         emergencyRequestedAt: isEmergency ? now : undefined,
         scheduleTaskId: createdScheduleTask?.id,
-          requesterId: user?.id || '',
-          requesterName: user?.name || 'Staff',
-          requesterEmail: user?.email,
-          requesterPhone: phoneValue || undefined,
-          requesterDepartment: user?.department,
+        requesterId: user?.id || '',
+        requesterName: user?.name || 'Staff',
+        requesterEmail: user?.email,
+        requesterPhone: phoneValue || undefined,
+        requesterDepartment: user?.department,
         deadline: deadline as Date,
-          isModification: false,
-          changeCount: 0,
-          changeHistory: [createdChange],
-          designVersions: [],
-          files: files.map((file) => ({
-            id: file.driveId || file.id,
-            name: file.name,
-            url: file.url || '',
-            type: 'input',
-            size: file.size,
-            thumbnailUrl: file.thumbnailUrl,
-            uploadedAt: now,
-            uploadedBy: user?.id || '',
-          })),
+        isModification: false,
+        changeCount: 0,
+        changeHistory: [createdChange],
+        designVersions: [],
+        files: files.map((file) => ({
+          id: file.driveId || file.id,
+          name: file.name,
+          url: file.url || '',
+          type: 'input',
+          size: file.size,
+          thumbnailUrl: file.thumbnailUrl,
+          uploadedAt: now,
+          uploadedBy: user?.id || '',
+        })),
         comments: [],
         createdAt: now,
         updatedAt: now,
@@ -1015,211 +1038,211 @@ export default function NewRequest() {
           <div className="absolute left-[10%] bottom-[-20%] h-[520px] w-[620px] rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(120,190,255,0.35),_transparent_70%)] blur-[110px] opacity-70" />
         </div>
         <div className="max-w-3xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="animate-fade-in">
-          <h1 className="text-2xl font-bold text-foreground">New Design Request</h1>
-          <p className="text-muted-foreground mt-1">
-            Submit a new design request to the team
-          </p>
-        </div>
-
-        {/* Guidelines Banner */}
-        {showGuidelines && (
-          <div className={`${glassPanelClass} p-5 animate-slide-up relative text-foreground`}>
-            <button
-              onClick={() => setShowGuidelines(false)}
-              className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <div className="flex items-start gap-3">
-              <Info className="h-5 w-5 text-accent flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">
-                  Submission Guidelines
-                </h3>
-                <ul className="space-y-2 text-sm text-foreground/80">
-                  <li className="flex items-start gap-2">
-                    <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
-                      database
-                    </span>
-                    <span>
-                      <strong>Data Requirements:</strong> Include all text content,
-                      images, logos, and reference files
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
-                      schedule
-                    </span>
-                    <span>
-                      <strong>Timeline:</strong> Minimum 3 working days for standard
-                      requests. Urgent requests require justification.
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
-                      edit
-                    </span>
-                    <span>
-                      <strong>Modifications:</strong> Changes to approved designs
-                      require Treasurer approval first
-                    </span>
-                  </li>
-                </ul>
-              </div>
-            </div>
+          {/* Header */}
+          <div className="animate-fade-in">
+            <h1 className="text-2xl font-bold text-foreground">New Design Request</h1>
+            <p className="text-muted-foreground mt-1">
+              Submit a new design request to the team
+            </p>
           </div>
-        )}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className={`${glassPanelClass} p-6 pb-8 min-h-[520px] space-y-5 animate-slide-up`}>
-            {/* Title */}
-            <div className="space-y-2">
-              <Label htmlFor="title">
-                Request Title <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="title"
-                placeholder="e.g., Annual Report Cover Design"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className={`h-11 ${glassInputClass}`}
-              />
+          {/* Guidelines Banner */}
+          {showGuidelines && (
+            <div className={`${glassPanelClass} p-5 animate-slide-up relative text-foreground`}>
+              <button
+                onClick={() => setShowGuidelines(false)}
+                className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex items-start gap-3">
+                <Info className="h-5 w-5 text-accent flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-foreground mb-2">
+                    Submission Guidelines
+                  </h3>
+                  <ul className="space-y-2 text-sm text-foreground/80">
+                    <li className="flex items-start gap-2">
+                      <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
+                        database
+                      </span>
+                      <span>
+                        <strong>Data Requirements:</strong> Include all text content,
+                        images, logos, and reference files
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
+                        schedule
+                      </span>
+                      <span>
+                        <strong>Timeline:</strong> Minimum 3 working days for standard
+                        requests. Urgent requests require justification.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
+                        edit
+                      </span>
+                      <span>
+                        <strong>Modifications:</strong> Changes to approved designs
+                        require Treasurer approval first
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </div>
+          )}
 
-            {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="description">
-                Description <span className="text-destructive">*</span>
-              </Label>
-              <Textarea
-                id="description"
-                placeholder="Provide detailed requirements, specifications, and any special instructions..."
-                rows={4}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className={`${glassInputClass} min-h-[120px]`}
-              />
-            </div>
-
-            {/* Category & Urgency */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className={`${glassPanelClass} p-6 pb-8 min-h-[520px] space-y-5 animate-slide-up`}>
+              {/* Title */}
               <div className="space-y-2">
-                <Label>
-                  Category <span className="text-destructive">*</span>
+                <Label htmlFor="title">
+                  Request Title <span className="text-destructive">*</span>
                 </Label>
-                <Select value={category} onValueChange={(v) => setCategory(v as TaskCategory)}>
-                  <SelectTrigger className={`h-11 ${glassInputClass}`}>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
-                    {categoryOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <div className="flex items-center gap-2">
-                          <option.icon className="h-4 w-4 text-muted-foreground" />
-                          <span>{option.label}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  id="title"
+                  placeholder="e.g., Annual Report Cover Design"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className={`h-11 ${glassInputClass}`}
+                />
               </div>
 
+              {/* Description */}
               <div className="space-y-2">
-                <Label>Urgency</Label>
-                <Select value={urgency} onValueChange={(v) => setUrgency(v as TaskUrgency)}>
-                  <SelectTrigger className={`h-11 ${glassInputClass}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="normal">Normal</SelectItem>
-                    <SelectItem value="intermediate">Intermediate</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="description">
+                  Description <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="description"
+                  placeholder="Provide detailed requirements, specifications, and any special instructions..."
+                  rows={4}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className={`${glassInputClass} min-h-[120px]`}
+                />
               </div>
-            </div>
 
-            <div className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-white/70 px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Emergency override</p>
-                <p className="text-xs text-muted-foreground">
-                  Requires designer approval
+              {/* Category & Urgency */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>
+                    Category <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={category} onValueChange={(v) => setCategory(v as TaskCategory)}>
+                    <SelectTrigger className={`h-11 ${glassInputClass}`}>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
+                      {categoryOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex items-center gap-2">
+                            <option.icon className="h-4 w-4 text-muted-foreground" />
+                            <span>{option.label}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Urgency</Label>
+                  <Select value={urgency} onValueChange={(v) => setUrgency(v as TaskUrgency)}>
+                    <SelectTrigger className={`h-11 ${glassInputClass}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="intermediate">Intermediate</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-white/70 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Emergency override</p>
+                  <p className="text-xs text-muted-foreground">
+                    Requires designer approval
+                  </p>
+                </div>
+                <Switch checked={isEmergency} onCheckedChange={setIsEmergency} />
+              </div>
+              {isEmergency && (
+                <p className="text-xs text-status-urgent">
+                  Emergency requests can bypass blocked dates but must be approved.
                 </p>
-              </div>
-              <Switch checked={isEmergency} onCheckedChange={setIsEmergency} />
-            </div>
-            {isEmergency && (
-              <p className="text-xs text-status-urgent">
-                Emergency requests can bypass blocked dates but must be approved.
-              </p>
-            )}
+              )}
 
-            {/* Deadline */}
+              {/* Deadline */}
               <div className="space-y-2">
                 <Label htmlFor="deadline">
                   Deadline <span className="text-destructive">*</span>
                 </Label>
                 <div className="relative">
-                <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <DatePicker
-                    value={deadline}
-                    onChange={(newValue) => setDeadline(newValue)}
-                    minDate={isEmergency ? undefined : minDeadlineDate}
-                    shouldDisableDate={isDateBlocked}
-                    slotProps={{
-                      textField: {
-                        size: 'small',
-                        fullWidth: true,
-                        sx: {
-                          '& .MuiPickersOutlinedInput-root': {
-                            borderRadius: 'var(--radius)',
-                            height: 44,
-                            backgroundColor: 'rgba(255, 255, 255, 0.75)',
-                            backdropFilter: 'blur(12px)',
-                            fontWeight: 500,
-                            color: 'hsl(var(--foreground) / 0.9)',
-                            fontSize: '0.875rem',
-                          },
-                          '& .MuiPickersOutlinedInput-notchedOutline': {
-                            borderColor: '#D9E6FF',
-                          },
-                          '&:hover .MuiPickersOutlinedInput-notchedOutline': {
-                            borderColor: '#B7C8FF',
-                          },
-                          '& .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline':
+                  <LocalizationProvider dateAdapter={AdapterDateFns}>
+                    <DatePicker
+                      value={deadline}
+                      onChange={(newValue) => setDeadline(newValue)}
+                      minDate={isEmergency ? undefined : minDeadlineDate}
+                      shouldDisableDate={isDateBlocked}
+                      slotProps={{
+                        textField: {
+                          size: 'small',
+                          fullWidth: true,
+                          sx: {
+                            '& .MuiPickersOutlinedInput-root': {
+                              borderRadius: 'var(--radius)',
+                              height: 44,
+                              backgroundColor: 'rgba(255, 255, 255, 0.75)',
+                              backdropFilter: 'blur(12px)',
+                              fontWeight: 500,
+                              color: 'hsl(var(--foreground) / 0.9)',
+                              fontSize: '0.875rem',
+                            },
+                            '& .MuiPickersOutlinedInput-notchedOutline': {
+                              borderColor: '#D9E6FF',
+                            },
+                            '&:hover .MuiPickersOutlinedInput-notchedOutline': {
+                              borderColor: '#B7C8FF',
+                            },
+                            '& .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline':
                             {
                               borderColor: '#B7C8FF',
                             },
-                          '& .MuiPickersOutlinedInput-root.Mui-focused': {
-                            boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.18)',
-                          },
-                          '& .MuiPickersInputBase-input': {
-                            padding: '0 14px',
-                            fontWeight: 500,
-                            fontSize: '0.875rem',
-                          },
-                          '& .MuiPickersInputBase-sectionContent': {
-                            fontWeight: 500,
-                            color: 'hsl(var(--foreground) / 0.9)',
-                            fontSize: '0.875rem',
-                          },
-                          '& .MuiPickersInputBase-input::placeholder': {
-                            color: '#9CA3AF',
-                            opacity: 1,
-                          },
-                          '& .MuiSvgIcon-root': {
-                            color: 'hsl(var(--muted-foreground))',
+                            '& .MuiPickersOutlinedInput-root.Mui-focused': {
+                              boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.18)',
+                            },
+                            '& .MuiPickersInputBase-input': {
+                              padding: '0 14px',
+                              fontWeight: 500,
+                              fontSize: '0.875rem',
+                            },
+                            '& .MuiPickersInputBase-sectionContent': {
+                              fontWeight: 500,
+                              color: 'hsl(var(--foreground) / 0.9)',
+                              fontSize: '0.875rem',
+                            },
+                            '& .MuiPickersInputBase-input::placeholder': {
+                              color: '#9CA3AF',
+                              opacity: 1,
+                            },
+                            '& .MuiSvgIcon-root': {
+                              color: 'hsl(var(--muted-foreground))',
+                            },
                           },
                         },
-                      },
-                    }}
-                  />
-                </LocalizationProvider>
-              </div>
+                      }}
+                    />
+                  </LocalizationProvider>
+                </div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <Clock className="h-3 w-3" />
                   {isEmergency
@@ -1243,109 +1266,108 @@ export default function NewRequest() {
                 </p>
               </div>
 
-          </div>
-
-          {/* File Upload */}
-          <div className={`${glassPanelClass} p-6 space-y-4 animate-slide-up`}>
-            <div>
-              <Label>
-                Attachments <span className="text-muted-foreground">(Optional)</span>
-              </Label>
-              <p className="text-sm text-muted-foreground mt-1">
-                Upload any supporting content, reference files, and data
-              </p>
             </div>
 
-            <div
-              className={`border-2 border-dashed rounded-lg p-8 pb-10 text-center transition-colors ${
-                isDragging
+            {/* File Upload */}
+            <div className={`${glassPanelClass} p-6 space-y-4 animate-slide-up`}>
+              <div>
+                <Label>
+                  Attachments <span className="text-muted-foreground">(Optional)</span>
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Upload any supporting content, reference files, and data
+                </p>
+              </div>
+
+              <div
+                className={`border-2 border-dashed rounded-lg p-8 pb-10 text-center transition-colors ${isDragging
                   ? 'border-primary/60 bg-white/80'
                   : 'border-border bg-white/70 hover:border-primary/50'
-              }`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
-              <input
-                type="file"
-                multiple
-                onChange={handleFileUpload}
-                className="hidden"
-                id="file-upload"
-              />
-              <label htmlFor="file-upload" className="cursor-pointer">
-                {uploadAnimation ? (
-                  <Lottie
-                    animationData={uploadAnimation}
-                    loop
-                    className="h-24 w-24 mx-auto mb-3"
-                  />
-                ) : (
-                  <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                )}
-                <p className="font-medium text-foreground">
-                  Click to upload or drag and drop
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  PDF, DOC, PNG, JPG, ZIP up to 50MB each
-                </p>
-              </label>
+                  }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <input
+                  type="file"
+                  multiple
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label htmlFor="file-upload" className="cursor-pointer">
+                  {uploadAnimation ? (
+                    <Lottie
+                      animationData={uploadAnimation}
+                      loop
+                      className="h-24 w-24 mx-auto mb-3"
+                    />
+                  ) : (
+                    <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                  )}
+                  <p className="font-medium text-foreground">
+                    Click to upload or drag and drop
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    PDF, DOC, PNG, JPG, ZIP up to 50MB each
+                  </p>
+                </label>
+              </div>
+
+              {files.length > 0 && (
+                <div className="space-y-2">
+                  {files.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center justify-between rounded-lg border border-[#D7E3FF] bg-gradient-to-r from-[#F4F8FF]/90 via-[#EEF4FF]/70 to-[#E6F1FF]/80 px-4 py-3 supports-[backdrop-filter]:bg-[#EEF4FF]/60 backdrop-blur-xl"
+                    >
+                      <div className="flex items-start gap-3 flex-1">
+                        {getFileIcon(file.name, 'h-5 w-5 text-primary')}
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-foreground">
+                            {file.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {file.uploading
+                              ? 'Uploading...'
+                              : file.error
+                                ? file.error
+                                : formatFileSize(file.size)}
+                          </p>
+                          {file.uploading && typeof file.progress === 'number' && (
+                            <div className="mt-2 w-full max-w-sm">
+                              <LinearProgressWithLabel value={file.progress} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(file.id)}
+                        className="text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {files.length > 0 && (
-              <div className="space-y-2">
-                {files.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center justify-between rounded-lg border border-[#D7E3FF] bg-gradient-to-r from-[#F4F8FF]/90 via-[#EEF4FF]/70 to-[#E6F1FF]/80 px-4 py-3 supports-[backdrop-filter]:bg-[#EEF4FF]/60 backdrop-blur-xl"
-                  >
-                    <div className="flex items-start gap-3 flex-1">
-                      {getFileIcon(file.name, 'h-5 w-5 text-primary')}
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-foreground">
-                          {file.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {file.uploading
-                            ? 'Uploading...'
-                            : file.error
-                              ? file.error
-                              : formatFileSize(file.size)}
-                        </p>
-                        {file.uploading && typeof file.progress === 'number' && (
-                          <div className="mt-2 w-full max-w-sm">
-                            <LinearProgressWithLabel value={file.progress} />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(file.id)}
-                      className="text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Submit Button */}
-          <div className="flex items-center justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate('/dashboard')}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!isFormValid() || isSubmitting}>
-              {isSubmitting ? 'Submitting...' : 'Submit Request'}
-            </Button>
-          </div>
-        </form>
+            {/* Submit Button */}
+            <div className="flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate('/dashboard')}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!isFormValid() || isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Submit Request'}
+              </Button>
+            </div>
+          </form>
         </div>
       </div>
       <Dialog open={showThankYou} onOpenChange={(open) => (!open ? handleThankYouClose() : null)}>

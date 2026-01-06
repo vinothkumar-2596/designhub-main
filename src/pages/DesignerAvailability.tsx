@@ -155,61 +155,140 @@ export default function DesignerAvailability() {
               ))}
             </div>
             <div className="mt-2 space-y-2">
-              {weeks.map((week, rowIndex) => (
-                <div key={`week-${rowIndex}`} className="grid grid-cols-7 gap-2">
-                  {week.map((day) => {
-                    const task = scheduleMap.get(format(day, 'yyyy-MM-dd'));
-                    const isStart =
-                      task?.actualStartDate &&
-                      isSameDay(day, task.actualStartDate);
-                    const isEnd =
-                      task?.actualEndDate && isSameDay(day, task.actualEndDate);
-                    const isToday = isSameDay(day, new Date());
-                    const isOutside = !isSameMonth(day, calendarMonth);
-                    return (
-                      <div
-                        key={day.toISOString()}
-                        className={cn(
-                          'relative min-h-[96px] rounded-xl border border-[#E4ECFF] bg-[#F9FBFF] p-2',
-                          isOutside && 'bg-white/70 text-muted-foreground',
-                          isToday && 'ring-1 ring-primary/40'
-                        )}
-                      >
-                        <div className="flex items-start justify-between">
-                          <span
-                            className={cn(
-                              'text-xs font-semibold',
-                              isToday && 'text-primary'
-                            )}
-                          >
-                            {format(day, 'd')}
-                          </span>
-                          {task && (
-                            <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                              {task.priority}
-                            </span>
-                          )}
-                        </div>
-                        {task && (
+              {weeks.map((week, weekIndex) => {
+                const weekStart = week[0];
+                const weekEnd = week[6];
+
+                // Get tasks that overlap with this week
+                const weekTasks = scheduledTasks.filter(task => {
+                  if (!task.actualStartDate || !task.actualEndDate) return false;
+                  return (
+                    (task.actualStartDate <= weekEnd) &&
+                    (task.actualEndDate >= weekStart)
+                  );
+                });
+
+                // Sort tasks: Priority (VIP > HIGH > NORMAL) then Start Date
+                const priorityOrder = { VIP: 0, HIGH: 1, NORMAL: 2 };
+                weekTasks.sort((a, b) => {
+                  const pA = priorityOrder[a.priority] ?? 2;
+                  const pB = priorityOrder[b.priority] ?? 2;
+                  if (pA !== pB) return pA - pB;
+                  return (a.actualStartDate?.getTime() ?? 0) - (b.actualStartDate?.getTime() ?? 0);
+                });
+
+                // Calculate layout (stacking)
+                const layout: { task: ScheduleTask; colStart: number; colSpan: number; row: number }[] = [];
+                const occupied = new Set<string>(); // "row-col"
+
+                weekTasks.forEach(task => {
+                  if (!task.actualStartDate || !task.actualEndDate) return;
+
+                  // Calculate column range (0-6) relative to weekStart
+                  const startDiff = Math.floor((task.actualStartDate.getTime() - weekStart.getTime()) / (1000 * 60 * 60 * 24));
+                  let colStart = Math.max(0, startDiff);
+
+                  const endDiff = Math.floor((task.actualEndDate.getTime() - weekStart.getTime()) / (1000 * 60 * 60 * 24));
+                  let colEnd = Math.min(6, endDiff);
+
+                  if (colStart > 6 || colEnd < 0) return; // Should likely be caught by filter but safety first
+
+                  const colSpan = colEnd - colStart + 1;
+
+                  // Find first available row
+                  let row = 0;
+                  while (true) {
+                    let isRowClear = true;
+                    for (let c = colStart; c <= colEnd; c++) {
+                      if (occupied.has(`${row}-${c}`)) {
+                        isRowClear = false;
+                        break;
+                      }
+                    }
+                    if (isRowClear) {
+                      // Mark occupied
+                      for (let c = colStart; c <= colEnd; c++) {
+                        occupied.add(`${row}-${c}`);
+                      }
+                      layout.push({ task, colStart: colStart + 1, colSpan, row }); // colStart is 1-based in grid
+                      break;
+                    }
+                    row++;
+                  }
+                });
+
+                // Determine min height based on max row index
+                const maxRow = Math.max(-1, ...layout.map(l => l.row));
+                const stackHeight = (maxRow + 1) * 30; // 28px height + 2px gap approx
+                const headerHeight = 32; // Space for date header
+                const minHeight = Math.max(96, stackHeight + headerHeight + 8); // Base height or dynamic
+
+                // Calculate centering offset
+                // Available space for events = minHeight - headerHeight
+                // Centered top = headerHeight + (Available - stackHeight) / 2
+                // We ensure it doesn't go above headerHeight (though math shouldn't allow it if minHeight is large enough)
+                const centeredTop = headerHeight + (minHeight - headerHeight - stackHeight) / 2;
+
+                return (
+                  <div key={`week-${weekIndex}`} className="relative isolate">
+                    {/* Background Grid (Day cells) */}
+                    <div className="grid grid-cols-7 gap-2">
+                      {week.map((day) => {
+                        const isToday = isSameDay(day, new Date());
+                        const isOutside = !isSameMonth(day, calendarMonth);
+                        return (
                           <div
-                            title={task.title}
+                            key={day.toISOString()}
+                            style={{ height: minHeight }}
                             className={cn(
-                              'mt-3 h-6 w-full overflow-hidden text-ellipsis whitespace-nowrap px-2 text-[11px] font-semibold',
-                              priorityStyles[task.priority].bar,
-                              isStart && isEnd && 'rounded-md',
-                              isStart && !isEnd && 'rounded-l-md',
-                              !isStart && isEnd && 'rounded-r-md',
-                              !isStart && !isEnd && 'rounded-none'
+                              'relative rounded-xl border border-[#E4ECFF] bg-[#F9FBFF] p-2 transition-all',
+                              isOutside && 'bg-white/70 text-muted-foreground',
+                              isToday && 'ring-1 ring-primary/40 bg-primary/5'
                             )}
                           >
-                            {isStart ? task.title : ''}
+                            <div className="flex items-start justify-between">
+                              <span
+                                className={cn(
+                                  'text-xs font-semibold',
+                                  isToday && 'text-primary'
+                                )}
+                              >
+                                {format(day, 'd')}
+                              </span>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                        );
+                      })}
+                    </div>
+
+                    {/* Events Overlay Grid */}
+                    <div
+                      className="absolute inset-0 grid grid-cols-7 gap-2 px-0 pb-2 pointer-events-none"
+                      style={{ height: minHeight }}
+                    >
+                      {layout.map((item) => (
+                        <div
+                          key={`${item.task.id}-${weekIndex}`}
+                          className={cn(
+                            "relative h-7 flex items-center px-2 rounded-md text-[11px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis shadow-sm pointer-events-auto",
+                            priorityStyles[item.task.priority].bar,
+                          )}
+                          style={{
+                            gridColumnStart: item.colStart,
+                            gridColumnEnd: `span ${item.colSpan}`,
+                            marginTop: `${centeredTop + (item.row * 30)}px`,
+                            position: 'absolute',
+                            left: 0,
+                            right: 0,
+                          }}
+                        >
+                          {item.task.title}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
               {(['VIP', 'HIGH', 'NORMAL'] as ScheduleTask['priority'][]).map(

@@ -254,16 +254,16 @@ export default function Dashboard() {
                 entry.userRole === 'designer' &&
                 entry.field === 'deadline_request' &&
                 entry.newValue === 'Approved';
-            const isTreasurerApproval =
-              entry.userRole === 'treasurer' && entry.field === 'approval_status';
-            const isEmergencyApproval =
-              entry.userRole === 'designer' && entry.field === 'emergency_approval';
-            return (
-              isDesignerCompletion ||
-              isDesignerDeadlineApproval ||
-              isTreasurerApproval ||
-              isEmergencyApproval
-            );
+              const isTreasurerApproval =
+                entry.userRole === 'treasurer' && entry.field === 'approval_status';
+              const isEmergencyApproval =
+                entry.userRole === 'designer' && entry.field === 'emergency_approval';
+              return (
+                isDesignerCompletion ||
+                isDesignerDeadlineApproval ||
+                isTreasurerApproval ||
+                isEmergencyApproval
+              );
             }
           )
           .map((entry) => ({ ...entry, taskId: task.id, taskTitle: task.title, task }))
@@ -334,7 +334,7 @@ export default function Dashboard() {
         ? designerNotifications
         : user.role === 'treasurer'
           ? treasurerNotifications
-        : [];
+          : [];
 
   const getNotificationTitle = (entry: any) => {
     if (entry.field === 'created') {
@@ -585,7 +585,8 @@ export default function Dashboard() {
                 {user.role === 'staff' || user.role === 'treasurer' ? (
                   <Button
                     asChild
-                    className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)]"
+                    size="default"
+                    className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200"
                   >
                     <Link to="/new-request">
                       <PlusCircle className="h-4 w-4 mr-2" />
@@ -599,7 +600,7 @@ export default function Dashboard() {
                     </Link>
                   </Button>
                 )}
-                <Button variant="ghost" asChild>
+                <Button asChild className="border border-white/35 bg-white/80 bg-gradient-to-r from-white/15 via-white/80 to-white/90 text-foreground shadow-[0_8px_16px_-8px_rgba(0,0,0,0.1)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-white/85 hover:shadow-[0_10px_20px_-8px_rgba(0,0,0,0.15)] transition-all duration-200">
                   <Link to="/tasks">Dashboard Overview</Link>
                 </Button>
               </div>
@@ -714,43 +715,43 @@ export default function Dashboard() {
           {(user.role === 'staff' || user.role === 'designer') &&
             activeNotifications.length > 0 &&
             showNotifications && (
-            <div className="mb-4 rounded-2xl border border-primary/10 bg-primary/5 p-4 shadow-card">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-foreground">Notifications</h3>
-                <Button variant="ghost" size="icon" onClick={() => setShowNotifications(false)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {activeNotifications.map((entry) => (
-                  <Link
-                    key={entry.id}
-                    to={`/task/${entry.taskId}`}
-                    state={{ task: entry.task, highlightChangeId: entry.id }}
-                    className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-foreground">
-                        {getNotificationTitle(entry)}
+              <div className="mb-4 rounded-2xl border border-primary/10 bg-primary/5 p-4 shadow-card">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">Notifications</h3>
+                  <Button variant="ghost" size="icon" onClick={() => setShowNotifications(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {activeNotifications.map((entry) => (
+                    <Link
+                      key={entry.id}
+                      to={`/task/${entry.taskId}`}
+                      state={{ task: entry.task, highlightChangeId: entry.id }}
+                      className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">
+                          {getNotificationTitle(entry)}
+                        </p>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] uppercase tracking-[0.2em] bg-red-100 text-red-700 border border-red-200"
+                        >
+                          New
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {getNotificationNote(entry)}
                       </p>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] uppercase tracking-[0.2em] bg-red-100 text-red-700 border border-red-200"
-                      >
-                        New
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {getNotificationNote(entry)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
-                    </p>
-                  </Link>
-                ))}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           {isLoading ? (
             <div className="text-center py-12 bg-card rounded-2xl border border-border shadow-card">
@@ -761,7 +762,7 @@ export default function Dashboard() {
               {treasurerRecentTasks.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {treasurerRecentTasks.map((task, index) => (
-                    <div key={task.id} style={{ animationDelay: `${index * 50}ms` }}>
+                    <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
                       <TaskCard task={task} showRequester showAssignee />
                     </div>
                   ))}
@@ -883,7 +884,7 @@ export default function Dashboard() {
           ) : recentTasks.length > 0 ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {recentTasks.map((task, index) => (
-                <div key={task.id} style={{ animationDelay: `${index * 50}ms` }}>
+                <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
                   <TaskCard task={task} showRequester={user.role !== 'staff'} />
                 </div>
               ))}
@@ -898,7 +899,7 @@ export default function Dashboard() {
                   : 'No tasks to display'}
               </p>
               {user.role === 'staff' && (
-                <Button asChild className="mt-4">
+                <Button asChild size="default" className="mt-4 border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200">
                   <Link to="/new-request">Create Your First Request</Link>
                 </Button>
               )}

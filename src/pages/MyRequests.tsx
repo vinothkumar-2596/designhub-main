@@ -151,7 +151,8 @@ export default function MyRequests() {
           </div>
           <Button
             asChild
-            className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)]"
+            size="default"
+            className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200"
           >
             <Link to="/new-request">
               <PlusCircle className="h-4 w-4 mr-2" />
@@ -198,7 +199,7 @@ export default function MyRequests() {
             <p className="text-sm text-muted-foreground mt-1 mb-4">
               Submit your first design request to get started
             </p>
-            <Button asChild>
+            <Button asChild size="default" className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200">
               <Link to="/new-request">Create Your First Request</Link>
             </Button>
           </div>
