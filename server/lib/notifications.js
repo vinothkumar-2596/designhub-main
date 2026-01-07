@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { spawn } from "child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -80,7 +81,7 @@ const buildTwilioConfig = () => {
   return { accountSid, authToken, from, channel, templateSid };
 };
 
-const sendTwilioMessage = async ({
+export const sendTwilioMessage = async ({
   to,
   body,
   templateVariables,
@@ -172,6 +173,70 @@ const sendTwilioMessage = async ({
   }
 };
 
+export const sendWhatsAppViaSelenium = async (to, body) => {
+  return new Promise((resolve) => {
+    const cleanNumber = to.replace(/whatsapp:/gi, "").replace(/[^\d+]/g, "");
+    const scriptPath = path.join(__dirname, "../whatsapp/send_msg.py");
+
+    // Explicitly check for 'false' string, otherwise default to true
+    const headless = process.env.WHATSAPP_HEADLESS !== "false";
+
+    console.log(`Selenium WhatsApp: Sending to ${cleanNumber} (Headless: ${headless})...`);
+
+    // Pass as a strict string "true" or "false" to the Python script
+    const env = {
+      ...process.env,
+      WHATSAPP_HEADLESS: headless ? "true" : "false"
+    };
+    const pythonProcess = spawn("python", [scriptPath, cleanNumber, body], { env });
+
+    pythonProcess.stdout.on("data", (data) => {
+      if (process.env.DEBUG_WHATSAPP === "true") {
+        console.log(`[WhatsApp-Py]: ${data.toString().trim()}`);
+      }
+    });
+
+    pythonProcess.stderr.on("data", (data) => {
+      console.error(`[WhatsApp-Py-Error]: ${data.toString().trim()}`);
+    });
+
+    pythonProcess.on("close", (code) => {
+      if (code === 0) {
+        console.log(`Selenium WhatsApp: Success for ${cleanNumber}`);
+        resolve(true);
+      } else {
+        console.error(`Selenium WhatsApp: Failed with code ${code}`);
+        resolve(false);
+      }
+    });
+  });
+};
+
+export const sendMessage = async (params) => {
+  const { to, body } = params;
+
+  // Use Selenium if explicitly enabled OR if Twilio is not configured at all
+  const useSelenium = process.env.USE_WHATSAPP_SELENIUM === "true" || !process.env.TWILIO_ACCOUNT_SID;
+
+  // Decide if this is a WhatsApp message:
+  // 1. Prefix 'whatsapp:' exists
+  // 2. Global channel is set to 'whatsapp'
+  // 3. We are using Selenium and the destination looks like a phone number (e.g., from the 'WhatsApp updates' field)
+  const isWhatsApp = to?.includes("whatsapp:") ||
+    process.env.TWILIO_CHANNEL === "whatsapp" ||
+    (useSelenium && to && /^\+?[\d\s-]{10,}$/.test(String(to)));
+
+  if (useSelenium && isWhatsApp) {
+    return sendWhatsAppViaSelenium(to, body);
+  }
+
+  return sendTwilioMessage(params);
+};
+
+export const sendSms = async ({ to, body }) => {
+  return sendMessage({ to, body });
+};
+
 const clampText = (value, max) => {
   if (!value) return "";
   if (value.length <= max) return value;
@@ -179,16 +244,24 @@ const clampText = (value, max) => {
 };
 
 export const sendTaskCreatedSms = async ({ to, taskTitle, taskUrl, deadline, requesterName, taskId }) => {
-  const title = taskTitle || "your request";
-  const safeTitle = clampText(title, 80);
-  const detail = deadline
-    ? `Deadline ${new Date(deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`
-    : "";
-  const nameLine = requesterName ? `Hi ${requesterName}, ` : "";
-  const urlLine = taskUrl ? ` View: ${taskUrl}` : taskId ? ` Task ID: ${taskId}` : "";
-  const body = clampText(`${nameLine}DesignDesk request created: ${safeTitle}. ${detail}${urlLine}`, 320);
+  const nameLabel = requesterName || "Student/Staff";
+  const deadlineLabel = deadline ? new Date(deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "TBD";
+
+  const body = `Hello ${nameLabel},
+
+Your task request has been successfully submitted.
+
+ Task ID: ${taskId || "N/A"}
+Title: ${taskTitle}
+Status: Submitted
+Deadline: ${deadlineLabel}
+
+Our team will review your request and keep you updated through the dashboard.
+
+– SMVEC Design Desk`;
+
   const templateVariables = getTemplateVariables(deadline || new Date());
-  return sendTwilioMessage({ to, body, templateVariables });
+  return sendMessage({ to, body, templateVariables });
 };
 
 export const sendFinalFilesSms = async ({
@@ -198,23 +271,104 @@ export const sendFinalFilesSms = async ({
   designerName,
   taskUrl,
   deadline,
-  taskId
+  taskId,
+  requesterName
 }) => {
-  const title = taskTitle || "your task";
-  const safeTitle = clampText(title, 70);
-  const firstLink = Array.isArray(files) && files[0]?.url ? files[0].url : "";
-  const deadlineText = deadline
-    ? ` Deadline ${new Date(deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`
-    : "";
-  const designerText = designerName ? ` by ${designerName}` : "";
-  const fileText = firstLink ? ` File: ${firstLink}` : "";
-  const urlLine = taskUrl ? ` View: ${taskUrl}` : taskId ? ` Task ID: ${taskId}` : "";
-  const body = clampText(
-    `DesignDesk: Final files uploaded${designerText} for "${safeTitle}".${deadlineText}${fileText}${urlLine}`,
-    480
-  );
+  const nameLabel = requesterName || "User";
+  const body = `Hello ${nameLabel},
+
+Your task has been completed and final files are uploaded 
+
+Task ID: ${taskId || "N/A"}
+Title: ${taskTitle}
+Status: Completed
+
+You can download the final files from your dashboard.
+
+Thank you for working with us,  
+SMVEC Design Desk`;
+
   const templateVariables = getTemplateVariables(deadline || new Date());
-  return sendTwilioMessage({ to, body, templateVariables });
+  return sendMessage({ to, body, templateVariables });
+};
+
+export const sendCommentNotificationSms = async ({ to, taskTitle, userName, content, taskUrl }) => {
+  const safeTitle = clampText(taskTitle || "your request", 50);
+  const safeContent = clampText(content || "", 100);
+  const nameLabel = userName ? `${userName} commented: ` : "New comment: ";
+  const body = `DesignDesk Update on "${safeTitle}": ${nameLabel}"${safeContent}"${taskUrl ? ` View: ${taskUrl}` : ""}`;
+  return sendMessage({ to, body });
+};
+
+export const sendStatusUpdateSms = async ({ to, taskTitle, newStatus, taskUrl, requesterName, taskId }) => {
+  const nameLabel = requesterName || "User";
+  const status = String(newStatus).toLowerCase();
+
+  let body = "";
+
+  if (status.includes("started")) {
+    body = `Hello ${nameLabel},
+
+Good news! Your task has been started by our design team.
+
+Task ID: ${taskId || "N/A"}
+Title: ${taskTitle}
+Status: Started
+
+We’ll keep you informed as progress continues.
+
+– SMVEC Design Desk`;
+  } else if (status.includes("in progress") || status.includes("progress")) {
+    body = `Hello ${nameLabel},
+
+Your task is currently in progress 
+
+Task ID: ${taskId || "N/A"}
+Title: ${taskTitle}
+Status: In Progress
+
+Design work is actively underway.  
+You can track updates anytime from your dashboard.
+
+– SMVEC Design Desk`;
+  } else if (status.includes("review")) {
+    body = `Hello ${nameLabel},
+
+An update has been submitted for your task.
+
+Task ID: ${taskId || "N/A"}
+Title: ${taskTitle}
+Status: Submitted for Review
+
+Please review the update in your dashboard and share feedback if required.
+
+– SMVEC Design Desk`;
+  } else {
+    body = `Hello ${nameLabel},
+
+DesignDesk Update: The status of your task "${taskTitle}" is now "${newStatus}".
+Task ID: ${taskId || "N/A"}
+
+– SMVEC Design Desk`;
+  }
+
+  return sendMessage({ to, body });
+};
+
+export const sendOtpSms = async ({ to, userName, otpCode, expiryMinutes = 10 }) => {
+  const nameLabel = userName || "User";
+  const body = `Hello ${nameLabel},
+
+Your One-Time Password (OTP) to reset your password is:
+
+OTP: ${otpCode}
+
+This OTP is valid for ${expiryMinutes} minutes.  
+Please do not share this code with anyone.
+
+– SMVEC Support Team`;
+
+  return sendMessage({ to, body });
 };
 
 const buildMailer = () => {
@@ -300,9 +454,8 @@ export const sendFinalFilesEmail = async ({
   const hasLocalLogo = fs.existsSync(localLogoPath);
   const logoCid = "design-desk-logo";
   const requesterLabel = taskDetails?.requesterName
-    ? `${taskDetails.requesterName}${taskDetails.requesterEmail ? ` (${taskDetails.requesterEmail})` : ""}${
-        taskDetails.requesterDepartment ? ` - ${taskDetails.requesterDepartment}` : ""
-      }`
+    ? `${taskDetails.requesterName}${taskDetails.requesterEmail ? ` (${taskDetails.requesterEmail})` : ""}${taskDetails.requesterDepartment ? ` - ${taskDetails.requesterDepartment}` : ""
+    }`
     : taskDetails?.requesterEmail || "";
   const detailItems = [
     { label: "Task", value: safeTitle },
@@ -332,11 +485,11 @@ export const sendFinalFilesEmail = async ({
   const fileRows =
     fileItems.length > 0
       ? fileItems
-          .map((file) => {
-            const link = file.url
-              ? `<a href="${file.url}" style="color:${brandColor};text-decoration:none;">Download</a>`
-              : `<span style="color:#6b7280;">Link pending</span>`;
-            return `
+        .map((file) => {
+          const link = file.url
+            ? `<a href="${file.url}" style="color:${brandColor};text-decoration:none;">Download</a>`
+            : `<span style="color:#6b7280;">Link pending</span>`;
+          return `
               <tr>
                 <td style="padding:12px 0;border-top:1px solid #e6e9f2;">
                   <div style="font-size:14px;color:#111827;font-weight:600;">${file.name}</div>
@@ -346,8 +499,8 @@ export const sendFinalFilesEmail = async ({
                 </td>
               </tr>
             `;
-          })
-          .join("")
+        })
+        .join("")
       : `
           <tr>
             <td style="padding:12px 0;border-top:1px solid #e6e9f2;color:#6b7280;">
@@ -377,9 +530,9 @@ export const sendFinalFilesEmail = async ({
   const detailRows =
     detailItems.length > 0
       ? detailItems
-          .map((item, index) => {
-            const border = index === 0 ? "" : "border-top:1px solid #e6e9f2;";
-            return `
+        .map((item, index) => {
+          const border = index === 0 ? "" : "border-top:1px solid #e6e9f2;";
+          return `
               <tr>
                 <td style="padding:8px 0;${border}color:#667085;font-size:12px;width:38%;vertical-align:top;">
                   ${item.label}
@@ -389,8 +542,8 @@ export const sendFinalFilesEmail = async ({
                 </td>
               </tr>
             `;
-          })
-          .join("")
+        })
+        .join("")
       : `
           <tr>
             <td style="padding:8px 0;color:#667085;font-size:12px;">
@@ -402,9 +555,8 @@ export const sendFinalFilesEmail = async ({
   const html = `
     <div style="background:#f5f7fb;padding:24px 16px;font-family:Helvetica, Arial, sans-serif;color:#101828;">
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;margin:0 auto;">
-        ${
-          viewInBrowser
-            ? `
+        ${viewInBrowser
+      ? `
               <tr>
                 <td style="text-align:center;padding-bottom:18px;">
                   <div style="font-size:12px;color:#667085;background:#ffffff;border:1px solid #e6e9f2;border-radius:999px;padding:8px 16px;display:inline-block;">
@@ -413,8 +565,8 @@ export const sendFinalFilesEmail = async ({
                 </td>
               </tr>
             `
-            : ""
-        }
+      : ""
+    }
         <tr>
           <td style="text-align:center;padding-bottom:18px;">
             ${logoMark}
@@ -450,7 +602,7 @@ export const sendFinalFilesEmail = async ({
                       Task details
                     </div>
                     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:10px;">
-                      ${detailRows}
+                       ${detailRows}
                     </table>
                   </div>
                 </td>
@@ -498,12 +650,12 @@ export const sendFinalFilesEmail = async ({
       html,
       attachments: hasLocalLogo
         ? [
-            {
-              filename: "logo.png",
-              path: localLogoPath,
-              cid: logoCid,
-            },
-          ]
+          {
+            filename: "logo.png",
+            path: localLogoPath,
+            cid: logoCid,
+          },
+        ]
         : [],
     });
     console.log("Final files email sent:", info?.response || info?.messageId || "ok");

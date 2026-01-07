@@ -153,9 +153,14 @@ export default function Settings() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium text-foreground">WhatsApp Notifications</p>
-                <p className="text-sm text-muted-foreground">
-                  Get instant updates on WhatsApp
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    Get instant updates on WhatsApp
+                  </p>
+                  <a href="/whatsapp-templates" className="text-[10px] text-primary hover:underline bg-primary/5 px-2 py-0.5 rounded-full font-semibold">
+                    VIEW TEMPLATES
+                  </a>
+                </div>
               </div>
               <Switch />
             </div>

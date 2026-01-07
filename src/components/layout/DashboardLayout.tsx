@@ -30,9 +30,10 @@ import { mergeLocalTasks } from '@/lib/taskStorage';
 interface DashboardLayoutProps {
   children: ReactNode;
   headerActions?: ReactNode;
+  background?: ReactNode;
 }
 
-export function DashboardLayout({ children, headerActions }: DashboardLayoutProps) {
+export function DashboardLayout({ children, headerActions, background }: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
   const apiUrl =
     (import.meta.env.VITE_API_URL as string | undefined) ||
@@ -456,6 +457,7 @@ export function DashboardLayout({ children, headerActions }: DashboardLayoutProp
   return (
     <DashboardShell
       userInitial={user?.name?.charAt(0) || 'U'}
+      background={background}
       onContentScroll={() => {
         if (previewTimeoutRef.current) {
           clearTimeout(previewTimeoutRef.current);
@@ -495,11 +497,13 @@ function DashboardShell({
   userInitial,
   headerActions,
   onContentScroll,
+  background,
 }: {
   children: ReactNode;
   userInitial: string;
   headerActions?: ReactNode;
   onContentScroll?: () => void;
+  background?: ReactNode;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
   const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'people' | 'files' | 'categories' | 'more'>('all');
@@ -701,104 +705,109 @@ function DashboardShell({
         <AppSidebar />
         <main className="flex-1 min-w-0 flex justify-center">
           <div className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] flex flex-col overflow-hidden">
-            <div className="shrink-0 border-b border-[#D9E6FF] bg-white/90 px-4 md:px-6 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="relative w-full max-w-md">
-                  <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-sm">
-                    <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
-                    <div className="relative flex-1">
-                      {showPlaceholder && (
-                        <div className="search-placeholder">
-                          <span className="search-placeholder-static">Search for</span>
-                          <span className="search-placeholder-words">
-                            <span className="search-placeholder-wordlist">
-                              <span>tasks</span>
-                              <span>files</span>
-                            </span>
-                          </span>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin relative" onScroll={handleContentScroll}>
+              {background}
+              <div className="relative z-10">
+                <div className="shrink-0 border-b border-[#D9E6FF] bg-white/60 backdrop-blur-md px-4 md:px-6 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="relative w-full max-w-md">
+                      <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-sm">
+                        <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
+                        <div className="relative flex-1">
+                          {showPlaceholder && (
+                            <div className="search-placeholder">
+                              <span className="search-placeholder-static">Search for</span>
+                              <span className="search-placeholder-words">
+                                <span className="search-placeholder-wordlist">
+                                  <span>tasks</span>
+                                  <span>files</span>
+                                </span>
+                              </span>
+                            </div>
+                          )}
+                          <input
+                            type="text"
+                            aria-label="Search"
+                            value={query}
+                            onChange={(event) => {
+                              setQuery(event.target.value);
+                              setIsSearchDismissed(false);
+                            }}
+                            ref={searchInputRef}
+                            onFocus={handleFocus}
+                            onBlur={handleBlur}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Escape') {
+                                setQuery('');
+                              }
+                            }}
+                            className="search-elastic-input w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                          />
+                        </div>
+                        <span className="hidden sm:flex items-center gap-1 rounded-full bg-[#EFF4FF] px-2 py-0.5 text-[11px] text-muted-foreground">
+                          <kbd className="font-sans">Ctrl</kbd>
+                          <kbd className="font-sans">F</kbd>
+                        </span>
+                      </div>
+                      {showPanel && (
+                        <div
+                          className="absolute left-0 right-0 mt-2 rounded-2xl border border-[#C9D7FF] bg-[#F6F8FF]/95 backdrop-blur-xl shadow-xl animate-dropdown overflow-hidden z-40"
+                          onMouseDown={(event) => event.preventDefault()}
+                        >
+                          <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                            <span>{scopeLabel}</span>
+                            <span>{totalCount} results</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2 px-3 pb-3">
+                            {filterOptions.map((option) => {
+                              const Icon = option.icon;
+                              return (
+                                <button
+                                  key={option.key}
+                                  type="button"
+                                  onClick={() => setActiveFilter(option.key as typeof activeFilter)}
+                                  className="search-chip"
+                                  data-active={activeFilter === option.key}
+                                >
+                                  <Icon className="h-4 w-4" />
+                                  <span>{option.label}</span>
+                                  <span className="search-chip-count">{option.count}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="max-h-72 overflow-auto scrollbar-none">
+                            {Object.entries(visibleGroups).some(([, list]) => list.length > 0) ? (
+                              Object.entries(visibleGroups).map(([title, list]) => {
+                                if (list.length === 0) return null;
+                                return (
+                                  <div key={title}>
+                                    <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                      {title}
+                                    </div>
+                                    {list.slice(0, 6).map(renderItem)}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="px-3 py-4 text-sm text-muted-foreground border-t border-[#E4ECFF]">
+                                No matches. Try a different term.
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
-                      <input
-                        type="text"
-                        aria-label="Search"
-                        value={query}
-                        onChange={(event) => {
-                          setQuery(event.target.value);
-                          setIsSearchDismissed(false);
-                        }}
-                        ref={searchInputRef}
-                        onFocus={handleFocus}
-                        onBlur={handleBlur}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Escape') {
-                            setQuery('');
-                          }
-                        }}
-                        className="search-elastic-input w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-                      />
                     </div>
-                    <span className="hidden sm:flex items-center gap-1 rounded-full bg-[#EFF4FF] px-2 py-0.5 text-[11px] text-muted-foreground">
-                      <kbd className="font-sans">Ctrl</kbd>
-                      <kbd className="font-sans">F</kbd>
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {headerActions}
+                    </div>
                   </div>
-                  {showPanel && (
-                    <div
-                      className="absolute left-0 right-0 mt-2 rounded-2xl border border-[#C9D7FF] bg-[#F6F8FF]/95 backdrop-blur-xl shadow-xl animate-dropdown overflow-hidden z-40"
-                      onMouseDown={(event) => event.preventDefault()}
-                    >
-                      <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                        <span>{scopeLabel}</span>
-                        <span>{totalCount} results</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2 px-3 pb-3">
-                        {filterOptions.map((option) => {
-                          const Icon = option.icon;
-                          return (
-                            <button
-                              key={option.key}
-                              type="button"
-                              onClick={() => setActiveFilter(option.key as typeof activeFilter)}
-                              className="search-chip"
-                              data-active={activeFilter === option.key}
-                            >
-                              <Icon className="h-4 w-4" />
-                              <span>{option.label}</span>
-                              <span className="search-chip-count">{option.count}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="max-h-72 overflow-auto scrollbar-none">
-                        {Object.entries(visibleGroups).some(([, list]) => list.length > 0) ? (
-                          Object.entries(visibleGroups).map(([title, list]) => {
-                            if (list.length === 0) return null;
-                            return (
-                              <div key={title}>
-                                <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                                  {title}
-                                </div>
-                                {list.slice(0, 6).map(renderItem)}
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <div className="px-3 py-4 text-sm text-muted-foreground border-t border-[#E4ECFF]">
-                            No matches. Try a different term.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  {headerActions}
+                <div className="flex-1">
+                  <div className="container py-6 px-4 md:px-8 max-w-6xl mx-auto">
+                    {children}
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto" onScroll={handleContentScroll}>
-              <div className="container py-6 px-4 md:px-8 max-w-6xl mx-auto">
-                {children}
               </div>
             </div>
           </div>

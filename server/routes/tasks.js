@@ -2,7 +2,14 @@ import express from "express";
 import Task from "../models/Task.js";
 import { getDriveClient } from "../lib/drive.js";
 import Activity from "../models/Activity.js";
-import { sendFinalFilesEmail, sendFinalFilesSms, sendTaskCreatedSms } from "../lib/notifications.js";
+import {
+  sendFinalFilesEmail,
+  sendFinalFilesSms,
+  sendTaskCreatedSms,
+  sendCommentNotificationSms,
+  sendStatusUpdateSms,
+  sendSms,
+} from "../lib/notifications.js";
 import { getSocket } from "../socket.js";
 
 const router = express.Router();
@@ -54,6 +61,7 @@ router.post("/", async (req, res) => {
       changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
     };
     const task = await Task.create(payload);
+
     await Activity.create({
       taskId: task._id,
       taskTitle: task.title,
@@ -61,21 +69,36 @@ router.post("/", async (req, res) => {
       userId: req.body.requesterId || "",
       userName: req.body.requesterName || ""
     });
+
     const baseUrl = process.env.FRONTEND_URL || "";
     const taskUrl = baseUrl
       ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}`
       : "";
-    const smsTo = task.requesterPhone || process.env.TWILIO_DEFAULT_TO || "";
-    await sendTaskCreatedSms({
-      to: smsTo,
-      taskTitle: task.title,
-      taskUrl,
-      deadline: task.deadline,
-      requesterName: task.requesterName,
-      taskId: task.id || task._id?.toString?.()
-    });
+
+    const recipients = [
+      task.requesterPhone,
+      ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
+    ].filter((p) => p && p.trim() !== "");
+
+    if (recipients.length === 0 && process.env.TWILIO_DEFAULT_TO) {
+      recipients.push(process.env.TWILIO_DEFAULT_TO);
+    }
+
+    // Non-blocking notification
+    Promise.all(recipients.map(to =>
+      sendTaskCreatedSms({
+        to,
+        taskTitle: task.title,
+        taskUrl,
+        deadline: task.deadline,
+        requesterName: task.requesterName,
+        taskId: task.id || task._id?.toString?.()
+      })
+    )).catch(err => console.error("Background Notification Error (Create Task):", err));
+
     res.status(201).json(task);
   } catch (error) {
+    console.error("Failed to create task:", error);
     res.status(400).json({ error: "Failed to create task." });
   }
 });
@@ -198,10 +221,10 @@ router.post("/:id/comments", async (req, res) => {
       normalizedMentions.length > 0
         ? normalizedMentions
         : normalizedReceivers.length > 0
-        ? normalizedReceivers
-        : senderRole
-        ? validRoles.filter((role) => role !== senderRole)
-        : validRoles;
+          ? normalizedReceivers
+          : senderRole
+            ? validRoles.filter((role) => role !== senderRole)
+            : validRoles;
     const uniqueReceivers = [
       ...new Set(
         senderRole
@@ -243,6 +266,29 @@ router.post("/:id/comments", async (req, res) => {
     const createdComment = Array.isArray(task.comments)
       ? task.comments[task.comments.length - 1]
       : null;
+
+    // Notify recipients via WhatsApp/SMS
+    const recipients = [
+      task.requesterPhone,
+      ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
+    ].filter((p) => p && p.trim() !== "");
+
+    if (recipients.length > 0) {
+      const baseUrl = process.env.FRONTEND_URL || "";
+      const taskUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}` : "";
+
+      // Non-blocking notification
+      Promise.all(recipients.map(to =>
+        sendCommentNotificationSms({
+          to,
+          taskTitle: task.title,
+          userName: userName,
+          content: content,
+          taskUrl: taskUrl
+        })
+      )).catch(err => console.error("Background Notification Error (Comment):", err));
+    }
+
     const io = getSocket();
     if (io && createdComment) {
       io.to(task.id || task._id?.toString?.()).emit("comment:new", {
@@ -277,8 +323,8 @@ router.post("/:id/comments/seen", async (req, res) => {
         Array.isArray(comment.receiverRoles) && comment.receiverRoles.length > 0
           ? comment.receiverRoles
           : comment.userRole
-          ? validRoles.filter((validRole) => validRole !== comment.userRole)
-          : validRoles;
+            ? validRoles.filter((validRole) => validRole !== comment.userRole)
+            : validRoles;
       if (!receivers.includes(role)) {
         return comment;
       }
@@ -362,11 +408,11 @@ router.post("/:id/changes", async (req, res) => {
     const finalChangeEntries =
       userRole === "designer"
         ? changeEntries.filter(
-            (change) =>
-              change?.type === "file_added" &&
-              change?.field === "files" &&
-              change?.note === "Final file uploaded"
-          )
+          (change) =>
+            change?.type === "file_added" &&
+            change?.field === "files" &&
+            change?.note === "Final file uploaded"
+        )
         : [];
 
     const updateDoc = {
@@ -398,17 +444,42 @@ router.post("/:id/changes", async (req, res) => {
     const finalFileChanges =
       userRole === "designer"
         ? changes.filter(
-            (change) =>
-              change?.type === "file_added" &&
-              change?.field === "files" &&
-              change?.note === "Final file uploaded"
-          )
+          (change) =>
+            change?.type === "file_added" &&
+            change?.field === "files" &&
+            change?.note === "Final file uploaded"
+        )
         : [];
+
     if (finalFileChanges.length > 0) {
       const baseUrl = process.env.FRONTEND_URL || "";
       const taskUrl = baseUrl
         ? `${baseUrl.replace(/\/$/, "")}/task/${updatedTask.id || updatedTask._id}`
         : undefined;
+
+      // Notify on status updates
+      const statusChange = changes.find(c => c.field === "status");
+      if (statusChange) {
+        const recipients = [
+          updatedTask.requesterPhone,
+          ...(Array.isArray(updatedTask.secondaryPhones) ? updatedTask.secondaryPhones : [])
+        ].filter((p) => p && p.trim() !== "");
+
+        if (recipients.length > 0) {
+          // Non-blocking notification
+          Promise.all(recipients.map(to =>
+            sendStatusUpdateSms({
+              to,
+              taskTitle: updatedTask.title,
+              newStatus: statusChange.newValue,
+              taskUrl: taskUrl,
+              requesterName: updatedTask.requesterName,
+              taskId: updatedTask.id || updatedTask._id?.toString?.()
+            })
+          )).catch(err => console.error("Background Notification Error (Status Update):", err));
+        }
+      }
+
       const updatedFiles = Array.isArray(updatedTask.files) ? updatedTask.files : [];
       const newNames = new Set(
         finalFileChanges
@@ -449,16 +520,46 @@ router.post("/:id/changes", async (req, res) => {
         }
       }
 
-      const smsTo = updatedTask.requesterPhone || process.env.TWILIO_DEFAULT_TO || "";
-      await sendFinalFilesSms({
-        to: smsTo,
-        taskTitle: updatedTask.title,
-        files,
-        designerName: userName,
-        taskUrl,
-        deadline: updatedTask.deadline,
-        taskId: updatedTask.id || updatedTask._id?.toString?.()
-      });
+      const recipients = [
+        updatedTask.requesterPhone,
+        ...(Array.isArray(updatedTask.secondaryPhones) ? updatedTask.secondaryPhones : [])
+      ].filter((p) => p && p.trim() !== "");
+
+      if (recipients.length === 0 && process.env.TWILIO_DEFAULT_TO) {
+        recipients.push(process.env.TWILIO_DEFAULT_TO);
+      }
+
+      // Non-blocking notification
+      Promise.all(recipients.map(to =>
+        sendFinalFilesSms({
+          to,
+          taskTitle: updatedTask.title,
+          files,
+          designerName: userName,
+          taskUrl,
+          deadline: updatedTask.deadline,
+          taskId: updatedTask.id || updatedTask._id?.toString?.(),
+          requesterName: updatedTask.requesterName
+        })
+      )).catch(err => console.error("Background Notification Error (Final Files):", err));
+    }
+
+    // Notify on deadline changes
+    const deadlineChange = changes.find(c => c.field === "deadline" || (c.field === "deadline_request" && c.newValue === "Approved"));
+    if (deadlineChange) {
+      const recipients = [
+        updatedTask.requesterPhone,
+        ...(Array.isArray(updatedTask.secondaryPhones) ? updatedTask.secondaryPhones : [])
+      ].filter((p) => p && p.trim() !== "");
+
+      if (recipients.length > 0) {
+        const newDeadline = updatedTask.deadline ? new Date(updatedTask.deadline).toLocaleDateString() : "n/a";
+        const body = `DesignDesk Update: The deadline for "${updatedTask.title}" has been updated to ${newDeadline}.`;
+
+        // Non-blocking notification
+        Promise.all(recipients.map(to => sendSms({ to, body })))
+          .catch(err => console.error("Background Notification Error (Deadline Change):", err));
+      }
     }
 
     const io = getSocket();
@@ -471,6 +572,7 @@ router.post("/:id/changes", async (req, res) => {
 
     res.json(updatedTask);
   } catch (error) {
+    console.error("Failed to record change:", error);
     res.status(400).json({ error: "Failed to record change." });
   }
 });

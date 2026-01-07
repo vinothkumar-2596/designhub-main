@@ -542,9 +542,16 @@ export default function Dashboard() {
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-8">
-        <div className="sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-white/70 supports-[backdrop-filter]:bg-white/60 backdrop-blur-xl">
+    <DashboardLayout
+      background={
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-white overflow-hidden rounded-[32px]">
+          <div className="absolute left-1/2 top-[-22%] h-[680px] w-[780px] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(77,92,218,0.6),_rgba(120,190,255,0.4)_45%,_transparent_72%)] blur-[90px] opacity-90" />
+          <div className="absolute left-[10%] bottom-[-20%] h-[520px] w-[620px] rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(120,190,255,0.35),_transparent_70%)] blur-[110px] opacity-70" />
+        </div>
+      }
+    >
+      <div className="space-y-8 relative z-10">
+        <div className="sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">

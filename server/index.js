@@ -11,6 +11,7 @@ import driveAuthRoutes from "./routes/drive-auth.js";
 import aiRoutes from "./routes/ai.js";
 import User from "./models/User.js";
 import { initSocket } from "./socket.js";
+import { startReminderService } from "./lib/reminders.js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url) });
 
@@ -75,6 +76,7 @@ mongoose
     await ensureDemoUser();
     const server = http.createServer(app);
     initSocket(server);
+    startReminderService();
     server.listen(port, () => {
       console.log(`API listening on port ${port}`);
     });

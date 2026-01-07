@@ -17,6 +17,7 @@ import Activity from "./pages/Activity";
 import Settings from "./pages/Settings";
 import Help from "./pages/Help";
 import AIMode from "./pages/AIMode";
+import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ const App = () => (
               <Route path="/settings" element={<Settings />} />
               <Route path="/ai-mode" element={<AIMode />} />
               <Route path="/help" element={<Help />} />
+              <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
