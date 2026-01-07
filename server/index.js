@@ -88,11 +88,12 @@ const ensureDemoUser = async () => {
 mongoose
   .connect(mongoUri, dbName ? { dbName } : undefined)
   .then(async () => {
+    console.log("Connected to MongoDB successfully");
     await ensureDemoUser();
     const server = http.createServer(app);
     initSocket(server);
     startReminderService();
-    server.listen(port, () => {
+    server.listen(port, "0.0.0.0", () => {
       console.log(`API listening on port ${port}`);
     });
   })
