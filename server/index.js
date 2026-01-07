@@ -108,27 +108,25 @@ const ensureDemoUser = async () => {
   }
 };
 
-// Initialize Server
-const server = http.createServer(app);
-
-// Start Server Immediately (for Railway)
-server.listen(port, "0.0.0.0", () => {
-  console.log(`API listening on port ${port}`);
-  console.log(`Server bound to 0.0.0.0:${port}`);
-  console.log(`Environment PORT: ${process.env.PORT || 'not set'}`);
-
-  // Initialize Socket.IO after server is listening
-  // TEMPORARILY DISABLED TO DEBUGS 502 PROXY ISSUES
-  // initSocket(server);
-
-  startReminderService();
+// Minimal Server Configuration for Debugging
+app.get("/", (req, res) => {
+  res.send("Backend is running!");
 });
 
-// Fix for 502 Bad Gateway errors behind proxies (Railway/AWS/Nginx)
-// Ensure Node's keep-alive timeout is longer than the proxy's (usually 60s)
-server.keepAliveTimeout = 65000; // 65 seconds
-server.headersTimeout = 66000; // 66 seconds
+// app.use(express.static(path.join(__dirname, "../dist")));
+// app.get("*", (req, res) => {
+//   res.sendFile(path.join(__dirname, "../dist/index.html"));
+// });
 
+// Use app.listen directly
+const server = app.listen(port, "0.0.0.0", () => {
+  console.log(`Minimal API listening on port ${port}`);
+});
+
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+
+/*
 // Connect to MongoDB in Background
 mongoose
   .connect(mongoUri, dbName ? { dbName } : undefined)
@@ -143,4 +141,6 @@ mongoose
   .catch((error) => {
     console.error("Mongo connection failed:", error);
     // Do not exit process, just log error so app stays alive for logs
+  });
+*/
   });
