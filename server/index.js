@@ -39,7 +39,10 @@ app.use((req, res, next) => {
 
 app.get("/api/health", (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
-  res.json({ status: "ok", db: dbStatus });
+  const response = { status: "ok", db: dbStatus };
+  console.log("Sending health response:", JSON.stringify(response));
+  res.json(response);
+  console.log("Health response sent");
 });
 
 app.use("/api/tasks", taskRoutes);
