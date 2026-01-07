@@ -116,10 +116,18 @@ server.listen(port, "0.0.0.0", () => {
   console.log(`API listening on port ${port}`);
   console.log(`Server bound to 0.0.0.0:${port}`);
   console.log(`Environment PORT: ${process.env.PORT || 'not set'}`);
+
   // Initialize Socket.IO after server is listening
-  initSocket(server);
+  // TEMPORARILY DISABLED TO DEBUGS 502 PROXY ISSUES
+  // initSocket(server);
+
   startReminderService();
 });
+
+// Fix for 502 Bad Gateway errors behind proxies (Railway/AWS/Nginx)
+// Ensure Node's keep-alive timeout is longer than the proxy's (usually 60s)
+server.keepAliveTimeout = 65000; // 65 seconds
+server.headersTimeout = 66000; // 66 seconds
 
 // Connect to MongoDB in Background
 mongoose
