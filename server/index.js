@@ -111,8 +111,11 @@ const server = http.createServer(app);
 // Start Server Immediately (for Railway)
 server.listen(port, "0.0.0.0", () => {
   console.log(`API listening on port ${port}`);
+  console.log(`Server bound to 0.0.0.0:${port}`);
+  console.log(`Environment PORT: ${process.env.PORT || 'not set'}`);
   // Initialize Socket.IO after server is listening
-  initSocket(server);
+  // TEMPORARILY DISABLED FOR DEBUGGING
+  // initSocket(server);
   startReminderService();
 });
 
