@@ -114,8 +114,7 @@ server.listen(port, "0.0.0.0", () => {
   console.log(`Server bound to 0.0.0.0:${port}`);
   console.log(`Environment PORT: ${process.env.PORT || 'not set'}`);
   // Initialize Socket.IO after server is listening
-  // TEMPORARILY DISABLED FOR DEBUGGING
-  // initSocket(server);
+  initSocket(server);
   startReminderService();
 });
 
@@ -124,7 +123,11 @@ mongoose
   .connect(mongoUri, dbName ? { dbName } : undefined)
   .then(async () => {
     console.log("Connected to MongoDB successfully");
-    await ensureDemoUser();
+    try {
+      await ensureDemoUser();
+    } catch (err) {
+      console.error("Failed to ensure demo user:", err);
+    }
   })
   .catch((error) => {
     console.error("Mongo connection failed:", error);
