@@ -602,7 +602,7 @@ export default function Dashboard() {
                   </Button>
                 ) : (
                   <Button variant="secondary" asChild className="shadow-sm">
-                    <Link to={user.role === 'treasurer' ? '/approvals' : '/tasks'}>
+                    <Link to={(user.role as any) === 'treasurer' ? '/approvals' : '/tasks'}>
                       View Tasks
                     </Link>
                   </Button>
