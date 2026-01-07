@@ -31,6 +31,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Debug logging for all requests
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
 app.get("/api/health", (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
   res.json({ status: "ok", db: dbStatus });
