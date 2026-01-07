@@ -13,6 +13,12 @@ import User from "./models/User.js";
 import { initSocket } from "./socket.js";
 import { startReminderService } from "./lib/reminders.js";
 
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 dotenv.config({ path: new URL("../.env", import.meta.url) });
 
 const app = express();
@@ -29,6 +35,15 @@ app.use("/api/auth", authRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/drive", driveAuthRoutes);
 app.use("/api/ai", aiRoutes);
+
+// Serve static files from the React app
+app.use(express.static(path.join(__dirname, "../dist")));
+
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../dist/index.html"));
+});
 
 const port = process.env.PORT || 4000;
 const mongoUri = process.env.MONGODB_URI;
