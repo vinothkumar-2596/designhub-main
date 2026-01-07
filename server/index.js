@@ -19,14 +19,21 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config({ path: new URL("../.env", import.meta.url) });
+// Load .env file if it exists (local development)
+try {
+  dotenv.config({ path: new URL("../.env", import.meta.url) });
+} catch (err) {
+  // Silently ignore - Railway uses environment variables directly
+  console.log("No .env file found, using environment variables");
+}
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+  const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+  res.json({ status: "ok", db: dbStatus });
 });
 
 app.use("/api/tasks", taskRoutes);
@@ -92,19 +99,24 @@ const ensureDemoUser = async () => {
   }
 };
 
+// Initialize Server
+const server = http.createServer(app);
+initSocket(server);
+startReminderService();
+
+// Start Server Immediately (for Railway)
+server.listen(port, "0.0.0.0", () => {
+  console.log(`API listening on port ${port}`);
+});
+
+// Connect to MongoDB in Background
 mongoose
   .connect(mongoUri, dbName ? { dbName } : undefined)
   .then(async () => {
     console.log("Connected to MongoDB successfully");
     await ensureDemoUser();
-    const server = http.createServer(app);
-    initSocket(server);
-    startReminderService();
-    server.listen(port, "0.0.0.0", () => {
-      console.log(`API listening on port ${port}`);
-    });
   })
   .catch((error) => {
     console.error("Mongo connection failed:", error);
-    process.exit(1);
+    // Do not exit process, just log error so app stays alive for logs
   });
