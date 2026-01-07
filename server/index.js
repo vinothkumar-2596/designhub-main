@@ -58,6 +58,13 @@ if (!mongoUri) {
 
 const dbName = process.env.MONGODB_DB || undefined;
 
+// Debug log for MONGODB_URI (masked)
+if (mongoUri) {
+  const maskedUri = mongoUri.replace(/:([^:@]+)@/, ":****@");
+  console.log(`Connecting to MongoDB. URI starts with: ${maskedUri.substring(0, 20)}...`);
+}
+
+
 const ensureDemoUser = async () => {
   const email = demoEmail.toLowerCase().trim();
   const existing = await User.findOne({ email });
