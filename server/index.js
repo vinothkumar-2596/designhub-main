@@ -126,20 +126,4 @@ const server = app.listen(port, "0.0.0.0", () => {
 server.keepAliveTimeout = 65000;
 server.headersTimeout = 66000;
 
-/*
-// Connect to MongoDB in Background
-mongoose
-  .connect(mongoUri, dbName ? { dbName } : undefined)
-  .then(async () => {
-    console.log("Connected to MongoDB successfully");
-    try {
-      await ensureDemoUser();
-    } catch (err) {
-      console.error("Failed to ensure demo user:", err);
-    }
-  })
-  .catch((error) => {
-    console.error("Mongo connection failed:", error);
-    // Do not exit process, just log error so app stays alive for logs
-  });
-*/
+
