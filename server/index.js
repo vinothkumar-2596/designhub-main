@@ -107,12 +107,13 @@ const ensureDemoUser = async () => {
 
 // Initialize Server
 const server = http.createServer(app);
-initSocket(server);
-startReminderService();
 
 // Start Server Immediately (for Railway)
 server.listen(port, "0.0.0.0", () => {
   console.log(`API listening on port ${port}`);
+  // Initialize Socket.IO after server is listening
+  initSocket(server);
+  startReminderService();
 });
 
 // Connect to MongoDB in Background
