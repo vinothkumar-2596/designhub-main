@@ -143,4 +143,3 @@ mongoose
     // Do not exit process, just log error so app stays alive for logs
   });
 */
-  });
