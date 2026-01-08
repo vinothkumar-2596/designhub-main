@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { GlobalSearchProvider } from "@/contexts/GlobalSearchContext";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import NewRequest from "./pages/NewRequest";
@@ -47,6 +48,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
+          <SpeedInsights />
         </TooltipProvider>
       </GlobalSearchProvider>
     </AuthProvider>
