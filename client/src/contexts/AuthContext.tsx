@@ -23,18 +23,18 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
+  const [user, setUser] = useState<User | null>(() => {
     const stored = localStorage.getItem('auth_user');
     if (stored) {
       try {
-        setUser(JSON.parse(stored));
+        return JSON.parse(stored);
       } catch {
         localStorage.removeItem('auth_user');
+        return null;
       }
     }
-  }, []);
+    return null;
+  });
 
   useEffect(() => {
     if (!firebaseEnabled || !auth) return;
