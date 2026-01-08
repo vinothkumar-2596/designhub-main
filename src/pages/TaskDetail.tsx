@@ -805,7 +805,7 @@ export default function TaskDetail() {
       return nextTask;
     });
 
-    const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
+    const apiUrl = API_URL;
     if (apiUrl) {
       try {
         const response = await fetch(`${apiUrl}/api/tasks/${taskState.id}/changes`, {
