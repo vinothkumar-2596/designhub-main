@@ -550,7 +550,7 @@ export default function Dashboard() {
         </div>
       }
     >
-      <div className="space-y-8 relative z-10">
+      <div className="space-y-8 relative z-10 pt-8">
         <div className="sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
