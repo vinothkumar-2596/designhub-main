@@ -27,6 +27,8 @@ import {
 import { mockTasks } from '@/data/mockTasks';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 
+import { API_URL } from '@/lib/api';
+
 interface DashboardLayoutProps {
   children: ReactNode;
   headerActions?: ReactNode;
@@ -35,11 +37,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, headerActions, background }: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
-  const apiUrl =
-    (import.meta.env.VITE_API_URL as string | undefined) ||
-    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-      ? 'http://localhost:4000'
-      : undefined);
+  const apiUrl = API_URL;
   const [tasks, setTasks] = useState(mockTasks);
   const [storageTick, setStorageTick] = useState(0);
   const [useLocalData, setUseLocalData] = useState(!apiUrl);

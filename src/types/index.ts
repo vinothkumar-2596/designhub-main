@@ -1,6 +1,6 @@
 export type UserRole = 'designer' | 'staff' | 'treasurer';
 
-export type TaskStatus = 
+export type TaskStatus =
   | 'pending'
   | 'in_progress'
   | 'clarification_required'
@@ -33,6 +33,7 @@ export interface User {
 
 export interface TaskComment {
   id: string;
+  _id?: string;
   taskId: string;
   userId: string;
   userName: string;
@@ -72,6 +73,7 @@ export interface DesignVersion {
 
 export interface Task {
   id: string;
+  _id?: string;
   title: string;
   description: string;
   category: TaskCategory;
@@ -111,6 +113,7 @@ export interface Task {
 
 export interface TaskChange {
   id: string;
+  _id?: string;
   type: 'update' | 'file_added' | 'file_removed' | 'status';
   field: string;
   oldValue?: string;

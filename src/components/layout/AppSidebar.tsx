@@ -70,7 +70,6 @@ const navItems: NavItem[] = [
     icon: CheckSquare,
     roles: ['treasurer'],
   },
-
 ];
 
 export function AppSidebar() {

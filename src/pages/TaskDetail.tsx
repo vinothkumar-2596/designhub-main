@@ -92,11 +92,11 @@ const changeFieldLabels: Record<string, string> = {
 };
 
 const formatChangeField = (field: string) => changeFieldLabels[field] || field.replace(/_/g, ' ');
-  const roleLabels: Record<UserRole, string> = {
-    staff: 'Staff',
-    treasurer: 'Treasurer',
-    designer: 'Designer',
-  };
+const roleLabels: Record<UserRole, string> = {
+  staff: 'Staff',
+  treasurer: 'Treasurer',
+  designer: 'Designer',
+};
 const allRoles: UserRole[] = ['staff', 'treasurer', 'designer'];
 const normalizeUserRole = (role?: string) =>
   allRoles.includes(role as UserRole) ? (role as UserRole) : 'staff';
@@ -112,6 +112,8 @@ const fileActionButtonClass =
 const badgeGlassClass =
   'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] shadow-[0_16px_30px_-22px_rgba(30,58,138,0.38)] backdrop-blur-xl';
 
+import { API_URL } from '@/lib/api';
+
 export default function TaskDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -120,11 +122,7 @@ export default function TaskDetail() {
     | { task?: typeof mockTasks[number]; highlightChangeId?: string }
     | null;
   const { user } = useAuth();
-  const apiUrl =
-    (import.meta.env.VITE_API_URL as string | undefined) ||
-    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-      ? 'http://localhost:4000'
-      : undefined);
+  const apiUrl = API_URL;
   const stateTask = locationState?.task;
   const highlightChangeId = locationState?.highlightChangeId;
   const localTask = id ? loadLocalTaskById(id) : undefined;
@@ -218,7 +216,7 @@ export default function TaskDetail() {
         if (!isActive) return;
         if (data) setHandoverAnimation(data);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       isActive = false;
     };
@@ -448,39 +446,39 @@ export default function TaskDetail() {
           if (sizeFetchRef.current.has(driveId)) return;
           sizeFetchRef.current.add(driveId);
           try {
-          const response = await fetch(`${apiUrl}/api/files/metadata`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileId: driveId }),
-          });
-          if (!response.ok) return;
-          const data = await response.json();
-          const sizeValue =
-            typeof data.size === 'string' ? Number(data.size) : data.size;
-          const thumbnailLink = data.thumbnailLink;
-          if (Number.isFinite(sizeValue)) {
-            updates.set(file.url, { size: sizeValue });
+            const response = await fetch(`${apiUrl}/api/files/metadata`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileId: driveId }),
+            });
+            if (!response.ok) return;
+            const data = await response.json();
+            const sizeValue =
+              typeof data.size === 'string' ? Number(data.size) : data.size;
+            const thumbnailLink = data.thumbnailLink;
+            if (Number.isFinite(sizeValue)) {
+              updates.set(file.url, { size: sizeValue });
+            }
+            if (thumbnailLink) {
+              const existing = updates.get(file.url) || {};
+              updates.set(file.url, { ...existing, thumbnailUrl: thumbnailLink });
+            }
+          } catch {
+            // no-op
           }
-          if (thumbnailLink) {
-            const existing = updates.get(file.url) || {};
-            updates.set(file.url, { ...existing, thumbnailUrl: thumbnailLink });
-          }
-        } catch {
-          // no-op
-        }
-      })
-    );
+        })
+      );
 
-    if (!isActive || updates.size === 0) return;
-    const updatedFiles = taskState.files.map((file) => {
-      const nextMeta = updates.get(file.url);
-      if (!nextMeta) return file;
-      return {
-        ...file,
-        ...(nextMeta.size ? { size: nextMeta.size } : null),
-        ...(nextMeta.thumbnailUrl ? { thumbnailUrl: nextMeta.thumbnailUrl } : null),
-      };
-    });
+      if (!isActive || updates.size === 0) return;
+      const updatedFiles = taskState.files.map((file) => {
+        const nextMeta = updates.get(file.url);
+        if (!nextMeta) return file;
+        return {
+          ...file,
+          ...(nextMeta.size ? { size: nextMeta.size } : null),
+          ...(nextMeta.thumbnailUrl ? { thumbnailUrl: nextMeta.thumbnailUrl } : null),
+        };
+      });
       setTaskState((prev) => {
         if (!prev) return prev;
         const nextTask = { ...prev, files: updatedFiles };
@@ -491,7 +489,7 @@ export default function TaskDetail() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ files: updatedFiles }),
-      }).catch(() => {});
+      }).catch(() => { });
     };
 
     loadSizes();
@@ -964,20 +962,20 @@ export default function TaskDetail() {
             mentions,
           }),
         });
-      if (!response.ok) {
-        throw new Error('Failed to add comment');
+        if (!response.ok) {
+          throw new Error('Failed to add comment');
+        }
+        const updated = await response.json();
+        const hydrated = hydrateTask(updated);
+        setTaskState(hydrated);
+        onSuccess?.();
+        clearTyping();
+        toast.success('Comment added');
+        return;
+      } catch {
+        toast.error('Failed to add comment');
+        return;
       }
-      const updated = await response.json();
-      const hydrated = hydrateTask(updated);
-      setTaskState(hydrated);
-      onSuccess?.();
-      clearTyping();
-      toast.success('Comment added');
-      return;
-    } catch {
-      toast.error('Failed to add comment');
-      return;
-    }
     }
 
     const nextComment = {
@@ -1685,8 +1683,8 @@ export default function TaskDetail() {
                   return `Seen by ${seenRoles
                     .map((role) => roleLabels[role] ?? role)
                     .join(', ')} - Pending ${pendingRoles
-                    .map((role) => roleLabels[role] ?? role)
-                    .join(', ')}`;
+                      .map((role) => roleLabels[role] ?? role)
+                      .join(', ')}`;
                 })()}
               </span>
             )}
@@ -1864,80 +1862,80 @@ export default function TaskDetail() {
                         />
                       </div>
                     )}
-                      {user?.role !== 'staff' && (
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                            Deadline
-                          </p>
-                          <Input
-                            type="date"
-                            value={editedDeadline}
-                            onChange={(event) => setEditedDeadline(event.target.value)}
-                            className="mt-2 max-w-xs select-text"
-                          />
-                        </div>
-                      )}
+                    {user?.role !== 'staff' && (
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          Attachments (optional)
+                          Deadline
                         </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-3">
-                          <input
-                            type="file"
-                            multiple
-                            onChange={handleEditAttachmentUpload}
-                            className="hidden"
-                            id="edit-attachment-upload"
-                            disabled={approvalLockedForStaff || isUploadingAttachment}
-                          />
-                          <label
-                            htmlFor="edit-attachment-upload"
-                            className="inline-flex cursor-pointer items-center justify-center rounded-md border border-border bg-secondary px-3 py-2 text-xs font-medium text-foreground"
-                          >
-                            {isUploadingAttachment ? 'Uploading...' : 'Select files'}
-                          </label>
-                          <span className="text-xs text-muted-foreground">
-                            Add reference files if needed.
-                          </span>
-                        </div>
+                        <Input
+                          type="date"
+                          value={editedDeadline}
+                          onChange={(event) => setEditedDeadline(event.target.value)}
+                          className="mt-2 max-w-xs select-text"
+                        />
                       </div>
+                    )}
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Attachments (optional)
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <input
+                          type="file"
+                          multiple
+                          onChange={handleEditAttachmentUpload}
+                          className="hidden"
+                          id="edit-attachment-upload"
+                          disabled={approvalLockedForStaff || isUploadingAttachment}
+                        />
+                        <label
+                          htmlFor="edit-attachment-upload"
+                          className="inline-flex cursor-pointer items-center justify-center rounded-md border border-border bg-secondary px-3 py-2 text-xs font-medium text-foreground"
+                        >
+                          {isUploadingAttachment ? 'Uploading...' : 'Select files'}
+                        </label>
+                        <span className="text-xs text-muted-foreground">
+                          Add reference files if needed.
+                        </span>
+                      </div>
+                    </div>
                     <div className="flex flex-wrap items-center gap-3">
                       {user?.role === 'staff' && (
                         <span className="text-sm font-semibold text-primary/80">{staffChangeLabel}</span>
                       )}
+                      <Button
+                        onClick={handleSaveUpdates}
+                        disabled={
+                          approvalLockedForStaff ||
+                          (user?.role === 'staff' && staffChangeLimitReached) ||
+                          isUploadingAttachment
+                        }
+                      >
+                        {isUploadingAttachment && staffChangeCount < 3 ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Saving...
+                          </span>
+                        ) : (
+                          'Save Updates'
+                        )}
+                      </Button>
+                      {canSendForApproval && (
                         <Button
-                          onClick={handleSaveUpdates}
-                          disabled={
-                            approvalLockedForStaff ||
-                            (user?.role === 'staff' && staffChangeLimitReached) ||
-                            isUploadingAttachment
-                          }
+                          variant="outline"
+                          onClick={handleRequestApproval}
+                          disabled={isUploadingAttachment}
                         >
-                          {isUploadingAttachment && staffChangeCount < 3 ? (
+                          {isUploadingAttachment ? (
                             <span className="inline-flex items-center gap-2">
                               <Loader2 className="h-4 w-4 animate-spin" />
-                              Saving...
+                              Sending...
                             </span>
                           ) : (
-                            'Save Updates'
+                            'Send to Treasurer'
                           )}
                         </Button>
-                        {canSendForApproval && (
-                          <Button
-                            variant="outline"
-                            onClick={handleRequestApproval}
-                            disabled={isUploadingAttachment}
-                          >
-                            {isUploadingAttachment ? (
-                              <span className="inline-flex items-center gap-2">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Sending...
-                              </span>
-                            ) : (
-                              'Send to Treasurer'
-                            )}
-                          </Button>
-                        )}
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -2061,25 +2059,25 @@ export default function TaskDetail() {
                               className={fileActionButtonClass}
                               onClick={() => handleRemoveFile(file.id, file.name)}
                             >
-                                <Trash2 className="h-4 w-4 text-status-urgent" />
+                              <Trash2 className="h-4 w-4 text-status-urgent" />
                             </Button>
                           )}
                           {(() => {
                             const downloadUrl = getDownloadUrl(file);
                             return (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            disabled={!downloadUrl || downloadUrl === '#'}
-                            className={fileActionButtonClass}
-                            onClick={() => {
-                              if (downloadUrl && downloadUrl !== '#') {
-                                window.open(downloadUrl, '_blank', 'noopener,noreferrer');
-                              }
-                            }}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                disabled={!downloadUrl || downloadUrl === '#'}
+                                className={fileActionButtonClass}
+                                onClick={() => {
+                                  if (downloadUrl && downloadUrl !== '#') {
+                                    window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+                                  }
+                                }}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
                             );
                           })()}
                         </div>
@@ -2090,8 +2088,8 @@ export default function TaskDetail() {
               )}
 
               {/* Output Files */}
-                {outputFiles.length > 0 && (
-                  <div className="mb-6">
+              {outputFiles.length > 0 && (
+                <div className="mb-6">
                   <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-status-completed" />
                     Final Deliverables
@@ -2125,25 +2123,25 @@ export default function TaskDetail() {
                               className={fileActionButtonClass}
                               onClick={() => handleRemoveFile(file.id, file.name)}
                             >
-                                <Trash2 className="h-4 w-4 text-status-urgent" />
+                              <Trash2 className="h-4 w-4 text-status-urgent" />
                             </Button>
                           )}
                           {(() => {
                             const downloadUrl = getDownloadUrl(file);
                             return (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            disabled={!downloadUrl || downloadUrl === '#'}
-                            className={fileActionButtonClass}
-                            onClick={() => {
-                              if (downloadUrl && downloadUrl !== '#') {
-                                window.open(downloadUrl, '_blank', 'noopener,noreferrer');
-                              }
-                            }}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                disabled={!downloadUrl || downloadUrl === '#'}
+                                className={fileActionButtonClass}
+                                onClick={() => {
+                                  if (downloadUrl && downloadUrl !== '#') {
+                                    window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+                                  }
+                                }}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
                             );
                           })()}
                         </div>
@@ -2188,52 +2186,52 @@ export default function TaskDetail() {
               {isDesignerOrAdmin && (
                 <>
                   <div className="mt-6 rounded-2xl border-2 border-dashed border-[#D9E6FF] bg-[#F8FAFF] p-6 text-center">
-                  <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
-                  <p className="text-xs text-muted-foreground">
-                    Drag and drop or click to upload
-                  </p>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={handleFinalUpload}
-                    className="hidden"
-                    id="final-file-upload"
-                    disabled={isUploadingFinal}
-                  />
-                  <label
-                    htmlFor="final-file-upload"
-                    className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full border border-[#D9E6FF] bg-white px-4 py-2 text-xs font-semibold text-foreground shadow-sm hover:bg-[#F4F7FF]"
-                  >
-                    {isUploadingFinal ? 'Uploading...' : 'Select files'}
-                  </label>
-                  <div className="mt-5 rounded-xl border border-[#D9E6FF] bg-white/90 p-4 text-left shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                      Or add a Google Drive link
+                    <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
+                    <p className="text-xs text-muted-foreground">
+                      Drag and drop or click to upload
                     </p>
-                    <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1.6fr_auto]">
-                      <Input
-                        placeholder="File name"
-                        value={finalLinkName}
-                        onChange={(event) => setFinalLinkName(event.target.value)}
-                        className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4"
-                      />
-                      <Input
-                        placeholder="https://drive.google.com/..."
-                        value={finalLinkUrl}
-                        onChange={(event) => setFinalLinkUrl(event.target.value)}
-                        className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4"
-                      />
-                      <Button
-                        type="button"
-                        onClick={handleAddFinalLink}
-                        disabled={!finalLinkUrl.trim() || isAddingFinalLink}
-                        className="h-10 rounded-full px-5"
-                      >
-                        {isAddingFinalLink ? 'Adding...' : 'Add link'}
-                      </Button>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={handleFinalUpload}
+                      className="hidden"
+                      id="final-file-upload"
+                      disabled={isUploadingFinal}
+                    />
+                    <label
+                      htmlFor="final-file-upload"
+                      className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full border border-[#D9E6FF] bg-white px-4 py-2 text-xs font-semibold text-foreground shadow-sm hover:bg-[#F4F7FF]"
+                    >
+                      {isUploadingFinal ? 'Uploading...' : 'Select files'}
+                    </label>
+                    <div className="mt-5 rounded-xl border border-[#D9E6FF] bg-white/90 p-4 text-left shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                        Or add a Google Drive link
+                      </p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1.6fr_auto]">
+                        <Input
+                          placeholder="File name"
+                          value={finalLinkName}
+                          onChange={(event) => setFinalLinkName(event.target.value)}
+                          className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4"
+                        />
+                        <Input
+                          placeholder="https://drive.google.com/..."
+                          value={finalLinkUrl}
+                          onChange={(event) => setFinalLinkUrl(event.target.value)}
+                          className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4"
+                        />
+                        <Button
+                          type="button"
+                          onClick={handleAddFinalLink}
+                          disabled={!finalLinkUrl.trim() || isAddingFinalLink}
+                          className="h-10 rounded-full px-5"
+                        >
+                          {isAddingFinalLink ? 'Adding...' : 'Add link'}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
                   </div>
                   {taskState.status !== 'completed' && (
                     <div className="mt-4 flex flex-col items-center gap-2">
@@ -2319,10 +2317,10 @@ export default function TaskDetail() {
                   </span>
                 </div>
               )}
-              </div>
             </div>
+          </div>
 
-            {/* Right Column - Metadata */}
+          {/* Right Column - Metadata */}
           <div className="space-y-6">
             {/* Task Info */}
             <div className={`${glassPanelClass} p-6 animate-slide-up`}>

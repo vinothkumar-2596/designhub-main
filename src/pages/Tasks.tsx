@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { loadLocalTaskList, mergeLocalTasks, upsertLocalTask } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
+import { API_URL } from '@/lib/api';
 
 const scheduleStatusStyles: Record<ScheduleTask['status'], string> = {
   QUEUED: 'border border-border bg-secondary text-muted-foreground',
@@ -103,11 +104,7 @@ const getScheduleDiff = (
 export default function Tasks() {
   const { user } = useAuth();
   const { query, setItems, setScopeLabel } = useGlobalSearch();
-  const apiUrl =
-    (import.meta.env.VITE_API_URL as string | undefined) ||
-    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-      ? 'http://localhost:4000'
-      : undefined);
+  const apiUrl = API_URL;
   const [tasks, setTasks] = useState(mockTasks);
   const [storageTick, setStorageTick] = useState(0);
   const [scheduleTasks, setScheduleTasks] = useState(() =>
@@ -147,15 +144,15 @@ export default function Tasks() {
           updatedAt: new Date(task.updatedAt),
           proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
           deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
-          files: task.files?.map((file) => ({
+          files: task.files?.map((file: any) => ({
             ...file,
             uploadedAt: new Date(file.uploadedAt),
           })),
-          comments: task.comments?.map((comment) => ({
+          comments: task.comments?.map((comment: any) => ({
             ...comment,
             createdAt: new Date(comment.createdAt),
           })),
-          changeHistory: task.changeHistory?.map((entry) => ({
+          changeHistory: task.changeHistory?.map((entry: any) => ({
             ...entry,
             createdAt: new Date(entry.createdAt),
           })),
@@ -522,16 +519,16 @@ export default function Tasks() {
                             <p className="mt-2 text-xs text-muted-foreground">
                               {task.actualStartDate && task.actualEndDate
                                 ? `${format(task.actualStartDate, 'MMM d')} - ${format(
-                                    task.actualEndDate,
-                                    'MMM d'
-                                  )}`
+                                  task.actualEndDate,
+                                  'MMM d'
+                                )}`
                                 : 'Scheduling...'}{' '}
                               | {task.estimatedDays} days
                               {task.requestedDeadline
                                 ? ` | Requested ${format(
-                                    task.requestedDeadline,
-                                    'MMM d'
-                                  )}`
+                                  task.requestedDeadline,
+                                  'MMM d'
+                                )}`
                                 : ''}
                             </p>
                           </div>

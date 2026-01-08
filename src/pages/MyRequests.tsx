@@ -13,14 +13,12 @@ import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
+import { API_URL } from '@/lib/api';
+
 export default function MyRequests() {
   const { user } = useAuth();
   const { query, setQuery, setItems, setScopeLabel } = useGlobalSearch();
-  const apiUrl =
-    (import.meta.env.VITE_API_URL as string | undefined) ||
-    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-      ? 'http://localhost:4000'
-      : undefined);
+  const apiUrl = API_URL;
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | 'all'>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<TaskUrgency | 'all'>('all');

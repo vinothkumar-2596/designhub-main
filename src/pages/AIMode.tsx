@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '@/lib/api';
 import {
     Image as ImageIcon,
     Paperclip,
@@ -162,7 +163,7 @@ export default function AIMode() {
         // AI Logic Simulation
         // AI Buddy Logic
         try {
-            const apiUrl = (import.meta.env.VITE_API_URL as string) || 'http://localhost:4000';
+            const apiUrl = API_URL;
             const res = await fetch(`${apiUrl}/api/ai/buddy`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -216,7 +217,7 @@ export default function AIMode() {
             formData.append('aiMode', 'true');
             formData.append('uploadedBy', user?.name || 'Guest');
 
-            const apiUrl = (import.meta.env.VITE_API_URL as string) || 'http://localhost:4000';
+            const apiUrl = API_URL;
             const response = await fetch(`${apiUrl}/api/files/upload`, {
                 method: 'POST',
                 body: formData,
@@ -285,7 +286,7 @@ export default function AIMode() {
             formData.append('aiMode', 'true');
             formData.append('uploadedBy', user?.name || 'Guest');
 
-            const apiUrl = (import.meta.env.VITE_API_URL as string) || 'http://localhost:4000';
+            const apiUrl = API_URL;
             const response = await fetch(`${apiUrl}/api/files/upload`, {
                 method: 'POST',
                 body: formData,
@@ -362,7 +363,7 @@ export default function AIMode() {
             setIsTyping(true);
 
             try {
-                const apiUrl = (import.meta.env.VITE_API_URL as string) || 'http://localhost:4000';
+                const apiUrl = API_URL;
                 const res = await fetch(`${apiUrl}/api/files/ai-process`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

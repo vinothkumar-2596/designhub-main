@@ -396,6 +396,8 @@ function LinearProgressWithLabel(props: LinearProgressProps & { value: number })
   );
 }
 
+import { API_URL } from '@/lib/api';
+
 export default function NewRequest() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -460,11 +462,7 @@ export default function NewRequest() {
     'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
   const glassInputClass =
     'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
-  const apiUrl =
-    (import.meta.env.VITE_API_URL as string | undefined) ||
-    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-      ? 'http://localhost:4000'
-      : undefined);
+  const apiUrl = API_URL;
 
   // Minimum deadline is 3 days from now
   const minDeadlineDate = startOfDay(addDays(new Date(), 3));

@@ -1,26 +1,58 @@
+import express from 'express';
+import cors from 'cors';
 import http from 'http';
+import dotenv from 'dotenv';
+import connectDB from './lib/db.js';
+import { initSocket } from './socket.js';
 
-const port = process.env.PORT || 4000;
+// Load environment variables
+dotenv.config();
 
-console.log("Starting Raw Node.js Server...");
+// Mandatory Database Connection
+connectDB();
 
-const server = http.createServer((req, res) => {
-  console.log(`[RAW REQUEST] ${req.method} ${req.url} - Headers: ${JSON.stringify(req.headers)}`);
+const app = express();
+const server = http.createServer(app);
+const port = process.env.PORT || 10000;
 
-  res.writeHead(200, {
-    'Content-Type': 'text/plain',
-    'Connection': 'keep-alive'
-  });
-  res.end('Raw Backend is running!');
+// Socket.io Initialization
+initSocket(server);
+
+// Middleware
+app.use(cors({
+  origin: [
+    "https://antigravity.vercel.app",
+    process.env.FRONTEND_URL,
+    "http://localhost:5173",
+    "http://localhost:8080"
+  ].filter(Boolean),
+  credentials: true,
+}));
+app.use(express.json());
+
+// Routes
+import authRoutes from './routes/auth.js';
+import taskRoutes from './routes/tasks.js';
+import fileRoutes from './routes/files.js';
+import aiRoutes from './routes/ai.js';
+import activityRoutes from './routes/activity.js';
+import driveAuthRoutes from './routes/drive-auth.js';
+
+app.use('/api/auth', authRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/files', fileRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/activity', activityRoutes);
+app.use('/api/drive', driveAuthRoutes);
+
+app.get('/', (req, res) => {
+  res.send('Antigravity API is running!');
 });
 
-server.keepAliveTimeout = 65000;
-server.headersTimeout = 66000;
-
+// Start Server
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Raw API listening on port ${port}`);
-  console.log(`Server bound to 0.0.0.0:${port}`);
-  console.log(`Environment PORT: ${process.env.PORT || 'not set'}`);
+  console.log(`Antigravity API listening on port ${port}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 process.on('SIGTERM', () => {

@@ -20,17 +20,15 @@ import { Link } from 'react-router-dom';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
+import { API_URL } from '@/lib/api';
+
 export default function Approvals() {
   const { user } = useAuth();
   const { query, setItems, setScopeLabel } = useGlobalSearch();
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [tasks, setTasks] = useState(mockTasks);
   const [isLoading, setIsLoading] = useState(false);
-  const apiUrl =
-    (import.meta.env.VITE_API_URL as string | undefined) ||
-    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-      ? 'http://localhost:4000'
-      : undefined);
+  const apiUrl = API_URL;
 
   useEffect(() => {
     if (!apiUrl) return;
