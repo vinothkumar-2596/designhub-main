@@ -131,6 +131,7 @@ export default function Dashboard() {
         setTasks(hydrated);
         setUseLocalData(false);
       } catch (error) {
+        console.error('❌ Dashboard load error:', error);
         toast.error('Failed to load dashboard data');
         setUseLocalData(true);
       } finally {

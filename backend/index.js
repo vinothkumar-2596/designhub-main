@@ -19,12 +19,19 @@ const port = process.env.PORT || 10000;
 initSocket(server);
 
 // Middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 app.use(cors({
   origin: [
     "https://antigravity.vercel.app",
     process.env.FRONTEND_URL,
     "http://localhost:5173",
-    "http://localhost:8080"
+    "http://localhost:8080",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8080"
   ].filter(Boolean),
   credentials: true,
 }));

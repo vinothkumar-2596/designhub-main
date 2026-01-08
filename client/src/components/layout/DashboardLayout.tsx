@@ -111,7 +111,8 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
         }));
         setTasks(hydrated);
         setUseLocalData(false);
-      } catch {
+      } catch (error) {
+        console.error('❌ DashboardLayout load error:', error);
         setUseLocalData(true);
       }
     };
