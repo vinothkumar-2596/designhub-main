@@ -38,9 +38,10 @@ app.get("/", (req, res) => {
   res.send("Backend is running! Mode: Minimal");
 });
 
-// Use app.listen directly - Let Node decide binding (IPv6/IPv4)
-const server = app.listen(port, () => {
+// Use app.listen directly - Explicitly bind to 0.0.0.0 for Railway
+const server = app.listen(port, "0.0.0.0", () => {
   console.log(`Minimal API listening on port ${port}`);
+  console.log(`Server bound to 0.0.0.0:${port}`);
   console.log(`Environment PORT: ${process.env.PORT || 'not set'}`);
 });
 
