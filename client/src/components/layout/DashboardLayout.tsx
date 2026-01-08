@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   clearScheduleNotifications,
   loadScheduleNotifications,
@@ -26,6 +26,8 @@ import {
 } from '@/lib/designerSchedule';
 import { mockTasks } from '@/data/mockTasks';
 import { mergeLocalTasks } from '@/lib/taskStorage';
+import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
+import { GeminiBlink } from '@/components/common/GeminiBlink';
 
 import { API_URL } from '@/lib/api';
 
@@ -45,6 +47,8 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const autoPreviewShownRef = useRef(false);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     if (!user) return;
@@ -466,27 +470,24 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
       }}
       headerActions={
         <>
-          <Link
-            to="/ai-mode"
-            className="group relative h-9 px-4 rounded-full border border-primary/20 bg-primary/10 text-primary hover:text-white transition-all duration-300 flex items-center justify-center gap-2 overflow-hidden"
-            aria-label="Task Buddy AI Assistant"
-            title="Task Buddy AI Assistant"
-          >
-            {/* AI Glow Effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/40 via-violet-400/40 to-primary/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-            {/* Shimmer Effect */}
-            <div className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-
-            <Sparkles className="relative h-4 w-4 transition-all duration-300 group-hover:scale-110 group-hover:rotate-12 group-hover:text-amber-300" />
-            <span className="relative text-sm font-semibold tracking-tight">Task Buddy</span>
-          </Link>
+          {location.pathname !== '/new-request' && (
+            <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} className="mr-2" />
+          )}
           {notificationAction}
           {headerActions}
         </>
       }
     >
       {children}
+      <TaskBuddyModal
+        isOpen={isTaskBuddyOpen}
+        onClose={() => setIsTaskBuddyOpen(false)}
+        onTaskCreated={(draft) => {
+          console.log('AI Draft created:', draft);
+          setIsTaskBuddyOpen(false);
+          toast.success('Draft created! Navigate to New Request to use it.');
+        }}
+      />
     </DashboardShell>
   );
 }
@@ -814,6 +815,7 @@ function DashboardShell({
           </div>
         </main>
       </div>
+
     </div>
   );
 }

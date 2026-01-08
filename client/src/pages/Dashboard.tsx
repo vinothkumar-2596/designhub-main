@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { TaskCard } from '@/components/dashboard/TaskCard';
+import { ActivityFeed, type ActivityItem } from '@/components/dashboard/ActivityFeed';
 import { useAuth } from '@/contexts/AuthContext';
 import { mockTasks, calculateStats } from '@/data/mockTasks';
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter';
@@ -21,6 +22,7 @@ import {
   UserCheck,
   Calendar,
   Paperclip,
+  ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
@@ -39,6 +41,18 @@ const roleLabels: Record<string, string> = {
   treasurer: 'Treasurer',
   other: 'Member',
 };
+
+const EmptyState = () => (
+  <div className="text-center py-10 bg-white rounded-[32px] border border-slate-100 shadow-sm h-full flex flex-col items-center justify-center">
+    <div className="bg-slate-50 p-4 rounded-full mb-3">
+      <ListTodo className="h-8 w-8 text-slate-300" />
+    </div>
+    <h3 className="font-semibold text-slate-900">No recent activity</h3>
+    <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
+      New requests and tasks will appear here once you get started.
+    </p>
+  </div>
+);
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -696,223 +710,87 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Recent Tasks */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Recent Activity
-              </p>
-              <h2 className="text-lg font-semibold text-foreground">
-                {user.role === 'staff'
-                  ? 'Your Recent Requests'
-                  : user.role === 'treasurer'
-                    ? 'Recent Requests'
-                    : 'Recent Tasks'}
-              </h2>
-            </div>
-            <Button variant="ghost" size="sm" asChild>
-              <Link to={user.role === 'staff' ? '/my-requests' : user.role === 'treasurer' ? '/tasks' : '/tasks'}>
-                View All
-              </Link>
-            </Button>
+
+
+        {/* Activity Feed Section */}
+        <div className="mb-8 grid gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-1 h-full">
+            <ActivityFeed
+              notifications={activeNotifications.map(entry => {
+                let type: 'attachment' | 'message' | 'system' = 'system';
+                if (entry.field === 'files') type = 'attachment';
+                else if (entry.field === 'comment' || entry.field === 'staff_note') type = 'message';
+
+                return {
+                  id: entry.id || Math.random().toString(),
+                  title: getNotificationTitle(entry),
+                  subtitle: getNotificationNote(entry),
+                  time: format(new Date(entry.createdAt), 'h:mm a'),
+                  type,
+                  link: `/task/${entry.taskId}`
+                };
+              })}
+            />
           </div>
 
-          {(user.role === 'staff' || user.role === 'designer') &&
-            activeNotifications.length > 0 &&
-            showNotifications && (
-              <div className="mb-4 rounded-2xl border border-primary/10 bg-primary/5 p-4 shadow-card">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-foreground">Notifications</h3>
-                  <Button variant="ghost" size="icon" onClick={() => setShowNotifications(false)}>
-                    <X className="h-4 w-4" />
+          <div className="lg:col-span-2">
+            {isLoading ? (
+              <div className="text-center py-12 bg-card rounded-[32px] border border-border shadow-card h-full flex flex-col items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+                <p className="text-sm text-muted-foreground">Loading tasks...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {user.role === 'staff' ? 'Your Requests' : 'Recent Tasks'}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" asChild className="rounded-full hover:bg-slate-100">
+                    <Link to={user.role === 'staff' ? '/my-requests' : '/tasks'}>
+                      View All <ArrowRight className="ml-1 h-3 w-3" />
+                    </Link>
                   </Button>
                 </div>
-                <div className="space-y-2">
-                  {activeNotifications.map((entry) => (
-                    <Link
-                      key={entry.id}
-                      to={`/task/${entry.taskId}`}
-                      state={{ task: entry.task, highlightChangeId: entry.id }}
-                      className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-foreground">
-                          {getNotificationTitle(entry)}
-                        </p>
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] uppercase tracking-[0.2em] bg-red-100 text-red-700 border border-red-200"
-                        >
-                          New
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {getNotificationNote(entry)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
-                      </p>
-                    </Link>
-                  ))}
-                </div>
+
+                {user.role === 'treasurer' ? (
+                  treasurerRecentTasks.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {treasurerRecentTasks.map((task, index) => (
+                        <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
+                          <TaskCard task={task} showRequester showAssignee />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState />
+                  )
+                ) : (
+                  /* Reusing standard recent tasks logic if not treasurer (e.g. staff/designer/other) */
+                  recentTasks.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {recentTasks.map((task, index) => (
+                        <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
+                          <TaskCard task={task} showRequester={user.role !== 'staff'} showAssignee={user.role !== 'designer'} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState />
+                  )
+                )}
               </div>
             )}
-
-          {isLoading ? (
-            <div className="text-center py-12 bg-card rounded-2xl border border-border shadow-card">
-              <p className="text-sm text-muted-foreground">Loading tasks...</p>
-            </div>
-          ) : user.role === 'treasurer' ? (
-            <>
-              {treasurerRecentTasks.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {treasurerRecentTasks.map((task, index) => (
-                    <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
-                      <TaskCard task={task} showRequester showAssignee />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-10 bg-card rounded-2xl border border-border shadow-card">
-                  <ListTodo className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                  <h3 className="font-medium text-foreground">No recent requests yet</h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    New requests will appear here once available
-                  </p>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Pending Approvals
-                  </p>
-                  <h3 className="text-lg font-semibold text-foreground">
-                    {filteredApprovals.length} request{filteredApprovals.length === 1 ? '' : 's'} awaiting review
-                  </h3>
-                </div>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/approvals">View All</Link>
-                </Button>
-              </div>
-
-              {filteredApprovals.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filteredApprovals.slice(0, 4).map((task) => {
-                    const staffPreview = getStaffUpdatePreview(task);
-                    return (
-                      <div key={task.id} className="bg-white border border-[#D9E6FF] rounded-2xl p-5 shadow-card">
-                        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge
-                                variant="pending"
-                                className="border border-primary/20 bg-primary/10 text-primary"
-                              >
-                                Awaiting Approval
-                              </Badge>
-                              {task.urgency === 'urgent' && <Badge variant="urgent">Urgent</Badge>}
-                            </div>
-                            <h3 className="text-lg font-semibold text-foreground mb-2">{task.title}</h3>
-                            {staffPreview ? (
-                              <div className="mb-4 rounded-lg border border-primary/10 bg-primary/5 px-3 py-2">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/70">
-                                  Staff update
-                                </p>
-                                <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-                                  {staffPreview}
-                                </p>
-                              </div>
-                            ) : (
-                              <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                                {task.description}
-                              </p>
-                            )}
-                            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                              <div className="flex items-center gap-1.5">
-                                <User className="h-4 w-4" />
-                                <span>
-                                  {task.requesterName}
-                                  {task.requesterDepartment && (
-                                    <span className="text-xs ml-1">({task.requesterDepartment})</span>
-                                  )}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <Calendar className="h-4 w-4" />
-                                <span>Due {format(task.deadline, 'MMM d, yyyy')}</span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <Paperclip className="h-4 w-4" />
-                                <span>{task.files.length} files attached</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-row lg:flex-col gap-2 lg:w-36">
-                            <Button
-                              variant="default"
-                              className="flex-1 gap-2"
-                              onClick={() => handleApprove(task.id)}
-                              disabled={processingApprovalId === task.id}
-                            >
-                              <CheckCircle2 className="h-4 w-4" />
-                              Approve
-                            </Button>
-                            <Button
-                              variant="outline"
-                              className="flex-1 gap-2 border-primary/30 text-primary hover:bg-primary/5"
-                              onClick={() => handleReject(task.id)}
-                              disabled={processingApprovalId === task.id}
-                            >
-                              <XCircle className="h-4 w-4" />
-                              Reject
-                            </Button>
-                            <Button variant="ghost" size="sm" asChild className="gap-2 text-primary hover:bg-primary/5">
-                              <Link to={`/task/${task.id}`} state={{ task }}>
-                                <Eye className="h-4 w-4" />
-                                Details
-                              </Link>
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="min-h-[72px] rounded-xl border border-border bg-card px-4 py-4 text-sm text-muted-foreground">
-                  No pending approvals at the moment.
-                </div>
-              )}
-
-            </>
-          ) : recentTasks.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {recentTasks.map((task, index) => (
-                <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
-                  <TaskCard task={task} showRequester={user.role !== 'staff'} />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12 bg-card rounded-2xl border border-border shadow-card">
-              <ListTodo className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-              <h3 className="font-medium text-foreground">No tasks yet</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                {user.role === 'staff'
-                  ? "You haven't submitted any requests yet"
-                  : 'No tasks to display'}
-              </p>
-              {user.role === 'staff' && (
-                <Button asChild size="default" className="mt-4 border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200">
-                  <Link to="/new-request">Create Your First Request</Link>
-                </Button>
-              )}
-            </div>
-          )}
+          </div>
         </div>
+
+        {/* Clean up old sections if needed, but for now just fitting into the layout. 
+              The original structure had 'Recent Activity' title then 'Notifications' list then 'Loading/Grid'.
+              I've replaced that block with a Grid: Left Col (ActivityFeed), Right Col (Task Grid).
+          */}
+
       </div>
-    </DashboardLayout>
+    </DashboardLayout >
   );
 }

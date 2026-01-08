@@ -35,6 +35,7 @@ import {
   Layout,
   Monitor,
   BookOpen,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Task, TaskCategory, TaskChange, TaskUrgency } from '@/types';
@@ -72,6 +73,9 @@ import {
 } from '@/lib/designerSchedule';
 import { seedScheduleTasks } from '@/data/designerSchedule';
 import { upsertLocalTask } from '@/lib/taskStorage';
+import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
+import { GeminiBlink } from '@/components/common/GeminiBlink';
+import type { TaskDraft } from '@/lib/ai';
 
 interface UploadedFile {
   id: string;
@@ -85,30 +89,6 @@ interface UploadedFile {
   error?: string;
 }
 
-type AiFollowUp = 'size' | 'deadline' | 'language';
-
-interface AiMessage {
-  role: 'assistant' | 'user';
-  content: string;
-}
-
-interface AiDraft {
-  title: string;
-  category: TaskCategory;
-  urgency: TaskUrgency;
-  deadline: string;
-  description: string;
-  requiresApproval: boolean;
-  attachmentChecklist: string[];
-}
-
-const aiFollowUpPrompts: Record<AiFollowUp, string> = {
-  size: 'What is the size?',
-  deadline: 'Final date?',
-  language: 'Language: Tamil / English / Both?',
-};
-
-const aiFollowUpOrder: AiFollowUp[] = ['size', 'deadline', 'language'];
 
 const colorKeywords = [
   'dark blue',
@@ -407,22 +387,7 @@ export default function NewRequest() {
   const [showThankYou, setShowThankYou] = useState(false);
   const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
   const [uploadAnimation, setUploadAnimation] = useState<object | null>(null);
-  const [isAiOpen, setIsAiOpen] = useState(false);
-  const [aiInput, setAiInput] = useState('');
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [aiMessages, setAiMessages] = useState<AiMessage[]>([
-    {
-      role: 'assistant',
-      content:
-        'Describe your requirement in simple words. We’ll generate a submission-ready request that follows DesignDesk standards.',
-    },
-  ]);
-  const [aiFollowUps, setAiFollowUps] = useState<AiFollowUp[]>([]);
-  const [aiQuestionIndex, setAiQuestionIndex] = useState(0);
-  const [aiAnswers, setAiAnswers] = useState<Partial<Record<AiFollowUp, string>>>({});
-  const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
-  const [aiWarnings, setAiWarnings] = useState<string[]>([]);
-  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -646,227 +611,22 @@ export default function NewRequest() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const resetAiAssistant = () => {
-    setAiInput('');
-    setAiPrompt('');
-    setAiFollowUps([]);
-    setAiQuestionIndex(0);
-    setAiAnswers({});
-    setAiDraft(null);
-    setAiWarnings([]);
-    setIsEditingDraft(false);
-    setAiMessages([
-      {
-        role: 'assistant',
-        content:
-          'Describe your requirement in simple words. We’ll generate a submission-ready request that follows DesignDesk standards.',
-      },
-    ]);
-  };
-
-  const getMissingAiFields = (text: string): AiFollowUp[] => {
-    const missing: AiFollowUp[] = [];
-    if (!extractSize(text)) missing.push('size');
-    if (!extractDateFromText(text)) missing.push('deadline');
-    if (!extractLanguage(text)) missing.push('language');
-    return missing;
-  };
-
-  const buildAiDraft = (prompt: string, answers: Partial<Record<AiFollowUp, string>>) => {
-    const combined = [prompt, answers.size, answers.deadline, answers.language]
-      .filter(Boolean)
-      .join(' ');
-    const lower = combined.toLowerCase();
-    const size = extractSize(combined);
-    const sizeText = answers.size || size?.value || 'To be confirmed';
-    const orientation =
-      size && typeof size.width === 'number' && typeof size.height === 'number'
-        ? size.width >= size.height
-          ? 'Landscape'
-          : 'Portrait'
-        : null;
-    const deadlineDate = extractDateFromText(answers.deadline || combined);
-    const language = answers.language || extractLanguage(combined) || 'Tamil / English (confirm)';
-    const eventName = extractEventName(combined) || 'the requested project';
-    const tagline = extractTagline(combined) || 'To be confirmed';
-    const venue = extractVenue(combined) || 'To be confirmed';
-    const timeRange = extractTimeRange(combined);
-    const themeColor = extractThemeColor(combined);
-    const categoryValue = extractCategory(combined);
-    const categoryLabel = getCategoryLabel(categoryValue);
-    const assetLabel = getAssetLabel(categoryValue);
-    const deliverables = getDeliverablesForCategory(categoryValue);
-    const formattedDate = deadlineDate ? format(deadlineDate, 'dd.MM.yyyy') : 'To be confirmed';
-    const dateLine = `${formattedDate} | ${timeRange || 'Time to be confirmed'}`;
-    const attachmentChecklist = buildAttachmentChecklist(combined);
-    const mentionsModification = modificationKeywords.some((keyword) => lower.includes(keyword));
-    const hasAssetMentions = /(logo|brand|reference|sample|example|attachment|file)/i.test(combined);
-    const warnings: string[] = [];
-
-    if (deadlineDate && isBefore(startOfDay(deadlineDate), minDeadlineDate)) {
-      warnings.push(
-        'Minimum recommended timeline is 3 working days. Please revise deadline or mark urgency.'
-      );
-    }
-    if (mentionsModification) {
-      warnings.push('Modifications to approved designs require Treasurer approval.');
-    }
-    if (!hasAssetMentions) {
-      warnings.push('Please upload logos and reference files before submission.');
-    }
-
-    const urgencyFromDeadline = (() => {
-      if (!deadlineDate) return 'normal';
-      const daysAway = differenceInCalendarDays(startOfDay(deadlineDate), startOfDay(new Date()));
-      if (daysAway <= 3) return 'urgent';
-      if (daysAway <= 5) return 'intermediate';
-      if (daysAway <= 9) return 'normal';
-      return 'low';
-    })();
-
-    const styleTone = lower.includes('cultural') || lower.includes('festival') || lower.includes('traditional')
-      ? 'Formal and cultural'
-      : lower.includes('modern') || lower.includes('minimal')
-        ? 'Modern and minimal'
-        : 'Clean and professional';
-    const styleColor = themeColor ? `${themeColor} theme` : 'Balanced color palette';
-    const styleTypography =
-      language === 'Tamil'
-        ? 'Clean typography with Tamil emphasis'
-        : language.includes('Both')
-          ? 'Balanced Tamil and English typography'
-          : language === 'English'
-            ? 'Clean typography with English emphasis'
-            : 'Clean typography with brand emphasis';
-
-    const description = [
-      'Objective:',
-      `Design a professional ${assetLabel} for ${eventName} highlighting key information and brand identity.`,
-      '',
-      'Deliverables:',
-      `• ${deliverables[0]}`,
-      `• ${deliverables[1]}`,
-      '',
-      'Size & Orientation:',
-      `• ${sizeText}`,
-      orientation ? `• ${orientation}` : '• Orientation to be confirmed',
-      '',
-      'Content:',
-      `• Event Name: ${eventName}`,
-      `• Tagline: ${tagline}`,
-      `• Date & Time: ${dateLine}`,
-      `• Venue: ${venue}`,
-      '',
-      'Design Style:',
-      `• ${styleTone}`,
-      `• ${styleColor}`,
-      `• ${styleTypography}`,
-      '',
-      'Branding:',
-      `• ${attachmentChecklist[0] || 'Primary logo (mandatory)'}`,
-      attachmentChecklist[1] ? `• ${attachmentChecklist[1]}` : '• Use official brand colors if provided',
-      '',
-      'References Required:',
-      ...attachmentChecklist.map((item) => `• ${item}`),
-      '',
-      'Notes:',
-      '• Ensure high readability for stage backdrop',
-      '• Treasurer approval required if content changes after approval',
-    ].join('\n');
-
-    const draft: AiDraft = {
-      title: `${eventName} ${categoryLabel} Design`.trim(),
-      category: categoryValue,
-      urgency: urgencyFromDeadline,
-      deadline: deadlineDate ? format(deadlineDate, 'yyyy-MM-dd') : '',
-      description,
-      requiresApproval: mentionsModification,
-      attachmentChecklist,
-    };
-
-    return { draft, warnings };
-  };
-
-  const handleOpenAi = () => {
-    resetAiAssistant();
-    setIsAiOpen(true);
-  };
-
-  const handleAiSend = () => {
-    const trimmed = aiInput.trim();
-    if (!trimmed) return;
-
-    setAiMessages((prev) => [...prev, { role: 'user', content: trimmed }]);
-    setAiInput('');
-
-    if (!aiPrompt) {
-      setAiPrompt(trimmed);
-      const missing = getMissingAiFields(trimmed);
-      if (missing.length > 0) {
-        setAiFollowUps(missing);
-        setAiQuestionIndex(0);
-        setAiMessages((prev) => [
-          ...prev,
-          { role: 'assistant', content: aiFollowUpPrompts[missing[0]] },
-        ]);
-        return;
+  // Task Buddy AI Handler
+  const handleTaskBuddyDraft = (draft: TaskDraft) => {
+    setTitle(draft.title);
+    setDescription(draft.description);
+    setCategory(draft.category);
+    setUrgency(draft.urgency);
+    if (draft.deadline) {
+      const parsedDate = new Date(draft.deadline);
+      if (!isNaN(parsedDate.getTime())) {
+        setDeadline(parsedDate);
       }
-      const { draft, warnings } = buildAiDraft(trimmed, {});
-      setAiDraft(draft);
-      setAiWarnings(warnings);
-      setAiMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Draft ready. Review the preview and apply it to the form.' },
-      ]);
-      return;
     }
-
-    if (aiDraft) return;
-
-    const currentField = aiFollowUps[aiQuestionIndex];
-    const nextAnswers = { ...aiAnswers, [currentField]: trimmed };
-    setAiAnswers(nextAnswers);
-    const nextIndex = aiQuestionIndex + 1;
-    if (nextIndex < aiFollowUps.length) {
-      setAiQuestionIndex(nextIndex);
-      setAiMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: aiFollowUpPrompts[aiFollowUps[nextIndex]] },
-      ]);
-      return;
+    if (draft.whatsappNumbers && draft.whatsappNumbers.length > 0) {
+      setRequesterPhone(draft.whatsappNumbers.join(', '));
     }
-
-    const { draft, warnings } = buildAiDraft(aiPrompt, nextAnswers);
-    setAiDraft(draft);
-    setAiWarnings(warnings);
-    setAiMessages((prev) => [
-      ...prev,
-      { role: 'assistant', content: 'Draft ready. Review the preview and apply it to the form.' },
-    ]);
-  };
-
-  const handleApplyAiDraft = () => {
-    if (!aiDraft) return;
-    setTitle(aiDraft.title);
-    setDescription(aiDraft.description);
-    setCategory(aiDraft.category);
-    setUrgency(aiDraft.urgency);
-    setIsEmergency(false);
-    setDeadline(aiDraft.deadline ? parseIsoDate(aiDraft.deadline) : null);
-    setIsAiOpen(false);
-    toast.message('AI draft applied to the form. Review and submit when ready.');
-  };
-
-  const handleRegenerateAiDraft = () => {
-    if (!aiPrompt) return;
-    const { draft, warnings } = buildAiDraft(aiPrompt, aiAnswers);
-    setAiDraft(draft);
-    setAiWarnings(warnings);
-    setIsEditingDraft(false);
-    setAiMessages((prev) => [
-      ...prev,
-      { role: 'assistant', content: 'Draft regenerated. Review the updated version below.' },
-    ]);
+    toast.success('Task Buddy draft applied to form!');
   };
 
   const isFormValid = () => {
@@ -1042,11 +802,14 @@ export default function NewRequest() {
     >
       <div className="max-w-3xl mx-auto space-y-6 pt-8">
         {/* Header */}
-        <div className="animate-fade-in">
-          <h1 className="text-2xl font-bold text-foreground">New Design Request</h1>
-          <p className="text-muted-foreground mt-1">
-            Submit a new design request to the team
-          </p>
+        <div className="animate-fade-in flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">New Design Request</h1>
+            <p className="text-muted-foreground mt-1">
+              Submit a new design request to the team
+            </p>
+          </div>
+          <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} />
         </div>
 
         {/* Guidelines Banner */}
@@ -1412,6 +1175,13 @@ export default function NewRequest() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Task Buddy AI Modal */}
+      <TaskBuddyModal
+        isOpen={isTaskBuddyOpen}
+        onClose={() => setIsTaskBuddyOpen(false)}
+        onTaskCreated={handleTaskBuddyDraft}
+      />
     </DashboardLayout >
   );
 }

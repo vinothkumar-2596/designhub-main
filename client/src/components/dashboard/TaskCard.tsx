@@ -53,6 +53,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
       : emergencyStatus === 'rejected'
         ? 'destructive'
         : 'urgent';
+
   const assignedToId =
     (task as { assignedTo?: string; assignedToId?: string }).assignedTo ||
     (task as { assignedToId?: string }).assignedToId;
@@ -83,80 +84,111 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   return (
     <div
       className={cn(
-        'group rounded-2xl border p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up h-full flex flex-col',
-        isHighlighted ? 'border-[#A9BFFF] bg-[#F3F7FF]' : 'border-[#D9E6FF] bg-white'
+        'group relative rounded-3xl border p-6 bg-white transition-all duration-300 isolate',
+        'hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5',
+        isHighlighted
+          ? 'border-primary/20 bg-primary/5 ring-1 ring-primary/20'
+          : 'border-slate-100 hover:border-slate-200'
       )}
     >
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 mb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={status.variant}>{status.label}</Badge>
-          {task.urgency === 'urgent' && <Badge variant="urgent">Urgent</Badge>}
+          <Badge
+            variant={status.variant}
+            className="rounded-full px-3 py-1 text-xs font-medium border-0 shadow-none"
+          >
+            {status.label}
+          </Badge>
+          {task.urgency === 'urgent' && (
+            <Badge variant="urgent" className="rounded-full px-3 text-xs border-0">
+              Urgent
+            </Badge>
+          )}
           {task.approvalStatus === 'pending' && (
-            <Badge variant="pending">Awaiting Approval</Badge>
+            <Badge variant="pending" className="rounded-full px-3 text-xs border-0">
+              Awaiting Approval
+            </Badge>
           )}
           {(task.isEmergency || emergencyStatus) && (
-            <Badge variant={emergencyVariant}>{emergencyLabel}</Badge>
+            <Badge variant={emergencyVariant} className="rounded-full px-3 text-xs border-0">
+              {emergencyLabel}
+            </Badge>
           )}
         </div>
-        <Badge variant="secondary" className="text-xs font-semibold">
+        <Badge
+          variant="secondary"
+          className="rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 border-0 px-3 text-xs font-semibold"
+        >
           {categoryLabels[task.category]}
         </Badge>
       </div>
 
-      <div className="mt-3 space-y-2">
-        <h3 className="text-lg font-semibold text-foreground transition-colors group-hover:text-primary break-words">
+      <div className="space-y-3 mb-6">
+        <h3 className="text-lg font-bold text-slate-900 group-hover:text-primary transition-colors tracking-tight line-clamp-2">
           {task.title}
         </h3>
-        <p className="text-sm text-muted-foreground line-clamp-2">{task.description}</p>
+        <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">
+          {task.description}
+        </p>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mb-6 text-xs text-slate-500 font-medium">
         {showRequester && (
-          <div className="flex items-center gap-1.5">
-            <User className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-2 group/item">
+            <div className="p-1 rounded-full bg-slate-50 text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors">
+              <User className="h-3.5 w-3.5" />
+            </div>
             <span>{task.requesterName}</span>
           </div>
         )}
         {showAssignee && (
-          <div className="flex items-center gap-1.5">
-            <UserCheck className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-2 group/item">
+            <div className="p-1 rounded-full bg-slate-50 text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors">
+              <UserCheck className="h-3.5 w-3.5" />
+            </div>
             <span>
-              {task.assignedToName ? `Assigned to ${task.assignedToName}` : 'Unassigned'}
+              {task.assignedToName ? task.assignedToName : <span className="text-slate-400 italic">Unassigned</span>}
             </span>
           </div>
         )}
-        <div className={cn('flex items-center gap-1.5', isOverdue && 'text-status-urgent font-medium')}>
-          <Calendar className="h-3.5 w-3.5" />
+        <div className={cn('flex items-center gap-2 group/item', isOverdue && 'text-red-500')}>
+          <div className={cn("p-1 rounded-full bg-slate-50 text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors", isOverdue && "bg-red-50 text-red-500")}>
+            <Calendar className="h-3.5 w-3.5" />
+          </div>
           <span>{deadlineText}</span>
         </div>
-        {task.files.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <Paperclip className="h-3.5 w-3.5" />
-            <span>{task.files.length} files</span>
-          </div>
-        )}
-        {task.comments.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <MessageSquare className="h-3.5 w-3.5" />
-            <span>{task.comments.length}</span>
-          </div>
-        )}
       </div>
 
-      <div className="mt-auto flex items-center justify-between border-t border-[#D9E6FF] pt-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Clock className="h-3.5 w-3.5" />
-          <span>Created {format(task.createdAt, 'MMM d, yyyy h:mm a')}</span>
+      <div className="mt-auto flex items-center justify-between pt-4 border-t border-slate-50">
+        <div className="flex items-center gap-3">
+          {task.files.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+              <Paperclip className="h-3.5 w-3.5" />
+              <span>{task.files.length}</span>
+            </div>
+          )}
+          {task.comments.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>{task.comments.length}</span>
+            </div>
+          )}
+          <div className="w-px h-3 bg-slate-200 mx-1" />
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <Clock className="h-3.5 w-3.5" />
+            <span>{format(task.createdAt, 'MMM d')}</span>
+          </div>
         </div>
+
         <Button
           variant="ghost"
           size="sm"
           asChild
-          className="gap-1 font-semibold text-primary border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.35)]"
+          className="h-8 gap-2 pl-3 pr-2 text-primary hover:text-primary hover:bg-primary/5 rounded-full font-semibold text-xs group/btn"
         >
           <Link to={`/task/${taskId}`} state={{ task }}>
             View Details
-            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            <ArrowRight className="h-3 w-3 transition-transform group-hover/btn:translate-x-0.5" />
           </Link>
         </Button>
       </div>
