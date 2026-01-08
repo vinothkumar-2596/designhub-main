@@ -109,21 +109,35 @@ const ensureDemoUser = async () => {
 };
 
 // Minimal Server Configuration for Debugging
+
+// Request Logger
+app.use((req, res, next) => {
+  console.log(`[REQUEST] ${req.method} ${req.url}`);
+  next();
+});
+
 app.get("/", (req, res) => {
   res.send("Backend is running!");
 });
 
-// app.use(express.static(path.join(__dirname, "../dist")));
-// app.get("*", (req, res) => {
-//   res.sendFile(path.join(__dirname, "../dist/index.html"));
-// });
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
+  console.log("[HEALTH] Response sent");
+});
 
-// Use app.listen directly
-const server = app.listen(port, "0.0.0.0", () => {
+// Use app.listen directly - Let Node decide binding (IPv6/IPv4)
+const server = app.listen(port, () => {
   console.log(`Minimal API listening on port ${port}`);
+  console.log(`Environment PORT: ${process.env.PORT || 'not set'}`);
 });
 
 server.keepAliveTimeout = 65000;
 server.headersTimeout = 66000;
 
-
+// Graceful Shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+  });
+});
