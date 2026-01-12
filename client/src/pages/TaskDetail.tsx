@@ -1373,8 +1373,30 @@ export default function TaskDetail() {
         );
       }
       toast.success('Final files uploaded.');
-    } catch (error) {
-      toast.error('File upload failed');
+    } catch (error: any) {
+      const errorMsg = error.message || "Upload failed";
+      if (errorMsg.includes("Drive OAuth not connected")) {
+        toast.error('Google Drive Disconnected', {
+          description: 'Please authorize App to access Drive.',
+          action: {
+            label: 'Connect',
+            onClick: async () => {
+              try {
+                const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                const data = await res.json();
+                if (data.url) {
+                  window.open(data.url, '_blank');
+                }
+              } catch (e) {
+                console.error(e);
+              }
+            }
+          },
+          duration: 10000,
+        });
+      } else {
+        toast.error('File upload failed');
+      }
     } finally {
       setIsUploadingFinal(false);
       e.target.value = '';
@@ -1525,8 +1547,30 @@ export default function TaskDetail() {
         );
       }
       toast.success('Attachments uploaded.');
-    } catch (error) {
-      toast.error('File upload failed');
+    } catch (error: any) {
+      const errorMsg = error.message || "Upload failed";
+      if (errorMsg.includes("Drive OAuth not connected")) {
+        toast.error('Google Drive Disconnected', {
+          description: 'Please authorize App to access Drive.',
+          action: {
+            label: 'Connect',
+            onClick: async () => {
+              try {
+                const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                const data = await res.json();
+                if (data.url) {
+                  window.open(data.url, '_blank');
+                }
+              } catch (e) {
+                console.error(e);
+              }
+            }
+          },
+          duration: 10000,
+        });
+      } else {
+        toast.error('File upload failed');
+      }
     } finally {
       setIsUploadingAttachment(false);
       e.target.value = '';

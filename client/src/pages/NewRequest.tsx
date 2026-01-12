@@ -503,8 +503,40 @@ export default function NewRequest() {
 
       xhr.onload = () => {
         if (xhr.status < 200 || xhr.status >= 300) {
-          updateFile(localId, { uploading: false, error: 'Upload failed' });
-          toast.error('File upload failed', { description: file.name });
+          let errorMsg = 'Upload failed';
+          try {
+            const errData = JSON.parse(xhr.responseText);
+            errorMsg = errData.error || errorMsg;
+          } catch { }
+
+          updateFile(localId, { uploading: false, error: errorMsg });
+
+          if (errorMsg.includes("Drive OAuth not connected")) {
+            toast.error('Google Drive Disconnected', {
+              description: 'Please authorize App to access Drive.',
+              action: {
+                label: 'Connect',
+                onClick: async () => {
+                  // Open in new tab
+                  try {
+                    const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                    const data = await res.json();
+                    if (data.url) {
+                      window.open(data.url, '_blank');
+                    } else {
+                      toast.error("Failed to get auth URL");
+                    }
+                  } catch (e) {
+                    toast.error("Failed to get auth URL");
+                  }
+                }
+              },
+              duration: 10000,
+            });
+          } else {
+            toast.error('File upload failed', { description: file.name });
+          }
+
           resolve();
           return;
         }
@@ -1093,13 +1125,41 @@ export default function NewRequest() {
                         <p className="text-sm font-medium text-foreground">
                           {file.name}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          {file.uploading
-                            ? 'Uploading...'
-                            : file.error
-                              ? file.error
-                              : formatFileSize(file.size)}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className={`text-xs ${file.error ? 'text-destructive' : 'text-muted-foreground'}`}>
+                            {file.uploading
+                              ? 'Uploading...'
+                              : file.error
+                                ? file.error
+                                : formatFileSize(file.size)}
+                          </p>
+                          {file.error && file.error.includes("Drive OAuth not connected") && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-6 px-2 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white"
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                try {
+                                  const apiUrl = API_URL;
+                                  const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                                  const data = await res.json();
+                                  if (data.url) {
+                                    window.open(data.url, '_blank');
+                                  } else {
+                                    toast.error("Failed to get auth URL");
+                                  }
+                                } catch (e) {
+                                  toast.error("Failed to get auth URL");
+                                }
+                              }}
+                            >
+                              Connect
+                            </Button>
+                          )}
+                        </div>
                         {file.uploading && typeof file.progress === 'number' && (
                           <div className="mt-2 w-full max-w-sm">
                             <LinearProgressWithLabel value={file.progress} />

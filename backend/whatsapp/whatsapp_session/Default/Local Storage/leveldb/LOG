@@ -1,3 +1,5 @@
-2026/01/07-16:13:23.776 4b3c Reusing MANIFEST D:\projects\designhub-main\server\whatsapp\whatsapp_session\Default\Local Storage\leveldb/MANIFEST-000001
-2026/01/07-16:13:23.781 4b3c Recovering log #8
-2026/01/07-16:13:23.782 4b3c Reusing old log D:\projects\designhub-main\server\whatsapp\whatsapp_session\Default\Local Storage\leveldb/000008.log 
+2026/01/12-15:48:50.759 49a0 Reusing MANIFEST D:\projects\designhub-main\backend\whatsapp\whatsapp_session\Default\Local Storage\leveldb/MANIFEST-000001
+2026/01/12-15:48:50.764 49a0 Recovering log #8
+2026/01/12-15:48:50.764 49a0 Level-0 table #10: started
+2026/01/12-15:48:50.769 49a0 Level-0 table #10: 20958 bytes OK
+2026/01/12-15:48:50.775 49a0 Delete type=0 #8

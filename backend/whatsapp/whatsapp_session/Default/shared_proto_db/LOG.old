@@ -1,3 +1,3 @@
-2026/01/07-16:03:35.171 421c Reusing MANIFEST D:\projects\designhub-main\server\whatsapp\whatsapp_session\Default\shared_proto_db/MANIFEST-000001
-2026/01/07-16:03:35.172 421c Recovering log #3
-2026/01/07-16:03:35.172 421c Reusing old log D:\projects\designhub-main\server\whatsapp\whatsapp_session\Default\shared_proto_db/000003.log 
+2026/01/12-15:47:38.837 56f8 Reusing MANIFEST D:\projects\designhub-main\backend\whatsapp\whatsapp_session\Default\shared_proto_db/MANIFEST-000001
+2026/01/12-15:47:38.838 56f8 Recovering log #3
+2026/01/12-15:47:38.839 56f8 Reusing old log D:\projects\designhub-main\backend\whatsapp\whatsapp_session\Default\shared_proto_db/000003.log 

@@ -258,13 +258,45 @@ export default function AIMode() {
                 setMessages(prev => [...prev, fileMsg, aiMsg]);
                 setUploadStatus('idle');
             }, 1000);
-        } catch (error) {
+        } catch (error: any) {
             setUploadStatus('error');
-            toast({
-                title: "Upload failed",
-                description: "Could not upload file to server.",
-                variant: "destructive"
-            });
+            const errorMsg = error.message || "Upload failed";
+            if (errorMsg.includes("Drive OAuth not connected") || (error.response && error.response.status === 500)) {
+                // Try to see if we can get the error message from response if it was a fetch error
+                // In this catch block, 'error' might be the Error object thrown by valid non-ok response
+
+                toast({
+                    title: "Google Drive Disconnected",
+                    description: "Please authorize App to access Drive.",
+                    variant: "destructive",
+                    action: (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-white border-white hover:bg-white hover:text-red-500"
+                            onClick={async () => {
+                                try {
+                                    const apiUrl = API_URL;
+                                    const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                                    const data = await res.json();
+                                    if (data.url) {
+                                        window.open(data.url, '_blank');
+                                    }
+                                } catch (e) {
+                                    console.error(e);
+                                }
+                            }}>
+                            Connect
+                        </Button>
+                    )
+                });
+            } else {
+                toast({
+                    title: "Upload failed",
+                    description: "Could not upload file to server.",
+                    variant: "destructive"
+                });
+            }
         }
     };
 

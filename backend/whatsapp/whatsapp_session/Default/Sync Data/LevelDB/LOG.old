@@ -1,3 +1,3 @@
-2026/01/07-16:03:35.087 41f0 Reusing MANIFEST D:\projects\designhub-main\server\whatsapp\whatsapp_session\Default\Sync Data\LevelDB/MANIFEST-000001
-2026/01/07-16:03:35.088 41f0 Recovering log #3
-2026/01/07-16:03:35.088 41f0 Reusing old log D:\projects\designhub-main\server\whatsapp\whatsapp_session\Default\Sync Data\LevelDB/000003.log 
+2026/01/12-15:47:38.741 6084 Reusing MANIFEST D:\projects\designhub-main\backend\whatsapp\whatsapp_session\Default\Sync Data\LevelDB/MANIFEST-000001
+2026/01/12-15:47:38.742 6084 Recovering log #3
+2026/01/12-15:47:38.742 6084 Reusing old log D:\projects\designhub-main\backend\whatsapp\whatsapp_session\Default\Sync Data\LevelDB/000003.log 
