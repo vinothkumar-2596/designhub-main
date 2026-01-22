@@ -16,6 +16,9 @@ import {
   Users,
   X,
   Sparkles,
+  Database,
+  Clock,
+  PenLine,
 } from 'lucide-react';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { Link, useLocation } from 'react-router-dom';
@@ -48,6 +51,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
   const autoPreviewShownRef = useRef(false);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -327,6 +331,15 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     };
   }, [notificationsOpen]);
 
+  useEffect(() => {
+    const onOpenGuidelines = () => {
+      setIsGuidelinesOpen(true);
+    };
+    window.addEventListener('designhub:open-guidelines', onOpenGuidelines as EventListener);
+    return () =>
+      window.removeEventListener('designhub:open-guidelines', onOpenGuidelines as EventListener);
+  }, []);
+
   const getNotificationTitle = (entry: any) => {
     if (entry.field === 'comment') {
       return `${entry.userName || 'Staff'} messaged ${entry.taskTitle}`;
@@ -479,6 +492,94 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
       }
     >
       {children}
+      {isGuidelinesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <button
+            type="button"
+            aria-label="Close guidelines"
+            onClick={() => setIsGuidelinesOpen(false)}
+            className="absolute inset-0 bg-slate-900/25 backdrop-blur-sm"
+          />
+          <div className="relative w-full max-w-3xl rounded-[28px] border border-[#D9E6FF] bg-white shadow-[0_22px_48px_-28px_rgba(15,23,42,0.25)]">
+            <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top_left,_rgba(214,227,255,0.6),_transparent_55%),radial-gradient(circle_at_bottom_right,_rgba(240,244,255,0.9),_transparent_60%)]" />
+            <div className="relative overflow-hidden rounded-[26px] border border-[#D9E6FF] bg-white/90 backdrop-blur-xl">
+              <div className="flex items-start justify-between gap-4 px-8 py-8">
+                <div className="max-w-xl">
+                  <h3 className="text-lg font-extrabold text-[#1E2A5A]">
+                    Submission Guidelines
+                  </h3>
+                  <p className="mt-1 text-xs text-[#6B7A99]">
+                    Please follow these before submitting.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="text-[#6B7A99] hover:text-[#1E2A5A] rounded-full p-2 bg-[#EEF4FF] hover:bg-[#E5ECFF]"
+                  onClick={() => setIsGuidelinesOpen(false)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="px-8 pb-10">
+                <div className="grid gap-4 md:grid-cols-[1.2fr,0.8fr] items-center">
+                  <div className="rounded-2xl border border-[#D9E6FF] bg-white/70 text-sm text-[#4B5A78] divide-y divide-[#D9E6FF]">
+                    <div className="flex items-start gap-3 px-5 py-5">
+                      <Database className="mt-0.5 h-7 w-7 text-primary" />
+                      <span>
+                        <span className="font-semibold text-[#2F3A56]">Data Requirements:</span>{' '}
+                        Include all text content, images, logos, and reference files.
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-3 px-5 py-5">
+                      <Clock className="mt-0.5 h-7 w-7 text-primary" />
+                      <span>
+                        <span className="font-semibold text-[#2F3A56]">Timeline:</span>{' '}
+                        Minimum 3 working days for standard requests. Urgent requests require justification.
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-3 px-5 py-5">
+                      <PenLine className="mt-0.5 h-7 w-7 text-primary" />
+                      <span>
+                        <span className="font-semibold text-[#2F3A56]">Modifications:</span>{' '}
+                        Changes to approved designs require Treasurer approval first.
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative hidden md:block">
+                    <div className="absolute -right-6 top-8 h-32 w-56 rounded-[28px] border border-white/70 bg-white/70" />
+                    <div className="relative rounded-[32px] bg-white p-6">
+                      <div className="flex items-center gap-3">
+                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56]">
+                          <Sparkles className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="h-3 w-24 rounded-full bg-[#EEF4FF]" />
+                          <div className="mt-2 h-2 w-32 rounded-full bg-[#EEF4FF]" />
+                        </div>
+                        <span className="ml-auto h-7 w-10 rounded-full bg-[#EAF1FF]" />
+                      </div>
+                      <div className="mt-4 h-2 w-28 rounded-full bg-[#EEF4FF]" />
+                    </div>
+                    <div className="relative mt-3 ml-6 rounded-[32px] bg-white p-6">
+                      <div className="flex items-center gap-3">
+                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56]">
+                          <Clock className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="h-3 w-24 rounded-full bg-[#EEF4FF]" />
+                          <div className="mt-2 h-2 w-32 rounded-full bg-[#EEF4FF]" />
+                        </div>
+                        <span className="ml-auto h-7 w-10 rounded-full bg-[#EAF1FF]" />
+                      </div>
+                      <div className="mt-4 h-2 w-24 rounded-full bg-[#EEF4FF]" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <TaskBuddyModal
         isOpen={isTaskBuddyOpen}
         onClose={() => setIsTaskBuddyOpen(false)}
@@ -511,6 +612,7 @@ function DashboardShell({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSearchDismissed, setIsSearchDismissed] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchContainerRef = useRef<HTMLDivElement | null>(null);
 
   const searchValue = query.trim().toLowerCase();
   const filteredItems = useMemo(() => {
@@ -619,6 +721,34 @@ function DashboardShell({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!showPanel) return;
+      if (!searchContainerRef.current) return;
+      if (searchContainerRef.current.contains(event.target as Node)) return;
+      setIsSearchOpen(false);
+      setIsSearchDismissed(true);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+    };
+  }, [showPanel]);
+
+  useEffect(() => {
+    const onOpenSearch = () => {
+      setIsSearchDismissed(false);
+      setIsSearchOpen(true);
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    };
+    window.addEventListener('designhub:open-search', onOpenSearch as EventListener);
+    return () =>
+      window.removeEventListener('designhub:open-search', onOpenSearch as EventListener);
+  }, []);
+
   const renderItem = (item: (typeof items)[number]) => {
     const content = (
       <div className="flex items-center gap-3">
@@ -711,7 +841,7 @@ function DashboardShell({
                 <div className="relative z-20">
                   <div className="shrink-0 border-b border-[#D9E6FF] bg-white/60 backdrop-blur-md px-4 md:px-6 py-3">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="relative w-full max-w-md">
+                      <div className="relative w-full max-w-md" ref={searchContainerRef}>
                         <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-sm">
                           <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
                           <div className="relative flex-1">
@@ -719,10 +849,10 @@ function DashboardShell({
                               <div className="search-placeholder">
                                 <span className="search-placeholder-static">Search for</span>
                                 <span className="search-placeholder-words">
-                                  <span className="search-placeholder-wordlist">
-                                    <span>tasks</span>
-                                    <span>files</span>
-                                  </span>
+                                    <span className="search-placeholder-wordlist">
+                                      <span>tasks</span>
+                                      <span>files</span>
+                                    </span>
                                 </span>
                               </div>
                             )}

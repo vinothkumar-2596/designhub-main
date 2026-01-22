@@ -1,7 +1,6 @@
 import { Task, TaskStatus } from '@/types';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight } from 'lucide-react';
+import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
@@ -36,6 +35,19 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   const { user } = useAuth();
   const taskId = task.id || (task as unknown as { _id?: string })._id || '';
   const status = statusConfig[task.status];
+  const chipBase =
+    'inline-flex items-center gap-2 rounded-full border border-[#C9D7FF] bg-[#F5F8FF] px-3 py-1 text-xs font-medium text-[#2F3A56] min-w-0 max-w-full';
+  const chipLabel = 'min-w-0 truncate';
+  const chipCount =
+    'ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-[#C9D7FF] bg-white px-1 text-[11px] font-semibold text-[#2F3A56] shrink-0';
+  const chipIcon = 'h-3.5 w-3.5 shrink-0';
+  const renderChip = (Icon: typeof CheckCircle2, label: string, count = 0) => (
+    <span className={chipBase}>
+      <Icon className={chipIcon} />
+      <span className={chipLabel}>{label}</span>
+      <span className={chipCount}>{count}</span>
+    </span>
+  );
   const isOverdue = isPast(task.deadline) && task.status !== 'completed';
   const deadlineText = isPast(task.deadline)
     ? `${formatDistanceToNow(task.deadline)} overdue`
@@ -77,9 +89,8 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   const hasViewed =
     typeof window !== 'undefined' && viewedKey
       ? localStorage.getItem(viewedKey) === 'true'
-      : true;
-  const isHighlighted =
-    user?.role === 'designer' && isAssignedToUser && !hasViewed;
+      : false;
+  const isHighlighted = Boolean(user) && !hasViewed;
 
   return (
     <div
@@ -87,40 +98,26 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
         'group relative rounded-3xl border p-6 bg-white transition-all duration-300 isolate',
         'hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5',
         isHighlighted
-          ? 'border-primary/20 bg-primary/5 ring-1 ring-primary/20'
+          ? 'border-[#C9D7FF] bg-[#F6F8FF]/95 ring-1 ring-[#D9E6FF]'
           : 'border-slate-100 hover:border-slate-200'
       )}
     >
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            variant={status.variant}
-            className="rounded-full px-3 py-1 text-xs font-medium border-0 shadow-none"
-          >
-            {status.label}
-          </Badge>
+        <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          {renderChip(CheckCircle2, status.label)}
           {task.urgency === 'urgent' && (
-            <Badge variant="urgent" className="rounded-full px-3 text-xs border-0">
-              Urgent
-            </Badge>
+            renderChip(AlertTriangle, 'Urgent')
           )}
           {task.approvalStatus === 'pending' && (
-            <Badge variant="pending" className="rounded-full px-3 text-xs border-0">
-              Awaiting Approval
-            </Badge>
+            renderChip(Clock, 'Awaiting Approval')
           )}
           {(task.isEmergency || emergencyStatus) && (
-            <Badge variant={emergencyVariant} className="rounded-full px-3 text-xs border-0">
-              {emergencyLabel}
-            </Badge>
+            renderChip(AlertTriangle, emergencyLabel)
           )}
         </div>
-        <Badge
-          variant="secondary"
-          className="rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 border-0 px-3 text-xs font-semibold"
-        >
-          {categoryLabels[task.category]}
-        </Badge>
+        <div className="max-w-[45%] min-w-0 flex justify-end">
+          {renderChip(Tag, categoryLabels[task.category])}
+        </div>
       </div>
 
       <div className="space-y-3 mb-6">

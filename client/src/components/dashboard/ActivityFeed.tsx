@@ -33,8 +33,11 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
                     <div className="relative w-full max-w-sm rounded-[24px] border border-white/40 bg-white/40 backdrop-blur-xl shadow-xl shadow-indigo-500/5 p-6 transition-transform duration-500 group-hover:scale-[1.02]">
                         <div className="mb-4 flex items-center justify-between">
                             <h3 className="text-lg font-bold text-slate-800">Activity</h3>
-                            <div className="flex h-2 w-2 gap-0.5">
-                                <span className="h-full w-full rounded-full bg-indigo-400 animate-pulse" />
+                            <div className="flex items-center gap-2">
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                    {notifications.length}
+                                </span>
+                                <span className="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />
                             </div>
                         </div>
 
@@ -58,8 +61,10 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
                                             {item.type === 'system' && <Laptop className="h-4 w-4" />}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="h-2 w-3/4 rounded-full bg-slate-200/50 group-hover/item:bg-slate-300/50 transition-colors mb-1.5" />
-                                            <p className="text-xs font-medium text-slate-600 truncate">{item.title}</p>
+                                            <p className="text-sm font-semibold text-slate-900 truncate">{item.title}</p>
+                                            {item.subtitle ? (
+                                                <p className="text-[11px] text-slate-500 truncate">{item.subtitle}</p>
+                                            ) : null}
                                         </div>
                                     </Link>
                                 ))

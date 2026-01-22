@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
+  UserPen,
   Shield,
   Calendar,
   LayoutGrid,
@@ -18,6 +19,12 @@ import {
   Plus,
   HelpCircle,
   Sparkles,
+  Search,
+  FileText,
+  Database,
+  Clock,
+  PenLine,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -79,6 +86,12 @@ export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
 
   if (!user) return null;
+
+  const quickAccessItems = [
+    { label: 'Submission Guidelines', icon: FileText, action: 'open-guidelines' as const },
+    { label: 'Edit Profile', icon: UserPen, href: '/settings#profile' },
+    { label: 'Search', icon: Search, action: 'open-search' as const },
+  ];
 
   const filteredNavItems = navItems.filter((item) =>
     item.roles.includes(user.role)
@@ -207,18 +220,80 @@ export function AppSidebar() {
         <div className="px-3 pb-3">
           <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)]">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#8A97B2]">
-              Settings
+              Quick Access
             </p>
             <div className="mt-2 flex items-center gap-2">
-              {[LayoutGrid, Mail, Bell, SlidersHorizontal, Settings].map((Icon, index) => (
-                <button
-                  key={`quick-${index}`}
-                  type="button"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
-                >
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
+              {quickAccessItems.map((item) => {
+                const tooltip = (
+                  <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-[35%] whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] pl-4 pr-3 py-1 text-[11px] font-semibold text-[#2F3A56] opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 group-hover:-translate-y-0.5">
+                    {item.label}
+                  </span>
+                );
+
+                if (item.href) {
+                  return (
+                    <div key={item.label} className="relative group">
+                      {tooltip}
+                      <Link
+                        to={item.href}
+                        aria-label={item.label}
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </Link>
+                    </div>
+                  );
+                }
+
+                if (item.action === 'open-search') {
+                  return (
+                    <div key={item.label} className="relative group">
+                      {tooltip}
+                      <button
+                        type="button"
+                        aria-label={item.label}
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('designhub:open-search'));
+                        }}
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (item.action === 'open-guidelines') {
+                  return (
+                    <div key={item.label} className="relative group">
+                      {tooltip}
+                      <button
+                        type="button"
+                        aria-label={item.label}
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('designhub:open-guidelines'));
+                        }}
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={item.label} className="relative group">
+                    {tooltip}
+                    <button
+                      type="button"
+                      aria-label={item.label}
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                    >
+                      <item.icon className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -242,14 +317,73 @@ export function AppSidebar() {
       {collapsed && (
         <div className="px-3 pb-3 space-y-3">
           <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-2 py-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)]">
-            {[LayoutGrid, Mail, Bell, SlidersHorizontal, Settings].map((Icon, index) => (
-              <div
-                key={`quick-collapsed-${index}`}
-                className="mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
-              >
-                <Icon className="h-4 w-4" />
-              </div>
-            ))}
+            {quickAccessItems.map((item) => {
+              const tooltip = (
+                <span className="pointer-events-none absolute left-full top-1/2 ml-3 -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] px-3 py-1 text-[11px] font-semibold text-[#2F3A56] opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100">
+                  {item.label}
+                </span>
+              );
+
+              if (item.href) {
+                return (
+                  <div key={`quick-collapsed-${item.label}`} className="relative group">
+                    {tooltip}
+                    <Link
+                      to={item.href}
+                      aria-label={item.label}
+                      className="mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
+                    >
+                      <item.icon className="h-4 w-4" />
+                    </Link>
+                  </div>
+                );
+              }
+
+              if (item.action === 'open-search') {
+                return (
+                  <div key={`quick-collapsed-${item.label}`} className="relative group">
+                    {tooltip}
+                    <button
+                      type="button"
+                      aria-label={item.label}
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('designhub:open-search'));
+                      }}
+                      className="mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
+                    >
+                      <item.icon className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              }
+
+              if (item.action === 'open-guidelines') {
+                return (
+                  <div key={`quick-collapsed-${item.label}`} className="relative group">
+                    {tooltip}
+                    <button
+                      type="button"
+                      aria-label={item.label}
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('designhub:open-guidelines'));
+                      }}
+                      className="mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
+                    >
+                      <item.icon className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={`quick-collapsed-${item.label}`} className="relative group">
+                  {tooltip}
+                  <div className="mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]">
+                    <item.icon className="h-4 w-4" />
+                  </div>
+                </div>
+              );
+            })}
           </div>
           {(user.role === 'staff' || user.role === 'treasurer') && (
             <Link

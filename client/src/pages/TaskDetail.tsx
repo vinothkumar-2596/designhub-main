@@ -40,6 +40,7 @@ import {
   Trash2,
   AlertTriangle,
   History,
+  Check,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -2450,34 +2451,32 @@ export default function TaskDetail() {
                     {steps.map((step, index) => {
                       const isCurrent = index === currentIndex;
                       const isPast = index < currentIndex;
-                      const isUpcoming = index > currentIndex;
                       return (
                         <div key={step} className="flex items-start gap-3 sm:gap-4">
                           <div className="relative flex flex-col items-center">
                             <div className="flex h-9 w-9 sm:h-12 sm:w-12 items-center justify-center">
-                              {isCurrent ? (
-                                <div className="h-9 w-9 sm:h-12 sm:w-12 rounded-full overflow-hidden bg-white">
+                              {isPast ? (
+                                <span className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary/85 text-white shadow-[0_8px_18px_-12px_rgba(30,58,138,0.4)]">
+                                  <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                </span>
+                              ) : isCurrent ? (
+                                <span className="flex h-12 w-12 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-white">
                                   <DotLottieReact
                                     src="https://lottie.host/31b5d829-4d1f-42a6-ba16-3560e550c0ac/KTsiywVfWC.lottie"
                                     loop
                                     autoplay
-                                    className="h-9 w-9 sm:h-12 sm:w-12"
+                                    className="h-11 w-11 sm:h-16 sm:w-16"
                                   />
-                                </div>
+                                </span>
                               ) : (
-                                <span
-                                  className={cn(
-                                    'h-4 w-4 sm:h-6 sm:w-6 rounded-full',
-                                    isPast ? 'bg-primary/70' : 'bg-[#D6DFEF]'
-                                  )}
-                                />
+                                <span className="h-6 w-6 sm:h-8 sm:w-8 rounded-full border-2 border-[#D9E6FF] bg-white" />
                               )}
                             </div>
                             {index !== steps.length - 1 && (
                               <div
                                 className={cn(
-                                  'mt-1 h-8 sm:h-10 w-[2px]',
-                                  isPast ? 'bg-primary' : 'bg-[#E6EEFF]'
+                                  'mt-1 h-8 sm:h-10 w-[2px] opacity-60',
+                                  isPast ? 'bg-primary' : 'bg-[#D9E6FF]'
                                 )}
                               />
                             )}

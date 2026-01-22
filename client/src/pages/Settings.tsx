@@ -54,7 +54,7 @@ export default function Settings() {
         </div>
 
         {/* Profile Section */}
-        <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
+        <div id="profile" className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <User className="h-5 w-5" />
             Profile
