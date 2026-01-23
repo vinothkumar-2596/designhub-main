@@ -103,7 +103,11 @@ export default function AIMode() {
     });
 
     // Voice State
-    const [isListening, setIsListening] = useState(false);
+    const [voiceState, setVoiceState] = useState<'idle' | 'wake' | 'capture'>('idle');
+    const wakeRecognizerRef = useRef<any>(null);
+    const captureRecognizerRef = useRef<any>(null);
+    const captureBufferRef = useRef('');
+    const captureSilenceTimerRef = useRef<number | null>(null);
     // Upload State
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
     const [lastUploadedFile, setLastUploadedFile] = useState<string | null>(null);
@@ -355,18 +359,130 @@ export default function AIMode() {
         }
     };
 
-    const handleVoiceInput = () => {
-        if (isListening) return;
-        setIsListening(true);
-        setPrompt(""); // Clear prompt to show listening state
+    const WAKE_WORDS = ['hey task buddy', 'hi task buddy', 'task buddy', 'buddy', 'hey buddy'];
+    const STOP_WORDS = ['stop', 'cancel'];
 
-        // Mock voice recognition delay
-        setTimeout(() => {
-            setPrompt("Create a marketing banner for the new summer collection");
-            setIsListening(false);
-            toast({ title: "Voice captured", description: "AI is processing your request." });
-        }, 2000);
+    const normalizeTranscript = (value: string) =>
+        value
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+    const clearCaptureTimer = () => {
+        if (captureSilenceTimerRef.current) {
+            window.clearTimeout(captureSilenceTimerRef.current);
+            captureSilenceTimerRef.current = null;
+        }
     };
+
+    const stopAllRecognition = () => {
+        wakeRecognizerRef.current?.stop();
+        captureRecognizerRef.current?.stop();
+        clearCaptureTimer();
+        setVoiceState('idle');
+    };
+
+    const startCaptureMode = () => {
+        if (!captureRecognizerRef.current) return;
+
+        captureBufferRef.current = '';
+        setVoiceState('capture');
+
+        const captureRecognizer = captureRecognizerRef.current;
+        captureRecognizer.lang = 'en-IN';
+        captureRecognizer.continuous = true;
+        captureRecognizer.interimResults = true;
+
+        captureRecognizer.onresult = (event) => {
+            let transcript = '';
+            for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                transcript += event.results[i][0].transcript;
+            }
+            const normalized = normalizeTranscript(transcript);
+            if (!normalized) return;
+
+            if (STOP_WORDS.some(word => normalized.includes(word))) {
+                stopAllRecognition();
+                return;
+            }
+
+            captureBufferRef.current = normalized;
+            clearCaptureTimer();
+            captureSilenceTimerRef.current = window.setTimeout(() => {
+                captureRecognizer.stop();
+            }, 5000);
+        };
+
+        captureRecognizer.onend = () => {
+            clearCaptureTimer();
+            const captured = captureBufferRef.current.trim();
+            setVoiceState('idle');
+            if (captured) {
+                setPrompt(captured);
+                setTimeout(() => handleSendMessage(), 0);
+            }
+        };
+
+        captureRecognizer.start();
+    };
+
+    const startWakeWordListening = () => {
+        const SpeechRecognitionImpl = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognitionImpl) {
+            toast({ title: 'Voice not supported', description: 'Speech recognition is not available in this browser.', variant: 'destructive' });
+            return;
+        }
+
+        if (!wakeRecognizerRef.current) {
+            wakeRecognizerRef.current = new SpeechRecognitionImpl();
+        }
+        if (!captureRecognizerRef.current) {
+            captureRecognizerRef.current = new SpeechRecognitionImpl();
+        }
+
+        const wakeRecognizer = wakeRecognizerRef.current;
+        wakeRecognizer.lang = 'en-IN';
+        wakeRecognizer.continuous = true;
+        wakeRecognizer.interimResults = true;
+
+        wakeRecognizer.onresult = (event) => {
+            let transcript = '';
+            for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                transcript += event.results[i][0].transcript;
+            }
+            const normalized = normalizeTranscript(transcript);
+            if (!normalized) return;
+
+            if (WAKE_WORDS.some(word => normalized.includes(word))) {
+                wakeRecognizer.stop();
+                startCaptureMode();
+            }
+        };
+
+        wakeRecognizer.onend = () => {
+            if (voiceState === 'wake') {
+                wakeRecognizer.start();
+            }
+        };
+
+        setVoiceState('wake');
+        wakeRecognizer.start();
+    };
+
+    const handleVoiceInput = () => {
+        if (voiceState !== 'idle') {
+            stopAllRecognition();
+            return;
+        }
+        startWakeWordListening();
+    };
+
+    useEffect(() => {
+        return () => {
+            stopAllRecognition();
+        };
+    }, []);
 
     const handleOptionClick = async (action: string) => {
         if (action === "improve") {
@@ -728,15 +844,15 @@ export default function AIMode() {
                                 )}>
                                     <div className="flex flex-col min-h-[120px]">
                                         <textarea
-                                            value={isListening ? "Listening… Speak clearly" : (uploadStatus === 'uploading' ? "Uploading… Please wait" : prompt)}
+                                            value={uploadStatus === 'uploading' ? "Uploading… Please wait" : prompt}
                                             onChange={(e) => setPrompt(e.target.value)}
                                             onKeyDown={handleKeyDown}
                                             placeholder={placeholderText}
-                                            disabled={isListening || uploadStatus === 'uploading'}
+                                            disabled={voiceState === 'capture' || uploadStatus === 'uploading'}
                                             className={cn(
                                                 "flex-1 bg-transparent border-none outline-none resize-none text-lg text-[#1E2A5A] placeholder:text-[#94A3B8] p-2",
-                                                (isListening || uploadStatus === 'uploading') && "text-blue-500 animate-pulse font-medium",
-                                                isListening && "text-red-500"
+                                                (voiceState !== 'idle' || uploadStatus === 'uploading') && "text-blue-500 animate-pulse font-medium",
+                                                voiceState === 'capture' && "text-red-500"
                                             )}
                                         />
                                         <div className="flex items-center justify-between mt-2 px-2">
@@ -760,7 +876,7 @@ export default function AIMode() {
                                                     onClick={handleVoiceInput}
                                                     variant="ghost"
                                                     size="icon"
-                                                    className={cn("group/mic hover:bg-white/50 text-[#64748B] hover:text-[#1E2A5A] rounded-full h-10 w-10 transition-all relative", isListening && "bg-red-50 text-red-500 animate-pulse")}
+                                                    className={cn("group/mic hover:bg-white/50 text-[#64748B] hover:text-[#1E2A5A] rounded-full h-10 w-10 transition-all relative", voiceState !== 'idle' && "bg-red-50 text-red-500 animate-pulse")}
                                                     title="Click to speak. AI will convert your voice into text."
                                                 >
                                                     <Mic className="h-5 w-5 group-hover/mic:scale-110 transition-transform" />

@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sendPasswordResetEmail } from 'firebase/auth';
 import { useAuth } from '@/contexts/AuthContext';
-import { auth, firebaseEnabled } from '@/lib/firebase';
+import { API_URL } from '@/lib/api';
 import { UserRole } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,7 +44,7 @@ export default function Login() {
   const [signupPassword, setSignupPassword] = useState('');
   const [signupRole, setSignupRole] = useState<UserRole>('staff');
   const [showSignupPassword, setShowSignupPassword] = useState(false);
-  const { login, signup, loginWithGoogle } = useAuth();
+  const { login, signup, loginWithGoogle, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const glassInputClass =
     'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
@@ -82,7 +81,7 @@ export default function Login() {
         return;
       }
       await loginWithGoogle(role);
-      toast.success('Signed in with Google');
+
       navigate('/dashboard');
     } catch (error) {
       toast.error('Google login failed');
@@ -102,12 +101,19 @@ export default function Login() {
 
     setIsResetLoading(true);
     try {
-      if (!firebaseEnabled || !auth) {
-        throw new Error('Firebase email is not configured');
+      if (!API_URL) {
+        throw new Error('API URL is not configured');
       }
-      await sendPasswordResetEmail(auth, resetEmail);
+      const response = await fetch(`${API_URL}/api/auth/password/forgot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to send reset email');
+      }
       toast.success('Reset email sent', {
-        description: `Check ${resetEmail} for a password reset link.`,
+        description: 'If the account exists, a reset link will arrive shortly.',
       });
       setIsResetOpen(false);
     } catch (error) {
@@ -145,6 +151,12 @@ export default function Login() {
       setIsSignupOpen(false);
     }
   };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, navigate]);
 
   return (
     <>

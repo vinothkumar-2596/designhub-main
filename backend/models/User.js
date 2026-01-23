@@ -3,13 +3,27 @@ import mongoose from "mongoose";
 const UserSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true },
+    password: {
+      type: String,
+      required: function requiredPassword() {
+        return this.authProvider === "local";
+      },
+    },
     name: { type: String, default: "" },
     role: {
       type: String,
       enum: ["staff", "treasurer", "designer", "other", "admin"],
       default: "other"
-    }
+    },
+    authProvider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
+    },
+    googleId: { type: String },
+    avatar: { type: String },
+    passwordResetTokenHash: { type: String },
+    passwordResetExpiresAt: { type: Date },
   },
   { timestamps: true }
 );

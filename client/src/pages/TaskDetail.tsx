@@ -50,12 +50,7 @@ import { cn } from '@/lib/utils';
 import { loadLocalTaskById } from '@/lib/taskStorage';
 import { createSocket } from '@/lib/socket';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
-import {
-  approveEmergencyTask as approveScheduleEmergency,
-  loadScheduleTasks,
-  pushScheduleNotification,
-  saveScheduleTasks,
-} from '@/lib/designerSchedule';
+import { pushScheduleNotification } from '@/lib/designerSchedule';
 
 const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
   pending: { label: 'Pending', variant: 'pending' },
@@ -1114,15 +1109,6 @@ export default function TaskDetail() {
         setTaskState(nextTask);
         setChangeHistory(nextTask.changeHistory);
         persistTask(nextTask);
-      }
-
-      if (taskState.scheduleTaskId) {
-        const scheduleTasks = loadScheduleTasks();
-        const updatedSchedule =
-          decision === 'approved'
-            ? approveScheduleEmergency(scheduleTasks, taskState.scheduleTaskId)
-            : scheduleTasks.filter((task) => task.id !== taskState.scheduleTaskId);
-        saveScheduleTasks(updatedSchedule);
       }
 
       if (taskState.requesterId) {

@@ -41,7 +41,6 @@ import { toast } from 'sonner';
 import { Task, TaskCategory, TaskChange, TaskUrgency } from '@/types';
 import {
   addDays,
-  differenceInCalendarDays,
   format,
   isBefore,
   isWithinInterval,
@@ -62,16 +61,11 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import {
-  assignEmergencyTask,
-  assignTask,
   buildInvalidRanges,
+  buildScheduleFromTasks,
   getDefaultDesignerId,
-  loadScheduleTasks,
-  recordScheduleRequest,
-  saveScheduleTasks,
   Task as ScheduleTask,
 } from '@/lib/designerSchedule';
-import { seedScheduleTasks } from '@/data/designerSchedule';
 import { upsertLocalTask } from '@/lib/taskStorage';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
@@ -84,6 +78,7 @@ interface UploadedFile {
   driveId?: string;
   url?: string;
   thumbnailUrl?: string;
+  extractedContent?: string;
   uploading?: boolean;
   progress?: number;
   error?: string;
@@ -346,12 +341,6 @@ const categoryOptions: { value: TaskCategory; label: string; icon: React.Element
   { value: 'flyer', label: 'Flyer', icon: FileText },
 ];
 
-const priorityFromUrgency = (value: TaskUrgency): "VIP" | "HIGH" | "NORMAL" => {
-  if (value === 'urgent') return 'VIP';
-  if (value === 'intermediate') return 'HIGH';
-  return 'NORMAL';
-};
-
 const getFileIcon = (fileName: string, className: string) => {
   const extension = fileName.split('.').pop()?.toLowerCase();
   if (extension === 'pdf') return <FileText className={className} />;
@@ -399,9 +388,7 @@ export default function NewRequest() {
   const [requesterPhone, setRequesterPhone] = useState(user?.phone || '');
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>(() =>
-    loadScheduleTasks(seedScheduleTasks)
-  );
+  const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
 
   // Initialize from AI Buddy state if provided
   useEffect(() => {
@@ -444,6 +431,32 @@ export default function NewRequest() {
         end: startOfDay(range.end),
       })
     );
+
+  useEffect(() => {
+    if (!apiUrl) {
+      setScheduleTasks([]);
+      return;
+    }
+    let isActive = true;
+    const loadSchedule = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/tasks`);
+        if (!response.ok) {
+          throw new Error('Failed to load tasks');
+        }
+        const data = await response.json();
+        if (!isActive) return;
+        setScheduleTasks(buildScheduleFromTasks(data));
+      } catch {
+        if (!isActive) return;
+        setScheduleTasks([]);
+      }
+    };
+    loadSchedule();
+    return () => {
+      isActive = false;
+    };
+  }, [apiUrl]);
 
   useEffect(() => {
     let isActive = true;
@@ -547,6 +560,7 @@ export default function NewRequest() {
           webContentLink?: string;
           size?: number | string;
           thumbnailLink?: string;
+          extractedContent?: string;
         } | null =
           null;
         try {
@@ -565,6 +579,7 @@ export default function NewRequest() {
           driveId: data?.id,
           url: data?.webViewLink || data?.webContentLink,
           thumbnailUrl: data?.thumbnailLink,
+          extractedContent: data?.extractedContent,
           uploading: false,
           progress: 100,
         });
@@ -692,19 +707,6 @@ export default function NewRequest() {
     const phoneInput = (requesterPhone.trim() || user?.phone || '').split(',').map(p => p.trim()).filter(Boolean);
     const phoneValue = phoneInput[0] || '';
     const secondaryPhones = phoneInput.slice(1);
-    const nextScheduleTasks = (isEmergency
-      ? assignEmergencyTask(scheduleTasks, designerId, title, deadline ?? undefined)
-      : assignTask(
-        scheduleTasks,
-        designerId,
-        title,
-        deadline ?? undefined,
-        priorityFromUrgency(urgency)
-      )) as ScheduleTask[];
-    const createdScheduleTask = nextScheduleTasks.find(
-      (task) => !scheduleTasks.some((previous) => previous.id === task.id)
-    );
-
     if (apiUrl) {
       try {
         const payload = {
@@ -717,7 +719,6 @@ export default function NewRequest() {
           isEmergency,
           emergencyApprovalStatus: isEmergency ? 'pending' : undefined,
           emergencyRequestedAt: isEmergency ? new Date() : undefined,
-          scheduleTaskId: createdScheduleTask?.id,
           requesterId: user?.id || '',
           requesterName: user?.name || '',
           requesterEmail: user?.email || '',
@@ -747,12 +748,6 @@ export default function NewRequest() {
         fallbackToMock = true;
       }
     }
-
-    setScheduleTasks(nextScheduleTasks);
-    saveScheduleTasks(nextScheduleTasks);
-    if (createdScheduleTask && user) {
-      recordScheduleRequest(createdScheduleTask.id, user.id, user.name);
-    }
     if (isEmergency) {
       toast.message('Emergency request sent for designer approval.');
     }
@@ -781,7 +776,6 @@ export default function NewRequest() {
         isEmergency,
         emergencyApprovalStatus: isEmergency ? 'pending' : undefined,
         emergencyRequestedAt: isEmergency ? now : undefined,
-        scheduleTaskId: createdScheduleTask?.id,
         requesterId: user?.id || '',
         requesterName: user?.name || 'Staff',
         requesterEmail: user?.email,
@@ -822,6 +816,21 @@ export default function NewRequest() {
     setShowThankYou(false);
     navigate('/my-requests');
   };
+
+  const openExistingUploader = () => {
+    const uploader = document.getElementById('file-upload') as HTMLInputElement | null;
+    uploader?.click();
+  };
+
+  useEffect(() => {
+    const handleOpenUploader = () => {
+      openExistingUploader();
+    };
+    window.addEventListener('designhub:open-uploader', handleOpenUploader);
+    return () => {
+      window.removeEventListener('designhub:open-uploader', handleOpenUploader);
+    };
+  }, []);
 
   return (
     <DashboardLayout
@@ -1241,6 +1250,12 @@ export default function NewRequest() {
         isOpen={isTaskBuddyOpen}
         onClose={() => setIsTaskBuddyOpen(false)}
         onTaskCreated={handleTaskBuddyDraft}
+        onOpenUploader={openExistingUploader}
+        hasAttachments={files.length > 0}
+        attachmentContext={files
+          .map((file) => file.extractedContent || file.name)
+          .filter(Boolean)
+          .join('\n\n')}
       />
     </DashboardLayout >
   );

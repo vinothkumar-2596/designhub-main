@@ -1,13 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-} from 'firebase/auth';
 import { User, UserRole } from '@/types';
-import { auth, firebaseEnabled, googleProvider } from '@/lib/firebase';
+import { API_URL } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -21,15 +14,18 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const USER_KEY = 'auth_user';
+const ROLE_KEY = 'auth_role';
+const TOKEN_KEY = 'auth_token';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem('auth_user');
+    const stored = localStorage.getItem(USER_KEY);
     if (stored) {
       try {
         return JSON.parse(stored);
       } catch {
-        localStorage.removeItem('auth_user');
+        localStorage.removeItem(USER_KEY);
         return null;
       }
     }
@@ -37,61 +33,102 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    if (!firebaseEnabled || !auth) return;
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (!firebaseUser) return;
-      const role = (localStorage.getItem('auth_role') as UserRole) || 'staff';
-      const nextUser: User = {
-        id: firebaseUser.uid,
-        name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-        email: firebaseUser.email || '',
-        role,
-      };
-      setUser(nextUser);
-      localStorage.setItem('auth_user', JSON.stringify(nextUser));
-    });
-    return () => unsubscribe();
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('token');
+    if (!token || !API_URL) return;
+
+    localStorage.setItem(TOKEN_KEY, token);
+    url.searchParams.delete('token');
+    url.searchParams.delete('provider');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+
+    fetch(`${API_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Failed to load user');
+        const data = await response.json();
+        if (data?.user) {
+          setUser(data.user);
+          localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+        }
+      })
+      .catch(() => {
+        localStorage.removeItem(TOKEN_KEY);
+      });
   }, []);
 
   const login = async (email: string, password: string, role: UserRole) => {
-    if (!firebaseEnabled || !auth) {
-      throw new Error('Firebase authentication is not configured');
+    if (!API_URL) {
+      throw new Error('API URL is not configured');
     }
-    localStorage.setItem('auth_role', role);
-    await signInWithEmailAndPassword(auth, email, password);
+    const response = await fetch(`${API_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, role }),
+    });
+    if (!response.ok) {
+      throw new Error('Login failed');
+    }
+    const data = await response.json();
+    if (data?.token && data?.user) {
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+      localStorage.setItem(ROLE_KEY, role);
+      setUser(data.user);
+    }
   };
 
   const signup = async (email: string, password: string, role: UserRole) => {
-    if (!firebaseEnabled || !auth) {
-      throw new Error('Firebase authentication is not configured');
+    if (!API_URL) {
+      throw new Error('API URL is not configured');
     }
-    localStorage.setItem('auth_role', role);
-    await createUserWithEmailAndPassword(auth, email, password);
+    const response = await fetch(`${API_URL}/api/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, role }),
+    });
+    if (!response.ok) {
+      throw new Error('Signup failed');
+    }
+    const data = await response.json();
+    if (data?.token && data?.user) {
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+      localStorage.setItem(ROLE_KEY, role);
+      setUser(data.user);
+    }
   };
 
   const loginWithGoogle = async (role: UserRole) => {
-    if (!firebaseEnabled || !auth || !googleProvider) {
+    if (!API_URL) {
+      throw new Error('API URL is not configured');
+    }
+    const response = await fetch(`${API_URL}/api/auth/google/start?role=${role}`);
+    if (!response.ok) {
       throw new Error('Google login not configured');
     }
-    localStorage.setItem('auth_role', role);
-    await signInWithPopup(auth, googleProvider);
+    const data = await response.json();
+    if (!data?.url) {
+      throw new Error('Google login not configured');
+    }
+    localStorage.setItem(ROLE_KEY, role);
+    window.location.href = data.url;
   };
 
   const logout = () => {
-    if (firebaseEnabled && auth) {
-      signOut(auth);
-    }
     setUser(null);
-    localStorage.removeItem('auth_user');
-    localStorage.removeItem('auth_role');
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(ROLE_KEY);
+    localStorage.removeItem(TOKEN_KEY);
   };
 
   const switchRole = (role: UserRole) => {
-    localStorage.setItem('auth_role', role);
+    localStorage.setItem(ROLE_KEY, role);
     setUser((current) => {
       if (!current) return current;
       const nextUser = { ...current, role };
-      localStorage.setItem('auth_user', JSON.stringify(nextUser));
+      localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
       return nextUser;
     });
   };
@@ -100,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((current) => {
       if (!current) return current;
       const nextUser = { ...current, ...updates };
-      localStorage.setItem('auth_user', JSON.stringify(nextUser));
+      localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
       return nextUser;
     });
   };

@@ -27,17 +27,11 @@ import {
 import type { Task as ScheduleTask } from '@/lib/designerSchedule';
 import type { TaskStatus } from '@/types';
 import {
-  approveEmergencyTask,
-  completeTask as completeScheduleTask,
+  buildScheduleFromTasks,
   getDefaultDesignerId,
-  getScheduleRequester,
-  loadScheduleTasks,
-  pushScheduleNotification,
-  saveScheduleTasks,
 } from '@/lib/designerSchedule';
-import { seedScheduleTasks } from '@/data/designerSchedule';
 import { cn } from '@/lib/utils';
-import { loadLocalTaskList, mergeLocalTasks, upsertLocalTask } from '@/lib/taskStorage';
+import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { API_URL } from '@/lib/api';
@@ -65,51 +59,12 @@ const taskStatusLabels: Record<TaskStatus, string> = {
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const getScheduleDiff = (
-  prevTasks: ScheduleTask[],
-  nextTasks: ScheduleTask[],
-  designerId: string
-) => {
-  const previous = new Map(
-    prevTasks
-      .filter((task) => task.designerId === designerId)
-      .map((task) => [task.id, task])
-  );
-  const autoStarted: ScheduleTask[] = [];
-  const shifted: ScheduleTask[] = [];
-
-  nextTasks.forEach((task) => {
-    if (task.designerId !== designerId) return;
-    if (task.status === 'COMPLETED' || task.status === 'EMERGENCY_PENDING') return;
-    const before = previous.get(task.id);
-    if (!before) return;
-    if (before.status === 'QUEUED' && task.status === 'WORK_STARTED') {
-      autoStarted.push(task);
-    }
-    if (
-      before.actualStartDate &&
-      before.actualEndDate &&
-      task.actualStartDate &&
-      task.actualEndDate &&
-      (!isSameDay(before.actualStartDate, task.actualStartDate) ||
-        !isSameDay(before.actualEndDate, task.actualEndDate))
-    ) {
-      shifted.push(task);
-    }
-  });
-
-  return { autoStarted, shifted };
-};
-
 export default function Tasks() {
   const { user } = useAuth();
   const { query, setItems, setScopeLabel } = useGlobalSearch();
   const apiUrl = API_URL;
   const [tasks, setTasks] = useState(mockTasks);
   const [storageTick, setStorageTick] = useState(0);
-  const [scheduleTasks, setScheduleTasks] = useState(() =>
-    loadScheduleTasks(seedScheduleTasks)
-  );
   const [isLoading, setIsLoading] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
   const [useLocalData, setUseLocalData] = useState(!apiUrl);
@@ -119,53 +74,55 @@ export default function Tasks() {
       if (event.key && event.key.startsWith('designhub.task.')) {
         setStorageTick((prev) => prev + 1);
       }
-      if (event.key !== 'designhub.schedule.tasks') return;
-      setScheduleTasks(loadScheduleTasks(seedScheduleTasks));
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
+  const hydrateTask = (task: any) => ({
+    ...task,
+    id: task.id || task._id,
+    deadline: new Date(task.deadline),
+    createdAt: new Date(task.createdAt),
+    updatedAt: new Date(task.updatedAt),
+    proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
+    deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
+    files: task.files?.map((file: any) => ({
+      ...file,
+      uploadedAt: new Date(file.uploadedAt),
+    })),
+    comments: task.comments?.map((comment: any) => ({
+      ...comment,
+      createdAt: new Date(comment.createdAt),
+    })),
+    changeHistory: task.changeHistory?.map((entry: any) => ({
+      ...entry,
+      createdAt: new Date(entry.createdAt),
+    })),
+  });
+
+  const loadTasks = async () => {
+    if (!apiUrl) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${apiUrl}/api/tasks`);
+      if (!response.ok) {
+        throw new Error('Failed to load tasks');
+      }
+      const data = await response.json();
+      const hydrated = data.map(hydrateTask);
+      setTasks(hydrated);
+      setUseLocalData(false);
+    } catch (error) {
+      toast.error('Failed to load tasks');
+      setUseLocalData(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!apiUrl) return;
-    const loadTasks = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`${apiUrl}/api/tasks`);
-        if (!response.ok) {
-          throw new Error('Failed to load tasks');
-        }
-        const data = await response.json();
-        const hydrated = data.map((task: any) => ({
-          ...task,
-          id: task.id || task._id,
-          deadline: new Date(task.deadline),
-          createdAt: new Date(task.createdAt),
-          updatedAt: new Date(task.updatedAt),
-          proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
-          deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
-          files: task.files?.map((file: any) => ({
-            ...file,
-            uploadedAt: new Date(file.uploadedAt),
-          })),
-          comments: task.comments?.map((comment: any) => ({
-            ...comment,
-            createdAt: new Date(comment.createdAt),
-          })),
-          changeHistory: task.changeHistory?.map((entry: any) => ({
-            ...entry,
-            createdAt: new Date(entry.createdAt),
-          })),
-        }));
-        setTasks(hydrated);
-        setUseLocalData(false);
-      } catch (error) {
-        toast.error('Failed to load tasks');
-        setUseLocalData(true);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     loadTasks();
   }, [apiUrl]);
 
@@ -174,6 +131,16 @@ export default function Tasks() {
     if (typeof window === 'undefined') return mockTasks;
     return mergeLocalTasks(mockTasks);
   }, [useLocalData, storageTick, tasks]);
+
+  const scheduleSourceTasks = useMemo(() => {
+    if (!apiUrl || useLocalData) return [];
+    return tasks;
+  }, [apiUrl, tasks, useLocalData]);
+
+  const scheduleTasks = useMemo(
+    () => buildScheduleFromTasks(scheduleSourceTasks),
+    [scheduleSourceTasks]
+  );
 
   useEffect(() => {
     setScopeLabel('Requests');
@@ -251,96 +218,100 @@ export default function Tasks() {
   }, [scheduledTasks]);
 
   const handleCompleteScheduleTask = (taskId: string) => {
-    const linkedTask = loadLocalTaskList().find(
-      (task) => task.scheduleTaskId === taskId
-    );
-    const nextTasks = completeScheduleTask(scheduleTasks, taskId);
-    const diff = getScheduleDiff(scheduleTasks, nextTasks, designerId);
-    setScheduleTasks(nextTasks);
-    saveScheduleTasks(nextTasks);
-    toast.success('Task completed. Schedule recalculated.');
-    if (linkedTask && linkedTask.status !== 'completed') {
-      const now = new Date();
-      const entry = {
-        id: `ch-${Date.now()}-0`,
-        type: 'status' as const,
-        field: 'status',
-        oldValue: taskStatusLabels[linkedTask.status],
-        newValue: taskStatusLabels.completed,
-        note: `Completed by ${user?.name || 'Designer'}`,
-        userId: user?.id || '',
-        userName: user?.name || 'Designer',
-        userRole: user?.role || 'designer',
-        createdAt: now,
-      };
-      upsertLocalTask({
-        ...linkedTask,
-        status: 'completed',
-        updatedAt: now,
-        changeHistory: [entry, ...(linkedTask.changeHistory || [])],
-        changeCount: (linkedTask.changeCount ?? 0) + 1,
-      });
-    } else {
-      const requester = getScheduleRequester(taskId);
-      const task = scheduleTasks.find((entry) => entry.id === taskId);
-      if (requester && task) {
-        const designerName = user?.name ? ` by ${user.name}` : '';
-        pushScheduleNotification(
-          requester.requesterId,
-          taskId,
-          `Designer completed "${task.title}"${designerName}.`
-        );
-      }
+    if (!apiUrl) {
+      toast.error('API URL is not configured');
+      return;
     }
-    diff.autoStarted.forEach((task) => {
-      if (!task.actualStartDate) return;
-      toast.message(`"${task.title}" auto-started on ${format(task.actualStartDate, 'MMM d')}.`);
-    });
-    diff.shifted.forEach((task) => {
-      if (!task.actualStartDate) return;
-      toast.message(`"${task.title}" shifted to ${format(task.actualStartDate, 'MMM d')}.`);
-    });
+    const linkedTask = tasks.find((task) => task.id === taskId);
+    const now = new Date();
+    const oldLabel = linkedTask?.status ? taskStatusLabels[linkedTask.status] : 'Pending';
+    fetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        updates: { status: 'completed', updatedAt: now },
+        changes: [
+          {
+            type: 'status',
+            field: 'status',
+            oldValue: oldLabel,
+            newValue: taskStatusLabels.completed,
+            note: `Completed by ${user?.name || 'Designer'}`,
+          },
+        ],
+        userId: user?.id || '',
+        userName: user?.name || '',
+        userRole: user?.role || '',
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to update task');
+        }
+        toast.success('Task marked as completed.');
+      })
+      .then(() => loadTasks())
+      .catch(() => {
+        toast.error('Failed to update task status.');
+      });
   };
 
   const handleApproveEmergency = (taskId: string) => {
-    const requester = getScheduleRequester(taskId);
-    const task = scheduleTasks.find((entry) => entry.id === taskId);
-    const nextTasks = approveEmergencyTask(scheduleTasks, taskId);
-    const diff = getScheduleDiff(scheduleTasks, nextTasks, designerId);
-    setScheduleTasks(nextTasks);
-    saveScheduleTasks(nextTasks);
-    toast.success('Emergency task approved and scheduled.');
-    if (requester && task) {
-      pushScheduleNotification(
-        requester.requesterId,
-        taskId,
-        `Emergency request approved for "${task.title}".`
-      );
+    if (!apiUrl) {
+      toast.error('API URL is not configured');
+      return;
     }
-    diff.autoStarted.forEach((task) => {
-      if (!task.actualStartDate) return;
-      toast.message(`"${task.title}" auto-started on ${format(task.actualStartDate, 'MMM d')}.`);
-    });
-    diff.shifted.forEach((task) => {
-      if (!task.actualStartDate) return;
-      toast.message(`"${task.title}" shifted to ${format(task.actualStartDate, 'MMM d')}.`);
-    });
+    const now = new Date();
+    fetch(`${apiUrl}/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        isEmergency: true,
+        emergencyApprovalStatus: 'approved',
+        emergencyApprovedBy: user?.name || '',
+        emergencyApprovedAt: now,
+        updatedAt: now,
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to approve emergency');
+        }
+        toast.success('Emergency task approved.');
+      })
+      .then(() => loadTasks())
+      .catch(() => {
+        toast.error('Failed to approve emergency task.');
+      });
   };
 
   const handleRejectEmergency = (taskId: string) => {
-    const requester = getScheduleRequester(taskId);
-    const task = scheduleTasks.find((entry) => entry.id === taskId);
-    const nextTasks = scheduleTasks.filter((task) => task.id !== taskId);
-    setScheduleTasks(nextTasks);
-    saveScheduleTasks(nextTasks);
-    toast.message('Emergency request rejected.');
-    if (requester && task) {
-      pushScheduleNotification(
-        requester.requesterId,
-        taskId,
-        `Emergency request rejected for "${task.title}".`
-      );
+    if (!apiUrl) {
+      toast.error('API URL is not configured');
+      return;
     }
+    const now = new Date();
+    fetch(`${apiUrl}/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        isEmergency: true,
+        emergencyApprovalStatus: 'rejected',
+        emergencyApprovedBy: user?.name || '',
+        emergencyApprovedAt: now,
+        updatedAt: now,
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to reject emergency');
+        }
+        toast.message('Emergency request rejected.');
+      })
+      .then(() => loadTasks())
+      .catch(() => {
+        toast.error('Failed to reject emergency task.');
+      });
   };
 
   return (

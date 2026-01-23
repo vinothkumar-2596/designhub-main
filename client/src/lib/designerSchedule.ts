@@ -113,6 +113,39 @@ export const rescheduleAllDesigners = (allTasks: Task[]) => {
   );
 };
 
+const normalizeApiDate = (value?: string | Date) =>
+  value ? new Date(value) : undefined;
+
+export const buildScheduleFromTasks = (tasks: any[] = []) => {
+  const mapped = tasks
+    .filter((task) => task && task.title)
+    .map((task) => {
+      const urgency = String(task.urgency || '').toLowerCase();
+      const priority =
+        urgency === 'urgent' ? 'VIP' : urgency === 'intermediate' ? 'HIGH' : 'NORMAL';
+      const isEmergencyPending =
+        Boolean(task.isEmergency) &&
+        String(task.emergencyApprovalStatus || '').toLowerCase() === 'pending';
+      const status =
+        String(task.status || '').toLowerCase() === 'completed'
+          ? 'COMPLETED'
+          : isEmergencyPending
+            ? 'EMERGENCY_PENDING'
+            : 'QUEUED';
+      return {
+        id: String(task.id || task._id),
+        title: String(task.title || 'Untitled'),
+        designerId: task.assignedToId || task.assignedTo || DEFAULT_DESIGNER_ID,
+        requestedDeadline: normalizeApiDate(task.deadline),
+        estimatedDays: Number(task.estimatedDays || DEFAULT_ESTIMATED_DAYS),
+        priority,
+        status,
+        createdAt: normalizeApiDate(task.createdAt) || new Date(),
+      } as Task;
+    });
+  return rescheduleAllDesigners(mapped);
+};
+
 export const assignTask = (
   allTasks: Task[],
   designerId: string,

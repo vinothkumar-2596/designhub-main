@@ -8,62 +8,85 @@ if (!API_KEY) {
 
 const genAI = API_KEY ? new GoogleGenerativeAI(API_KEY) : null;
 
-export const TASK_BUDDY_SYSTEM_PROMPT = `You are Task Buddy, an AI assistant embedded inside the DesignDesk Task Portal.
+export const TASK_BUDDY_SYSTEM_PROMPT = `You are Task Buddy AI operating in SILENT AUTO-DRAFT MODE.
 
-🎯 PRIMARY OBJECTIVES:
-- Help users draft complete task submission requests
-- Improve or rewrite uploaded documents
-- Generate campaign content (post text, captions, descriptions, slogans, briefs)
-- Ask smart follow-up questions based on missing parameters
-- Provide FAQ, help, and portal guidance
-- Convert AI output into a ready-to-submit task request
+Your ONLY responsibility:
+- Read minimal inputs
+- Generate a clean draft
+- Auto-fill the existing submission form
+- Do NOT ask unnecessary questions
 
-🚫 CONSTRAINTS:
-- You must NEVER generate images or image prompts
-- You must ONLY generate text content, drafts, structured data, and guidance
-- Keep responses professional, clear, friendly, and concise
-- No emojis, no slang
+STRICT INPUT RULES
+User will ONLY:
+- Select a Category
+- Optionally upload files (content / screenshot / reference)
+- Optionally type 1�2 lines (rough idea)
+DO NOT ask follow-up questions unless a REQUIRED field is missing.
 
-📋 TASK SUBMISSION PARAMETERS (MANDATORY FIELDS):
-When creating a task, you must extract or ask for:
-1. Request Title
-2. Description / Brief
-3. Category (Banner, Campaign/Others, Social Media Creative, Website Assets, UI/UX, LED Backdrop, Brochure, Flyer)
-4. Urgency (Normal / High / VIP)
-5. Deadline
-6. WhatsApp Number(s) (optional)
-7. Attachments (if mentioned)
+NO QUESTION POLICY
+Do NOT ask:
+- Objective clarification
+- Target audience
+- Design style preference
+- CTA suggestions
+- Inspiration questions
+- Confirmation questions
+Assume reasonable defaults.
 
-If any required field is missing, ask short, clear questions one by one.
+AUTO-DRAFT BEHAVIOR
+Once category + attachment OR short input is detected:
+1. Auto-generate:
+   - Request Title
+   - Description (professional, structured)
+   - Category (already selected)
+   - Urgency -> Normal (default)
+   - Deadline -> +3 working days (default)
+   - Notes for designer
+2. If files are attached:
+   - Treat them as FINAL reference
+   - Do NOT ask "what to improve"
+   - Tune language & structure silently
 
-🧩 RESPONSE FORMAT:
-When you have all required information, respond with a JSON object:
-{
-  "type": "task_draft",
-  "data": {
-    "title": "...",
-    "description": "...",
-    "category": "...",
-    "urgency": "...",
-    "deadline": "YYYY-MM-DD",
-    "whatsappNumbers": ["..."],
-    "notes": "..."
-  }
-}
+FORM AUTO-FILL MAPPING
+Generated content must directly map to:
+- Request Title -> Title field
+- Description -> Description textarea
+- Category -> Selected category
+- Urgency -> Normal
+- Deadline -> Auto-calculated
+- Attachments -> Existing uploaded files
 
-For regular conversation, respond with:
-{
-  "type": "message",
-  "content": "your response here"
-}
+USER ACTION FLOW
+After auto-fill:
+- Show ONE line message only:
+"Draft is ready. Review and submit."
+NO approval questions.
+NO preview explanation.
+NO conversation.
 
-🧠 WEBSITE DATA AWARENESS:
-- Minimum 3 working days rule for deadlines
-- Approval flows for modifications
-- Designer availability calendar
-- Status definitions (Pending, In Progress, Completed)
+FILE HANDLING
+- Assume files are uploaded to EXISTING Google Drive
+- Do NOT mention Drive to user
+- Do NOT create folders
+- Do NOT suggest uploads
 
-Always aim to reduce user effort and guide them step-by-step.`;
+LANGUAGE STYLE
+- Professional
+- Short
+- Institutional
+- No marketing fluff
+- No emojis
+- No markdown headings
+
+ABSOLUTE RESTRICTIONS
+- Do NOT chat
+- Do NOT explain
+- Do NOT ask questions
+- Do NOT add suggestions
+- Do NOT change UI flow
+
+SUCCESS DEFINITION
+Success = Draft auto-filled -> user clicks "Submit Request" -> request created.`;
 
 export interface TaskDraft {
     title: string;
@@ -80,6 +103,104 @@ export interface AIResponse {
     content?: string;
     data?: TaskDraft;
 }
+
+const DRAFT_LABELS = [
+    'Request Title',
+    'Objective',
+    'Description',
+    'Design Type',
+    'Size / Format',
+    'Content Copy (Final Tuned)',
+    'Design Style Notes',
+    'Deadline',
+    'Priority',
+    'Additional Notes for Designer'
+];
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const extractDraftSections = (text: string) => {
+    const labelPattern = DRAFT_LABELS.map(escapeRegExp).join('|');
+    const regex = new RegExp(`^(${labelPattern})\\s*:\\s*([\\s\\S]*?)(?=^(${labelPattern})\\s*:|\\s*$)`, 'gmi');
+    const sections: Record<string, string> = {};
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+        const label = match[1].trim();
+        const value = match[2].trim();
+        sections[label] = value;
+    }
+
+    return sections;
+};
+
+const mapDesignTypeToCategory = (value: string): TaskDraft['category'] | null => {
+    const normalized = value.toLowerCase();
+    if (normalized.includes('banner')) return 'banner';
+    if (normalized.includes('social')) return 'social_media_creative';
+    if (normalized.includes('website')) return 'website_assets';
+    if (normalized.includes('ui') || normalized.includes('ux')) return 'ui_ux';
+    if (normalized.includes('led')) return 'led_backdrop';
+    if (normalized.includes('brochure')) return 'brochure';
+    if (normalized.includes('flyer')) return 'flyer';
+    if (normalized.includes('campaign')) return 'campaign_or_others';
+    return null;
+};
+
+const mapPriorityToUrgency = (value: string): TaskDraft['urgency'] | null => {
+    const normalized = value.toLowerCase();
+    if (normalized.includes('vip') || normalized.includes('urgent') || normalized.includes('high')) {
+        return 'urgent';
+    }
+    if (normalized.includes('medium') || normalized.includes('intermediate')) {
+        return 'intermediate';
+    }
+    if (normalized.includes('low')) {
+        return 'low';
+    }
+    if (normalized.includes('normal') || normalized.includes('standard')) {
+        return 'normal';
+    }
+    return null;
+};
+
+const toIsoDate = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return value;
+    }
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const parseTaskDraftFromText = (text: string): TaskDraft | null => {
+    const sections = extractDraftSections(text);
+    if (!sections['Request Title'] && !sections['Description'] && !sections['Design Type']) {
+        return null;
+    }
+
+    const descriptionParts = [
+        sections['Description'],
+        sections['Content Copy (Final Tuned)'] ? `Content Copy: ${sections['Content Copy (Final Tuned)']}` : '',
+        sections['Design Style Notes'] ? `Design Style Notes: ${sections['Design Style Notes']}` : ''
+    ].filter(Boolean);
+
+    const category = mapDesignTypeToCategory(sections['Design Type'] || '');
+    const urgency = mapPriorityToUrgency(sections['Priority'] || '');
+
+    const draft: TaskDraft = {
+        title: sections['Request Title'] || 'Design Request',
+        description: descriptionParts.join('\n\n') || sections['Objective'] || 'Design request details',
+        category: category || 'campaign_or_others',
+        urgency: urgency || 'normal',
+        deadline: sections['Deadline'] ? toIsoDate(sections['Deadline']) : '',
+        notes: sections['Additional Notes for Designer'] || ''
+    };
+
+    return draft;
+};
 
 export async function sendMessageToAI(
     messages: { role: 'user' | 'model'; parts: string }[],
@@ -114,7 +235,18 @@ export async function sendMessageToAI(
             const parsed = JSON.parse(text);
             return parsed as AIResponse;
         } catch {
-            // If not JSON, return as regular message
+            const draft = parseTaskDraftFromText(text);
+            if (draft) {
+                const validation = validateTaskDraft(draft);
+                if (validation.valid) {
+                    return {
+                        type: 'task_draft',
+                        data: draft
+                    };
+                }
+            }
+
+            // If not JSON or draft, return as regular message
             return {
                 type: 'message',
                 content: text

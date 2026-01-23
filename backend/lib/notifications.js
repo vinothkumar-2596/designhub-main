@@ -668,3 +668,82 @@ export const sendFinalFilesEmail = async ({
     return false;
   }
 };
+
+export const sendPasswordResetEmail = async ({ to, resetUrl }) => {
+  const transporter = buildMailer();
+  if (!transporter) {
+    console.warn("SMTP not configured; skipping password reset email.");
+    return false;
+  }
+
+  const brandName = process.env.BRAND_NAME || "DesignDesk";
+  const fromAddress = process.env.GMAIL_SMTP_FROM || process.env.GMAIL_SMTP_USER;
+  const from = fromAddress
+    ? fromAddress.includes("<")
+      ? fromAddress
+      : `"${brandName}" <${fromAddress}>`
+    : undefined;
+  const brandColor = process.env.BRAND_PRIMARY_HEX || "#34429D";
+  const brandSoft = process.env.BRAND_PRIMARY_SOFT || "#EEF1FF";
+
+  const text = `You requested a password reset for ${brandName}.
+
+Reset your password using this link:
+${resetUrl}
+
+If you did not request this, you can safely ignore this email.`;
+
+  const html = `
+    <div style="background:#f5f7fb;padding:24px 16px;font-family:Helvetica, Arial, sans-serif;color:#101828;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;margin:0 auto;">
+        <tr>
+          <td>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ffffff;border-radius:18px;border:1px solid #e6e9f2;">
+              <tr>
+                <td style="padding:28px 28px 12px;text-align:center;">
+                  <div style="display:inline-block;background:${brandSoft};padding:10px 14px;border-radius:999px;color:${brandColor};font-weight:700;font-size:14px;">
+                    ${brandName}
+                  </div>
+                  <div style="margin-top:14px;font-size:22px;font-weight:700;color:#111827;">
+                    Reset your password
+                  </div>
+                  <p style="margin:10px auto 0;max-width:420px;font-size:14px;color:#475467;line-height:1.5;">
+                    Click the button below to choose a new password. This link will expire soon for security.
+                  </p>
+                  <div style="margin-top:18px;">
+                    <a href="${resetUrl}" style="display:inline-block;padding:12px 20px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:14px;">
+                      Reset password
+                    </a>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:18px 28px 24px;color:#667085;font-size:12px;text-align:center;">
+                  If you did not request this, you can ignore this email.
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject: `${brandName}: Reset your password`,
+      text,
+      html,
+    });
+    console.log("Password reset email sent:", info?.response || info?.messageId || "ok");
+    return true;
+  } catch (error) {
+    console.error("Password reset email failed:", error?.message || error);
+    if (error?.response) {
+      console.error("SMTP response:", error.response);
+    }
+    return false;
+  }
+};

@@ -16,8 +16,8 @@ import {
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Task as ScheduleTask } from '@/lib/designerSchedule';
-import { getDefaultDesignerId, loadScheduleTasks } from '@/lib/designerSchedule';
-import { seedScheduleTasks } from '@/data/designerSchedule';
+import { buildScheduleFromTasks, getDefaultDesignerId } from '@/lib/designerSchedule';
+import { API_URL } from '@/lib/api';
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -28,19 +28,35 @@ const priorityStyles: Record<ScheduleTask['priority'], { bar: string; dot: strin
 };
 
 export default function DesignerAvailability() {
-  const [scheduleTasks, setScheduleTasks] = useState(() =>
-    loadScheduleTasks(seedScheduleTasks)
-  );
+  const apiUrl = API_URL;
+  const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
 
   useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== 'designhub.schedule.tasks') return;
-      setScheduleTasks(loadScheduleTasks(seedScheduleTasks));
+    if (!apiUrl) {
+      setScheduleTasks([]);
+      return;
+    }
+    let isActive = true;
+    const loadSchedule = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/tasks`);
+        if (!response.ok) {
+          throw new Error('Failed to load tasks');
+        }
+        const data = await response.json();
+        if (!isActive) return;
+        setScheduleTasks(buildScheduleFromTasks(data));
+      } catch {
+        if (!isActive) return;
+        setScheduleTasks([]);
+      }
     };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
+    loadSchedule();
+    return () => {
+      isActive = false;
+    };
+  }, [apiUrl]);
 
   const designerId = useMemo(
     () => getDefaultDesignerId(scheduleTasks),
@@ -246,7 +262,7 @@ export default function DesignerAvailability() {
                               isToday && 'ring-1 ring-primary/40 bg-primary/5'
                             )}
                           >
-                            <div className="flex items-start justify-between">
+                            <div style={{zIndex:2,position:"absolute"}} className="flex items-start justify-between">
                               <span
                                 className={cn(
                                   'text-xs font-semibold',
@@ -270,13 +286,14 @@ export default function DesignerAvailability() {
                         <div
                           key={`${item.task.id}-${weekIndex}`}
                           className={cn(
-                            "relative h-7 flex items-center px-2 rounded-md text-[11px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis shadow-sm pointer-events-auto",
+                            "relative h-7 flex items-center px-2 rounded-md text-[11px] h-[100%] font-semibold whitespace-nowrap overflow-hidden text-ellipsis shadow-sm pointer-events-auto",
                             priorityStyles[item.task.priority].bar,
                           )}
                           style={{
                             gridColumnStart: item.colStart,
                             gridColumnEnd: `span ${item.colSpan}`,
-                            marginTop: `${centeredTop + (item.row * 30)}px`,
+                            // marginTop: `${centeredTop + (item.row * 30)}px`,
+                            zIndex: 0,
                             position: 'absolute',
                             left: 0,
                             right: 0,
@@ -289,21 +306,6 @@ export default function DesignerAvailability() {
                   </div>
                 );
               })}
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-              {(['VIP', 'HIGH', 'NORMAL'] as ScheduleTask['priority'][]).map(
-                (level) => (
-                  <div key={level} className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        'h-2.5 w-2.5 rounded-full',
-                        priorityStyles[level].dot
-                      )}
-                    />
-                    <span>{level} Priority</span>
-                  </div>
-                )
-              )}
             </div>
           </div>
         </div>

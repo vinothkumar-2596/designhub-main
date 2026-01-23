@@ -201,6 +201,21 @@
     animation: dropdownIn 240ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
+  .icon-draw {
+    display: block;
+  }
+
+  .icon-draw * {
+    stroke-dasharray: 28;
+    stroke-dashoffset: 28;
+    transition: stroke-dashoffset 320ms ease, opacity 200ms ease;
+  }
+
+  .group:hover .icon-draw *,
+  .group:focus-visible .icon-draw * {
+    stroke-dashoffset: 0;
+  }
+
   .search-elastic {
     position: relative;
     transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -301,6 +316,53 @@
     background-color: rgba(255, 255, 255, 0.9);
     color: hsl(var(--primary));
   }
+
+  .ai-attach-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.65rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 0.95rem;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.68), rgba(230, 241, 255, 0.5));
+    border: 1px solid rgba(201, 215, 255, 0.7);
+    box-shadow: 0 18px 40px -30px rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(18px);
+    color: #475569;
+  }
+
+  .ai-attach-hint button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(201, 215, 255, 0.9);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(236, 243, 255, 0.85));
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1e2a5a;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .ai-attach-hint button:hover {
+    border-color: rgba(159, 180, 255, 0.9);
+    box-shadow: 0 10px 20px -16px rgba(30, 58, 138, 0.45);
+    color: #1e2a5a;
+  }
+
+  .ai-attach-hint button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .ai-attach-hint small {
+    font-size: 0.75rem;
+    color: #64748b;
+  }
 }
 
 @layer utilities {
@@ -388,6 +450,11 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .icon-draw * {
+    transition: none;
+  }
+}
 
 @keyframes pulse-subtle {
   0%, 100% {

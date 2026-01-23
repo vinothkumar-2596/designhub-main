@@ -116,11 +116,20 @@ export function AppSidebar() {
   const getNavLinkClass = (path: string | null) => {
     const isActive = path ? location.pathname === path : false;
     return cn(
-      'flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent transition-all duration-200',
+      'flex w-full items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent transition-all duration-200',
       isActive
         ? 'bg-primary/75 bg-gradient-to-br from-white/20 via-primary/80 to-primary/90 text-primary-foreground border border-white/40 shadow-[0_22px_44px_-26px_hsl(var(--primary)/0.5)] backdrop-blur-2xl ring-1 ring-white/30'
         : 'text-[#475569] hover:border hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:shadow-[0_16px_34px_-22px_rgba(30,58,138,0.35)] hover:backdrop-blur-xl',
       collapsed && 'justify-center px-2'
+    );
+  };
+
+  const renderCollapsedTooltip = (label: string) => {
+    if (!collapsed) return null;
+    return (
+      <span className="pointer-events-none absolute left-full top-1/2 ml-3 -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] px-3 py-1 text-[11px] font-semibold text-[#2F3A56] opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100">
+        {label}
+      </span>
     );
   };
 
@@ -189,29 +198,37 @@ export function AppSidebar() {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto scrollbar-thin">
+      <nav
+        className={cn(
+          "flex-1 p-3 space-y-1.5 scrollbar-thin",
+          collapsed ? "overflow-visible" : "overflow-y-auto overflow-x-hidden"
+        )}
+      >
         {filteredNavItems.map((item) => {
           const isActive = location.pathname === item.href;
           return (
-            <Link
-              key={item.href}
-              to={item.href}
-              className={cn(
-                getNavLinkClass(item.href)
-              )}
-            >
-              <item.icon className="h-5 w-5 flex-shrink-0" />
-              {!collapsed && (
-                <span className="text-sm font-medium animate-fade-in">
-                  {item.title}
-                </span>
-              )}
-              {!collapsed && item.badge && item.badge > 0 && (
-                <Badge variant="urgent" className="ml-auto text-xs">
-                  {item.badge}
-                </Badge>
-              )}
-            </Link>
+            <div key={item.href} className="relative group">
+              {renderCollapsedTooltip(item.title)}
+              <Link
+                to={item.href}
+                aria-label={item.title}
+                className={cn(
+                  getNavLinkClass(item.href)
+                )}
+              >
+                <item.icon className="h-5 w-5 flex-shrink-0" />
+                {!collapsed && (
+                  <span className="text-sm font-medium animate-fade-in">
+                    {item.title}
+                  </span>
+                )}
+                {!collapsed && item.badge && item.badge > 0 && (
+                  <Badge variant="urgent" className="ml-auto text-xs">
+                    {item.badge}
+                  </Badge>
+                )}
+              </Link>
+            </div>
           );
         })}
       </nav>
@@ -237,7 +254,7 @@ export function AppSidebar() {
                       <Link
                         to={item.href}
                         aria-label={item.label}
-                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                        className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
                       >
                         <item.icon className="h-4 w-4" />
                       </Link>
@@ -255,7 +272,7 @@ export function AppSidebar() {
                         onClick={() => {
                           window.dispatchEvent(new CustomEvent('designhub:open-search'));
                         }}
-                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                        className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
                       >
                         <item.icon className="h-4 w-4" />
                       </button>
@@ -273,7 +290,7 @@ export function AppSidebar() {
                         onClick={() => {
                           window.dispatchEvent(new CustomEvent('designhub:open-guidelines'));
                         }}
-                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                        className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
                       >
                         <item.icon className="h-4 w-4" />
                       </button>
@@ -287,7 +304,7 @@ export function AppSidebar() {
                     <button
                       type="button"
                       aria-label={item.label}
-                      className="flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                      className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
                     >
                       <item.icon className="h-4 w-4" />
                     </button>
@@ -298,18 +315,23 @@ export function AppSidebar() {
           </div>
 
           {(user.role === 'staff' || user.role === 'treasurer') && (
-            <Link
-              to="/new-request"
-              className="mt-3 flex flex-col items-center gap-2 rounded-2xl border border-[#D9E6FF] bg-white/90 px-3 py-4 text-center shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] transition hover:shadow-[0_20px_44px_-28px_rgba(15,23,42,0.45)]"
-            >
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.7)]">
-                <Plus className="h-6 w-6" />
+            <div className="relative group">
+              <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] px-3 py-1 text-[11px] font-semibold text-[#2F3A56] opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 group-hover:-translate-y-0.5">
+                Create new task
               </span>
-              <div>
-                <p className="text-sm font-semibold text-[#1E2A5A]">Create new task</p>
-                <p className="text-xs text-[#6B7A99]">Or use invite link</p>
-              </div>
-            </Link>
+              <Link
+                to="/new-request"
+                className="mt-3 flex flex-col items-center gap-2 rounded-2xl border border-[#D9E6FF] bg-white/90 px-3 py-4 text-center shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] transition hover:shadow-[0_20px_44px_-28px_rgba(15,23,42,0.45)]"
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.7)]">
+                  <Plus className="h-6 w-6" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-[#1E2A5A]">Create new task</p>
+                  <p className="text-xs text-[#6B7A99]">Or use invite link</p>
+                </div>
+              </Link>
+            </div>
           )}
         </div>
       )}
@@ -331,7 +353,7 @@ export function AppSidebar() {
                     <Link
                       to={item.href}
                       aria-label={item.label}
-                      className="mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
+                      className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
                     >
                       <item.icon className="h-4 w-4" />
                     </Link>
@@ -349,7 +371,7 @@ export function AppSidebar() {
                       onClick={() => {
                         window.dispatchEvent(new CustomEvent('designhub:open-search'));
                       }}
-                      className="mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
+                      className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
                     >
                       <item.icon className="h-4 w-4" />
                     </button>
@@ -367,7 +389,7 @@ export function AppSidebar() {
                       onClick={() => {
                         window.dispatchEvent(new CustomEvent('designhub:open-guidelines'));
                       }}
-                      className="mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
+                      className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
                     >
                       <item.icon className="h-4 w-4" />
                     </button>
@@ -378,7 +400,7 @@ export function AppSidebar() {
               return (
                 <div key={`quick-collapsed-${item.label}`} className="relative group">
                   {tooltip}
-                  <div className="mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]">
+                  <div className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]">
                     <item.icon className="h-4 w-4" />
                   </div>
                 </div>
@@ -386,51 +408,71 @@ export function AppSidebar() {
             })}
           </div>
           {(user.role === 'staff' || user.role === 'treasurer') && (
-            <Link
-              to="/new-request"
-              className="flex h-12 w-full items-center justify-center rounded-2xl border border-[#D9E6FF] bg-white/90 text-[#1E2A5A] shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]"
-            >
-              <Plus className="h-5 w-5" />
-            </Link>
+            <div className="relative group">
+              <span className="pointer-events-none absolute left-full top-1/2 ml-3 -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] px-3 py-1 text-[11px] font-semibold text-[#2F3A56] opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100">
+                Create new task
+              </span>
+              <Link
+                to="/new-request"
+                className="flex h-12 w-full items-center justify-center rounded-2xl border border-[#D9E6FF] bg-white/90 text-[#1E2A5A] shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]"
+              >
+                <Plus className="h-5 w-5" />
+              </Link>
+            </div>
           )}
         </div>
       )}
 
       {/* Footer */}
       <div className="p-3 border-t border-[#D9E6FF]/70 space-y-1">
-        <Link
-          to="/settings"
-          className={cn(
-            getNavLinkClass('/settings')
-          )}
-        >
-          <Settings className="h-5 w-5" />
-          {!collapsed && <span className="text-sm font-medium">Settings</span>}
-        </Link>
-        <Link
-          to="/help"
-          className={cn(
-            getNavLinkClass('/help')
-          )}
-        >
-          <HelpCircle className="h-5 w-5" />
-          {!collapsed && <span className="text-sm font-medium">Help Center</span>}
-        </Link>
-        <button
-          onClick={() => {
-            logout();
-            navigate('/', { replace: true });
-            setTimeout(() => {
-              window.location.href = '/';
-            }, 0);
-          }}
-          className={cn(
-            getNavLinkClass(null)
-          )}
-        >
-          <LogOut className="h-5 w-5" />
-          {!collapsed && <span className="text-sm font-medium">Logout</span>}
-        </button>
+        <div className="relative group">
+          {renderCollapsedTooltip('Settings')}
+          <Link
+            to="/settings"
+            aria-label="Settings"
+            className={cn(
+              getNavLinkClass('/settings'),
+              "group"
+            )}
+          >
+            <Settings className="h-5 w-5" />
+            {!collapsed && <span className="text-sm font-medium">Settings</span>}
+          </Link>
+        </div>
+        <div className="relative group">
+          {renderCollapsedTooltip('Help Center')}
+          <Link
+            to="/help"
+            aria-label="Help Center"
+            className={cn(
+              getNavLinkClass('/help'),
+              "group"
+            )}
+          >
+            <HelpCircle className="h-5 w-5" />
+            {!collapsed && <span className="text-sm font-medium">Help Center</span>}
+          </Link>
+        </div>
+        <div className="relative group">
+          {renderCollapsedTooltip('Logout')}
+          <button
+            onClick={() => {
+              logout();
+              navigate('/', { replace: true });
+              setTimeout(() => {
+                window.location.href = '/';
+              }, 0);
+            }}
+            aria-label="Logout"
+            className={cn(
+              getNavLinkClass(null),
+              "group"
+            )}
+          >
+            <LogOut className="h-5 w-5" />
+            {!collapsed && <span className="text-sm font-medium">Logout</span>}
+          </button>
+        </div>
       </div>
     </aside>
   );

@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
@@ -53,6 +53,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
   const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!user) return;
@@ -587,6 +588,12 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
           console.log('AI Draft created:', draft);
           setIsTaskBuddyOpen(false);
           toast.success('Draft created! Navigate to New Request to use it.');
+        }}
+        onOpenUploader={() => {
+          navigate('/new-request');
+          window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('designhub:open-uploader'));
+          }, 350);
         }}
       />
     </DashboardShell>

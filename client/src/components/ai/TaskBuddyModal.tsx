@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sparkles, Send, Loader2, CheckCircle2, X, Paperclip, User } from 'lucide-react';
+import { Sparkles, Send, Loader2, CheckCircle2, X, Paperclip, User, Mic } from 'lucide-react';
 import { sendMessageToAI, type TaskDraft, type AIResponse } from '@/lib/ai';
 import { toast } from 'sonner';
 
@@ -19,15 +19,25 @@ interface TaskBuddyModalProps {
     onClose: () => void;
     onTaskCreated?: (draft: TaskDraft) => void;
     initialMessage?: string;
+    onOpenUploader?: () => void;
+    hasAttachments?: boolean;
+    attachmentContext?: string;
 }
 
-export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage }: TaskBuddyModalProps) {
+export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage, onOpenUploader, hasAttachments, attachmentContext }: TaskBuddyModalProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const [voiceState, setVoiceState] = useState<'idle' | 'wake' | 'capture'>('idle');
+    const wakeRecognizerRef = useRef<any>(null);
+    const captureRecognizerRef = useRef<any>(null);
+    const captureBufferRef = useRef('');
+    const captureSilenceTimerRef = useRef<number | null>(null);
+    const autoDraftTriggeredRef = useRef(false);
+    const [quotaBlocked, setQuotaBlocked] = useState(false);
 
     const [showWelcome, setShowWelcome] = useState(true);
 
@@ -41,6 +51,8 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage 
             setInput('');
             setTaskDraft(null);
             setShowWelcome(true);
+            autoDraftTriggeredRef.current = false;
+            setQuotaBlocked(false);
         }
     }, [isOpen, initialMessage]);
 
@@ -53,8 +65,37 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage 
         }
     }, [messages]);
 
+    useEffect(() => {
+        if (!isOpen) return;
+        if (!hasAttachments) return;
+        if (isLoading) return;
+        if (quotaBlocked) return;
+        if (autoDraftTriggeredRef.current) return;
+        if (messages.length > 0) return;
+        autoDraftTriggeredRef.current = true;
+        handleSend();
+    }, [hasAttachments, attachmentContext, isOpen, isLoading, messages.length, quotaBlocked]);
+
+    useEffect(() => {
+        return () => {
+            wakeRecognizerRef.current?.stop();
+            captureRecognizerRef.current?.stop();
+            if (captureSilenceTimerRef.current) {
+                window.clearTimeout(captureSilenceTimerRef.current);
+            }
+        };
+    }, []);
+
     const handleSend = async () => {
-        if (!input.trim() || isLoading) return;
+        if ((!input.trim() && !hasAttachments) || isLoading) return;
+
+        const systemEvent = hasAttachments
+            ? 'SYSTEM EVENT: User has uploaded file(s). Proceed with Improve Existing Content mode. Do not ask questions. Auto-fill draft.'
+            : '';
+        const fileContext = attachmentContext ? `\n\nATTACHED FILE CONTENT:\n${attachmentContext}` : '';
+        const userText = systemEvent
+            ? `${systemEvent}\n\n${input.trim() || 'Use attached file content only.'}${fileContext}`
+            : `${input.trim()}${fileContext}`;
 
         const userMessage: Message = {
             id: Date.now().toString(),
@@ -75,9 +116,10 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage 
                     parts: msg.content
                 }));
 
-            const response: AIResponse = await sendMessageToAI(chatHistory, userMessage.content);
+            const response: AIResponse = await sendMessageToAI(chatHistory, userText);
 
             if (response.type === 'task_draft' && response.data) {
+                setQuotaBlocked(false);
                 setTaskDraft(response.data);
                 const assistantMessage: Message = {
                     id: (Date.now() + 1).toString(),
@@ -87,6 +129,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage 
                 };
                 setMessages(prev => [...prev, assistantMessage]);
             } else if (response.content) {
+                setQuotaBlocked(false);
                 const assistantMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
@@ -97,7 +140,19 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage 
             }
         } catch (error) {
             console.error('AI Error:', error);
-            toast.error('Failed to get response');
+            const message = error instanceof Error ? error.message : 'Failed to get response';
+            toast.error(message);
+            if (message.toLowerCase().includes('quota')) {
+                setQuotaBlocked(true);
+                const quotaMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    role: 'assistant',
+                    content: "Usage limit exceeded. Draft pending—click Send to retry.",
+                    timestamp: new Date()
+                };
+                setMessages(prev => [...prev, quotaMessage]);
+                return;
+            }
             const errorMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
@@ -129,6 +184,125 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage 
         setTaskDraft(null);
         setInput('Can you regenerate the task draft with more details?');
         setTimeout(() => handleSend(), 100);
+    };
+
+    const WAKE_WORDS = ['hey task buddy', 'hi task buddy', 'task buddy', 'buddy', 'hey buddy'];
+    const STOP_WORDS = ['stop', 'cancel'];
+
+    const normalizeTranscript = (value: string) =>
+        value
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+    const clearCaptureTimer = () => {
+        if (captureSilenceTimerRef.current) {
+            window.clearTimeout(captureSilenceTimerRef.current);
+            captureSilenceTimerRef.current = null;
+        }
+    };
+
+    const stopAllRecognition = () => {
+        wakeRecognizerRef.current?.stop();
+        captureRecognizerRef.current?.stop();
+        clearCaptureTimer();
+        setVoiceState('idle');
+    };
+
+    const startCaptureMode = () => {
+        if (!captureRecognizerRef.current) return;
+
+        captureBufferRef.current = '';
+        setVoiceState('capture');
+
+        const captureRecognizer = captureRecognizerRef.current;
+        captureRecognizer.lang = 'en-IN';
+        captureRecognizer.continuous = true;
+        captureRecognizer.interimResults = true;
+
+        captureRecognizer.onresult = (event) => {
+            let transcript = '';
+            for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                transcript += event.results[i][0].transcript;
+            }
+            const normalized = normalizeTranscript(transcript);
+            if (!normalized) return;
+
+            if (STOP_WORDS.some(word => normalized.includes(word))) {
+                stopAllRecognition();
+                return;
+            }
+
+            captureBufferRef.current = normalized;
+            clearCaptureTimer();
+            captureSilenceTimerRef.current = window.setTimeout(() => {
+                captureRecognizer.stop();
+            }, 5000);
+        };
+
+        captureRecognizer.onend = () => {
+            clearCaptureTimer();
+            const captured = captureBufferRef.current.trim();
+            setVoiceState('idle');
+            if (captured) {
+                setInput(captured);
+                setTimeout(() => handleSend(), 0);
+            }
+        };
+
+        captureRecognizer.start();
+    };
+
+    const startWakeWordListening = () => {
+        const SpeechRecognitionImpl = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognitionImpl) {
+            toast.error('Speech recognition is not available in this browser.');
+            return;
+        }
+
+        if (!wakeRecognizerRef.current) {
+            wakeRecognizerRef.current = new SpeechRecognitionImpl();
+        }
+        if (!captureRecognizerRef.current) {
+            captureRecognizerRef.current = new SpeechRecognitionImpl();
+        }
+
+        const wakeRecognizer = wakeRecognizerRef.current;
+        wakeRecognizer.lang = 'en-IN';
+        wakeRecognizer.continuous = true;
+        wakeRecognizer.interimResults = true;
+
+        wakeRecognizer.onresult = (event) => {
+            let transcript = '';
+            for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                transcript += event.results[i][0].transcript;
+            }
+            const normalized = normalizeTranscript(transcript);
+            if (!normalized) return;
+
+            if (WAKE_WORDS.some(word => normalized.includes(word))) {
+                wakeRecognizer.stop();
+                startCaptureMode();
+            }
+        };
+
+        wakeRecognizer.onend = () => {
+            if (voiceState === 'wake') {
+                wakeRecognizer.start();
+            }
+        };
+
+        setVoiceState('wake');
+        wakeRecognizer.start();
+    };
+
+    const handleVoiceInput = () => {
+        if (voiceState !== 'idle') {
+            stopAllRecognition();
+            return;
+        }
+        startWakeWordListening();
     };
 
     const suggestions = [
@@ -235,7 +409,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage 
 
                     {/* Footer Input */}
                     <div className="w-full px-4 md:px-20 pb-8 pt-4 z-10">
-                        <div className="relative group">
+                    <div className="relative group">
                             <div className="absolute inset-0 bg-white/40 rounded-[32px] blur-xl group-hover:bg-primary/5 transition-all duration-500" />
                             <div className="relative">
                                 <div className="absolute left-3 top-1/2 -translate-y-1/2 p-2 hover:bg-slate-100 rounded-full cursor-pointer transition-colors">
@@ -247,13 +421,22 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage 
                                     onChange={(e) => setInput(e.target.value)}
                                     onKeyPress={handleKeyPress}
                                     placeholder="Ask me anything..."
-                                    className="w-full h-14 pl-12 pr-12 rounded-[28px] border-slate-200/80 shadow-sm bg-white/80 backdrop-blur-xl text-lg placeholder:text-slate-400 focus-visible:ring-primary/20 focus-visible:border-primary/30 transition-all duration-300"
+                                    className="w-full h-14 pl-12 pr-24 rounded-[28px] border-slate-200/80 shadow-sm bg-white/80 backdrop-blur-xl text-lg placeholder:text-slate-400 focus-visible:ring-primary/20 focus-visible:border-primary/30 transition-all duration-300"
                                     disabled={isLoading}
                                 />
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                                    <Button
+                                        onClick={handleVoiceInput}
+                                        size="icon"
+                                        variant="ghost"
+                                        className={`h-10 w-10 rounded-full transition-all ${voiceState !== 'idle' ? 'bg-red-50 text-red-500 animate-pulse' : 'text-slate-400 hover:text-primary'}`}
+                                        title="Enable wake word listening"
+                                    >
+                                        <Mic className="h-5 w-5" />
+                                    </Button>
                                     <Button
                                         onClick={handleSend}
-                                        disabled={!input.trim() || isLoading}
+                                        disabled={(!input.trim() && !hasAttachments) || isLoading}
                                         size="icon"
                                         className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-white disabled:opacity-50 transition-all shadow-lg shadow-primary/20 hover:scale-105 active:scale-95"
                                     >
@@ -265,6 +448,14 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage 
                                     </Button>
                                 </div>
                             </div>
+                        </div>
+                        <div className="ai-attach-hint">
+                            <button type="button" onClick={onOpenUploader} disabled={!onOpenUploader}>
+                                Attach content (Optional)
+                            </button>
+                            <small>
+                                Upload file to auto-fill draft automatically
+                            </small>
                         </div>
                         <div className="text-center mt-3">
                             <p className="text-xs text-slate-400">
