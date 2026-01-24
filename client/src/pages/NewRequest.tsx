@@ -389,6 +389,7 @@ export default function NewRequest() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
+  const [defaultsApplied, setDefaultsApplied] = useState(false);
 
   // Initialize from AI Buddy state if provided
   useEffect(() => {
@@ -484,6 +485,28 @@ export default function NewRequest() {
   useEffect(() => {
     setRequesterPhone(user?.phone || '');
   }, [user]);
+
+  useEffect(() => {
+    if (defaultsApplied) return;
+    const saved = localStorage.getItem('designhub:requestDefaults');
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (!category && parsed.category) {
+        setCategory(parsed.category as TaskCategory);
+      }
+      if (parsed.urgency && urgency === 'normal') {
+        setUrgency(parsed.urgency as TaskUrgency);
+      }
+      if (!deadline && typeof parsed.deadlineBufferDays === 'number') {
+        const bufferDays = Math.max(0, parsed.deadlineBufferDays);
+        setDeadline(startOfDay(addDays(new Date(), bufferDays)));
+      }
+      setDefaultsApplied(true);
+    } catch {
+      setDefaultsApplied(true);
+    }
+  }, [defaultsApplied, category, urgency, deadline]);
 
   const updateFile = (id: string, updates: Partial<UploadedFile>) => {
     setFiles((prev) =>
