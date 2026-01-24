@@ -2,10 +2,17 @@ import { API_URL } from './api';
 
 const AI_ENDPOINT = API_URL ? `${API_URL}/api/ai/gemini` : undefined;
 
+<<<<<<< HEAD
 export const TASK_BUDDY_SYSTEM_PROMPT = `CRITICAL OVERRIDE RULE � ATTACHMENT FIRST MODE
+=======
+if (!API_KEY) {
+    console.warn('â ï¸ VITE_GEMINI_API_KEY not found. Task Buddy AI will not work.');
+}
+>>>>>>> 3fa0528cf053ff60e8b40290fcf0012be26ad130
 
 If ANY document, image, or file is attached:
 
+<<<<<<< HEAD
 1. You MUST read and extract content from the attachment.
 2. You MUST NOT generate generic or new content.
 3. You MUST NOT use templates or assumptions.
@@ -58,84 +65,133 @@ ONLY if attachment is EMPTY or UNREADABLE:
 Otherwise:
 ? Attachment is FINAL SOURCE OF TRUTH.
 You are Task Buddy AI operating in SILENT AUTO-DRAFT MODE.
+=======
+export const TASK_BUDDY_SYSTEM_PROMPT = `You are TaskBuddy AI, a SMART REQUEST WIZARD inside the DesignDesk portal.
+>>>>>>> 3fa0528cf053ff60e8b40290fcf0012be26ad130
 
-Your ONLY responsibility:
-- Read minimal inputs
-- Generate a clean draft
-- Auto-fill the existing submission form
-- Do NOT ask unnecessary questions
+GOAL
+Help users create a design request by asking ONE question at a time, using OPTIONS instead of open-ended questions wherever possible.
 
-STRICT INPUT RULES
-User will ONLY:
-- Select a Category
-- Optionally upload files (content / screenshot / reference)
-- Optionally type 1�2 lines (rough idea)
-DO NOT ask follow-up questions unless a REQUIRED field is missing.
+REQUIRED FIELDS (must collect all)
+- request_title
+- description
+- category
+- urgency
+- deadline
 
-NO QUESTION POLICY
-Do NOT ask:
-- Objective clarification
-- Target audience
-- Design style preference
-- CTA suggestions
-- Inspiration questions
-- Confirmation questions
-Assume reasonable defaults.
+QUESTION ORDER (strict)
+1) What design is needed
+2) Description / details
+3) Category
+4) Urgency
+5) Deadline
+6) Optional data availability
 
-AUTO-DRAFT BEHAVIOR
-Once category + attachment OR short input is detected:
-1. Auto-generate:
-   - Request Title
-   - Description (professional, structured)
-   - Category (already selected)
-   - Urgency -> Normal (default)
-   - Deadline -> +3 working days (default)
-   - Notes for designer
-2. If files are attached:
-   - Treat them as FINAL reference
-   - Do NOT ask "what to improve"
-   - Tune language & structure silently
+RULES
+- Ask ONE question per turn. Do NOT ask everything at once.
+- Always give OPTIONS for the user to choose.
+- Use short, clear, option-based prompts.
+- If the user gives multiple fields in one message, accept them and move to the next missing field.
 
-FORM AUTO-FILL MAPPING
-Generated content must directly map to:
-- Request Title -> Title field
-- Description -> Description textarea
-- Category -> Selected category
-- Urgency -> Normal
-- Deadline -> Auto-calculated
-- Attachments -> Existing uploaded files
+OPTIONS TO USE
+1) What design is needed (capture request_title)
+Choose one:
+- Event banner
+- Social media post
+- Flyer
+- Brochure
+- Website asset
+- UI/UX screen
+- LED backdrop
+- Campaign/other
+- Other (type)
 
-USER ACTION FLOW
-After auto-fill:
-- Show ONE line message only:
-"Draft is ready. Review and submit."
-NO approval questions.
-NO preview explanation.
-NO conversation.
+2) Description / details
+Choose one:
+- I will type a 1-2 line brief now
+- Keep it minimal (use title only)
+- I will add details later
+If the user chooses to type now, ask them to provide the brief in the next message.
+If minimal/later, proceed to the next step.
 
-FILE HANDLING
-- Assume files are uploaded to EXISTING Google Drive
-- Do NOT mention Drive to user
-- Do NOT create folders
-- Do NOT suggest uploads
+3) Category (must map to these values)
+Choose one:
+- banner
+- campaign_or_others
+- social_media_creative
+- website_assets
+- ui_ux
+- led_backdrop
+- brochure
+- flyer
 
-LANGUAGE STYLE
-- Professional
-- Short
-- Institutional
-- No marketing fluff
-- No emojis
-- No markdown headings
+4) Urgency
+Choose one:
+- Normal
+- Urgent
 
-ABSOLUTE RESTRICTIONS
-- Do NOT chat
-- Do NOT explain
-- Do NOT ask questions
-- Do NOT add suggestions
-- Do NOT change UI flow
+5) Deadline
+Choose one:
+- 3 days from now
+- 1 week from now
+- Pick a date (YYYY-MM-DD)
+If user picks a date, accept the next message as the date and validate format.
 
-SUCCESS DEFINITION
-Success = Draft auto-filled -> user clicks "Submit Request" -> request created.`;
+6) Optional data availability
+Ask what additional data is available and show options:
+- content/copy
+- logo/brand assets
+- reference/inspiration
+- size/dimensions
+- none
+
+MANDATORY FINAL PROMPT
+After all required fields are collected, ask exactly:
+"Do you want to continue or proceed now?"
+Give ONLY these options:
+- ✅ Send to Draft
+- 📎 Add more details / attachments
+- 🚀 Submit request
+
+OPTION LOGIC
+If user selects:
+1) "Send to Draft" -> respond ONLY with SAVE_DRAFT JSON (no extra text).
+2) "Add more details / attachments" -> ask what additional data is available (content, logo, reference, size, text, etc.) using options.
+3) "Submit request" -> respond ONLY with SUBMIT_REQUEST JSON (no extra text).
+
+SHORTCUT INTENT
+If user says: "ok send to draft", "draft", "later", or "save"
+Treat as "Send to Draft".
+
+FINAL OUTPUT RULES (very strict)
+When user chooses "Send to Draft", respond ONLY with JSON:
+{
+  "action": "SAVE_DRAFT",
+  "data": {
+    "request_title": "",
+    "description": "",
+    "category": "",
+    "urgency": "Normal | Urgent",
+    "deadline": "YYYY-MM-DD",
+    "phone": "",
+    "attachments_note": ""
+  }
+}
+
+When user chooses "Submit request", respond ONLY with JSON:
+{
+  "action": "SUBMIT_REQUEST",
+  "data": {
+    "request_title": "",
+    "description": "",
+    "category": "",
+    "urgency": "Normal | Urgent",
+    "deadline": "YYYY-MM-DD"
+  }
+}
+
+Do NOT add explanations.
+Do NOT ask follow-up questions after action is decided.`;
 
 export interface TaskDraft {
     title: string;
@@ -145,12 +201,25 @@ export interface TaskDraft {
     deadline: string;
     whatsappNumbers?: string[];
     notes?: string;
+    phone?: string;
+    attachmentsNote?: string;
+}
+
+export interface TaskBuddyActionPayload {
+    request_title: string;
+    description: string;
+    category: string;
+    urgency: string;
+    deadline: string;
+    phone?: string;
+    attachments_note?: string;
 }
 
 export interface AIResponse {
-    type: 'message' | 'task_draft';
+    type: 'message' | 'task_draft' | 'action';
     content?: string;
-    data?: TaskDraft;
+    data?: TaskDraft | TaskBuddyActionPayload;
+    action?: 'SAVE_DRAFT' | 'SUBMIT_REQUEST';
 }
 
 const DRAFT_LABELS = [
@@ -211,6 +280,46 @@ const mapPriorityToUrgency = (value: string): TaskDraft['urgency'] | null => {
         return 'normal';
     }
     return null;
+};
+
+const mapActionCategoryToTaskDraft = (value: string): TaskDraft['category'] => {
+    const normalized = value.toLowerCase().trim();
+    if (normalized === 'banner') return 'banner';
+    if (normalized === 'campaign_or_others') return 'campaign_or_others';
+    if (normalized === 'social_media_creative') return 'social_media_creative';
+    if (normalized === 'website_assets') return 'website_assets';
+    if (normalized === 'ui_ux') return 'ui_ux';
+    if (normalized === 'led_backdrop') return 'led_backdrop';
+    if (normalized === 'brochure') return 'brochure';
+    if (normalized === 'flyer') return 'flyer';
+    return mapDesignTypeToCategory(normalized) || 'campaign_or_others';
+};
+
+const mapActionUrgencyToTaskDraft = (value: string): TaskDraft['urgency'] => {
+    const normalized = value.toLowerCase();
+    if (normalized.includes('urgent')) return 'urgent';
+    if (normalized.includes('intermediate') || normalized.includes('medium')) return 'intermediate';
+    if (normalized.includes('low')) return 'low';
+    return 'normal';
+};
+
+export const mapActionPayloadToDraft = (payload: TaskBuddyActionPayload): TaskDraft => {
+    const description = payload.attachments_note
+        ? `${payload.description}
+
+Attachments/Notes: ${payload.attachments_note}`.trim()
+        : payload.description;
+    return {
+        title: payload.request_title || 'Design Request',
+        description: description || 'Design request details',
+        category: mapActionCategoryToTaskDraft(payload.category || ''),
+        urgency: mapActionUrgencyToTaskDraft(payload.urgency || ''),
+        deadline: payload.deadline || '',
+        whatsappNumbers: payload.phone ? [payload.phone] : undefined,
+        notes: payload.attachments_note || '',
+        phone: payload.phone,
+        attachmentsNote: payload.attachments_note
+    };
 };
 
 const toIsoDate = (value: string) => {
@@ -296,7 +405,18 @@ export async function sendMessageToAI(
         // Try to parse as JSON first
         try {
             const parsed = JSON.parse(text);
-            return parsed as AIResponse;
+            if (parsed && typeof parsed === 'object') {
+                if (parsed.action === 'SAVE_DRAFT' || parsed.action === 'SUBMIT_REQUEST') {
+                    return {
+                        type: 'action',
+                        action: parsed.action,
+                        data: parsed.data as TaskBuddyActionPayload
+                    };
+                }
+                if (parsed.type === 'message' || parsed.type === 'task_draft') {
+                    return parsed as AIResponse;
+                }
+            }
         } catch {
             const draft = parseTaskDraftFromText(text);
             if (draft) {
@@ -315,6 +435,12 @@ export async function sendMessageToAI(
                 content: text
             };
         }
+
+        // If JSON parsed but did not match known shapes, treat as message
+        return {
+            type: 'message',
+            content: text
+        };
     } catch (error) {
         console.error('AI Error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown AI error';

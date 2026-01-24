@@ -363,6 +363,93 @@
     font-size: 0.75rem;
     color: #64748b;
   }
+
+  .availability-calendar__root {
+    border-radius: 1.25rem;
+    overflow: hidden;
+    border: 1px solid rgba(201, 215, 255, 0.7);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(230, 241, 255, 0.5));
+    box-shadow: 0 18px 40px -28px rgba(15, 23, 42, 0.35);
+    backdrop-filter: blur(18px);
+    height: 100%;
+  }
+
+  .availability-calendar {
+    height: min(70vh, 760px);
+    min-height: 520px;
+  }
+
+  .availability-calendar__root.rbc-calendar {
+    height: 100%;
+  }
+
+  .availability-calendar__root .rbc-month-view {
+    height: 100%;
+  }
+
+  .availability-calendar__root .rbc-toolbar {
+    padding: 0 0.5rem;
+  }
+
+  .availability-calendar__root .rbc-month-view {
+    border: 0;
+    background: transparent;
+  }
+
+  .availability-calendar__root .rbc-header {
+    padding: 0.65rem 0.35rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: #64748b;
+    border-bottom: 1px solid rgba(201, 215, 255, 0.6);
+  }
+
+  .availability-calendar__root .rbc-row-bg {
+    border-top: 1px solid rgba(228, 236, 255, 0.8);
+  }
+
+  .availability-calendar__root .rbc-day-bg {
+    border-right: 1px solid rgba(228, 236, 255, 0.7);
+    background: rgba(249, 251, 255, 0.8);
+  }
+
+  .availability-calendar__root .rbc-day-bg.rbc-off-range-bg {
+    background: rgba(255, 255, 255, 0.6);
+  }
+
+  .availability-calendar__root .rbc-today {
+    background: rgba(59, 130, 246, 0.08);
+  }
+
+  .availability-calendar__root .rbc-date-cell {
+    padding: 0.35rem 0.5rem 0.15rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #1e2a5a;
+  }
+
+  .availability-calendar__root .rbc-date-cell.rbc-off-range {
+    color: #94a3b8;
+  }
+
+  .availability-calendar__root .rbc-event {
+    border: 1px solid transparent;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  .availability-calendar__root .rbc-event:focus,
+  .availability-calendar__root .rbc-event:active {
+    outline: none;
+  }
+
+  .availability-calendar__root .rbc-show-more {
+    color: #3b82f6;
+    font-weight: 600;
+  }
 }
 
 @layer utilities {

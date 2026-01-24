@@ -9,6 +9,13 @@ import { UserRole } from '@/types';
 import { User, Bell, Palette, Users, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEffect, useState } from 'react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[] = [
   { value: 'designer', label: 'Designer', icon: Palette },
@@ -21,12 +28,30 @@ export default function Settings() {
   const [fullName, setFullName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState(user?.phone || '');
+  const [defaultCategory, setDefaultCategory] = useState('');
+  const [defaultUrgency, setDefaultUrgency] = useState('normal');
+  const [deadlineBufferDays, setDeadlineBufferDays] = useState('3');
 
   useEffect(() => {
     setFullName(user?.name || '');
     setEmail(user?.email || '');
     setPhone(user?.phone || '');
   }, [user]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('designhub:requestDefaults');
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.category) setDefaultCategory(parsed.category);
+      if (parsed.urgency) setDefaultUrgency(parsed.urgency);
+      if (typeof parsed.deadlineBufferDays === 'number') {
+        setDeadlineBufferDays(String(parsed.deadlineBufferDays));
+      }
+    } catch {
+      // Ignore invalid storage
+    }
+  }, []);
 
   const handleRoleSwitch = (role: UserRole) => {
     switchRole(role);
@@ -42,9 +67,24 @@ export default function Settings() {
     toast.success('Profile updated locally');
   };
 
+  const handleSaveDefaults = () => {
+    const parsedDays = Number(deadlineBufferDays);
+    const sanitizedDays = Number.isFinite(parsedDays) && parsedDays >= 0 ? parsedDays : 3;
+    localStorage.setItem(
+      'designhub:requestDefaults',
+      JSON.stringify({
+        category: defaultCategory || undefined,
+        urgency: defaultUrgency || 'normal',
+        deadlineBufferDays: sanitizedDays,
+      })
+    );
+    setDeadlineBufferDays(String(sanitizedDays));
+    toast.success('Request defaults saved');
+  };
+
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-4xl">
+      <div className="space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
         <div className="animate-fade-in">
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
@@ -106,6 +146,63 @@ export default function Settings() {
               </div>
             </div>
             <Button onClick={handleSaveProfile}>Save Changes</Button>
+          </div>
+        </div>
+
+        {/* Request Defaults */}
+        <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
+          <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Briefcase className="h-5 w-5" />
+            Request Defaults
+          </h2>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Default Category</Label>
+                <Select value={defaultCategory} onValueChange={setDefaultCategory}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="No default" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="banner">Banner</SelectItem>
+                    <SelectItem value="campaign_or_others">Campaign or others</SelectItem>
+                    <SelectItem value="social_media_creative">Social Media Creative</SelectItem>
+                    <SelectItem value="website_assets">Website Assets</SelectItem>
+                    <SelectItem value="ui_ux">UI/UX</SelectItem>
+                    <SelectItem value="led_backdrop">LED Backdrop</SelectItem>
+                    <SelectItem value="brochure">Brochure</SelectItem>
+                    <SelectItem value="flyer">Flyer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Default Urgency</Label>
+                <Select value={defaultUrgency} onValueChange={setDefaultUrgency}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="intermediate">Intermediate</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Default Deadline Buffer (days)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={deadlineBufferDays}
+                onChange={(event) => setDeadlineBufferDays(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Used to auto-set the deadline when creating a new request.
+              </p>
+            </div>
+            <Button onClick={handleSaveDefaults}>Save Defaults</Button>
           </div>
         </div>
 
