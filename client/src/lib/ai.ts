@@ -1,14 +1,63 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { API_URL } from './api';
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const AI_ENDPOINT = API_URL ? `${API_URL}/api/ai/gemini` : undefined;
 
-if (!API_KEY) {
-    console.warn('‚ö†Ô∏è VITE_GEMINI_API_KEY not found. Task Buddy AI will not work.');
-}
+export const TASK_BUDDY_SYSTEM_PROMPT = `CRITICAL OVERRIDE RULE ó ATTACHMENT FIRST MODE
 
-const genAI = API_KEY ? new GoogleGenerativeAI(API_KEY) : null;
+If ANY document, image, or file is attached:
 
-export const TASK_BUDDY_SYSTEM_PROMPT = `You are Task Buddy AI operating in SILENT AUTO-DRAFT MODE.
+1. You MUST read and extract content from the attachment.
+2. You MUST NOT generate generic or new content.
+3. You MUST NOT use templates or assumptions.
+4. You MUST base the draft ONLY on the attached content.
+
+--------------------------------
+CONTENT EXTRACTION RULES
+--------------------------------
+
+ï Extract text exactly as present in the document.
+ï Preserve:
+  - Headings
+  - Dates
+  - Key phrases
+ï Understand intent from the content itself.
+ï Do NOT invent themes or objectives.
+
+--------------------------------
+DRAFT CREATION (FROM ATTACHMENT)
+--------------------------------
+
+Use this mapping:
+
+Request Title:
+? "Improve <Detected Content Type> Content"
+
+Category:
+? Auto-detect from content (e.g., Standee ? Banner)
+
+Notes for Designer:
+? "Use the attached content as primary reference. Improve layout, hierarchy, and visual appeal only."
+
+--------------------------------
+STRICT PROHIBITIONS
+--------------------------------
+
+? Do NOT rewrite content meaning
+? Do NOT add new messaging
+? Do NOT add marketing language
+? Do NOT generalize (e.g., ìnational pride themesî)
+? Do NOT ignore attachment text
+
+--------------------------------
+FALLBACK RULE
+--------------------------------
+
+ONLY if attachment is EMPTY or UNREADABLE:
+? Then ask user for clarification.
+
+Otherwise:
+? Attachment is FINAL SOURCE OF TRUTH.
+You are Task Buddy AI operating in SILENT AUTO-DRAFT MODE.
 
 Your ONLY responsibility:
 - Read minimal inputs
@@ -206,29 +255,43 @@ export async function sendMessageToAI(
     messages: { role: 'user' | 'model'; parts: string }[],
     userMessage: string
 ): Promise<AIResponse> {
-    if (!genAI) {
-        throw new Error('Gemini AI is not configured. Please add VITE_GEMINI_API_KEY to your .env file.');
+    if (!AI_ENDPOINT) {
+        throw new Error('AI endpoint is not configured. Please set VITE_API_URL or run the backend locally.');
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: 'models/gemini-2.5-flash' });
-
-        const chat = model.startChat({
-            history: messages.map(msg => ({
-                role: msg.role,
-                parts: [{ text: msg.parts }]
-            })),
-            generationConfig: {
-                temperature: 0.7,
-                topP: 0.95,
-                topK: 40,
-                maxOutputTokens: 2048,
+        const response = await fetch(AI_ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
             },
+            body: JSON.stringify({
+                messages,
+                userMessage,
+                systemPrompt: TASK_BUDDY_SYSTEM_PROMPT
+            })
         });
 
-        const result = await chat.sendMessage(TASK_BUDDY_SYSTEM_PROMPT + '\n\nUser: ' + userMessage);
-        const response = result.response;
-        const text = response.text();
+        if (!response.ok) {
+            let errorMessage = response.statusText;
+            try {
+                const errorBody = await response.json();
+                if (errorBody?.error) {
+                    errorMessage = errorBody.error;
+                }
+            } catch {
+                // Ignore JSON parse failures
+            }
+
+            if (response.status === 429) {
+                throw new Error('Usage limit exceeded (Quota). Please wait a minute and try again.');
+            }
+
+            throw new Error(errorMessage);
+        }
+
+        const data = await response.json();
+        const text = data.text ?? '';
 
         // Try to parse as JSON first
         try {

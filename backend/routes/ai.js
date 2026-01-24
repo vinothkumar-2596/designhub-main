@@ -1,90 +1,51 @@
 import express from "express";
 import { generateAIContent } from "../lib/ollama.js";
 import AIFile from "../models/AIFile.js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const router = express.Router();
 
-const AI_BUDDY_SYSTEM_PROMPT = `You are AI Buddy, an intelligent task creation and form auto-filling assistant for a design request management system.
+const AI_BUDDY_SYSTEM_PROMPT = `SYSTEM ROLE:
+You are Task Buddy AI operating in STRICT ATTACHMENT-ONLY MODE.
 
-Your primary goal:
-Convert user input (typed text and/or uploaded documents) into a complete, professional design task submission and automatically map it to form fields.
+ATTACHED CONTENT (USE ONLY THIS):
+<<<BEGIN ATTACHED CONTENT>>>
+{{EXTRACTED_TEXT}}
+<<<END ATTACHED CONTENT>>>
 
-YOU MUST SUPPORT THREE MODES SEAMLESSLY:
-1. Auto-fill from uploaded documents (resume-style parsing)
-2. AI drafting from user text input
-3. Content enhancement and rewriting
+NON-NEGOTIABLE RULES:
+1. The attached content above is the ONLY source of truth.
+2. You are NOT allowed to add, invent, infer, summarize, or rewrite content.
+3. Every sentence you output MUST already exist in the attached content.
+4. You may ONLY:
+   - Preserve the text as-is
+   - Suggest formatting, hierarchy, or design usage
+5. If you cannot comply strictly, you MUST stop and return an error.
 
-INPUT SOURCES YOU MAY RECEIVE:
-- User typed text (rough ideas, instructions, partial content)
-- Uploaded files content (extracted text)
-- Optional metadata (deadline, category, urgency)
+OUTPUT CONTRACT:
+Return ONLY a JSON object in the following shape:
 
-TARGET FORM FIELDS (STRICT):
-You MUST extract, generate, or enhance content ONLY for these fields:
-1. requestTitle
-2. description
-3. category
-4. urgency
-5. deadline
-6. phone
-
-CORE BEHAVIOR RULES:
-- If a document is uploaded:
-  • Read and understand the document fully.
-  • Extract relevant information.
-  • Improve clarity, grammar, and structure.
-  • Convert informal content into professional task language.
-  • Do NOT invent missing information.
-- If only text is provided:
-  • Generate a professional task draft.
-  • Expand vague ideas into clear requirements.
-  • Maintain the user’s original intent.
-- If both text and files are provided:
-  • Merge information intelligently.
-  • Avoid duplication.
-  • Prioritize uploaded document content.
-
-DATA EXTRACTION RULES:
-- NEVER hallucinate dates, phone numbers, or approvals.
-- If any required field is missing, return null for that field.
-- Improve language ONLY inside the Description field.
-- Keep tone professional, clear, and suitable for an internal design team.
-- Assume this is for institutional / corporate usage.
-
-CATEGORY & URGENCY LOGIC:
-- Infer Category from context (e.g., Standee, Poster, Banner, Social Media, Report).
-- Default Urgency to "Normal" unless explicitly urgent.
-- Emergency override is NEVER auto-enabled.
-
-OUTPUT FORMAT (MANDATORY):
-Return ONLY valid JSON.
-Do NOT include explanations, markdown, or extra text.
-
-Use this exact schema:
 {
-  "requestTitle": "",
-  "description": "",
-  "category": "",
-  "urgency": "",
-  "deadline": "",
-  "phone": ""
+  "requestTitle": "Improve Attached Content",
+  "description": "Use the attached content exactly as provided. No wording changes.",
+  "category": "<auto-detected from content>",
+  "notesForDesigner": "Design-only improvements. Text must remain unchanged."
 }
 
-MISSING INFORMATION HANDLING:
-- If a field cannot be confidently extracted, set its value to null.
-- Do NOT ask questions in the output.
+FAIL-SAFE:
+If the attached content is empty, unreadable, or missing:
+Return exactly this error text and NOTHING else:
+"Draft generation blocked: attachment-only mode requires readable content."`;
 
-QUALITY EXPECTATIONS:
-- Description should be structured, clear, and actionable.
-- Avoid unnecessary verbosity.
-- Suitable for direct auto-filling of a submission form.
-- Output must be immediately usable without further processing.`;
 
 router.post("/buddy", async (req, res) => {
     try {
-        const { text, fileId, metadata } = req.body;
+        const { text, fileId, metadata, attachmentText } = req.body;
 
         let fileContent = "";
+        if (attachmentText) {
+            fileContent = String(attachmentText);
+        }
         if (fileId) {
             const aiFile = await AIFile.findOne({ driveId: fileId });
             if (aiFile) {
@@ -92,14 +53,22 @@ router.post("/buddy", async (req, res) => {
             }
         }
 
+        const hasAttachment = Boolean(fileId || attachmentText);
+        const normalizedContent = (fileContent || "").trim();
+        if (!normalizedContent || normalizedContent.trim().length < 30) {
+            throw new Error("Draft generation blocked: attachment-only mode requires readable content.");
+        }
+
+        const systemPrompt = AI_BUDDY_SYSTEM_PROMPT.replace("{{EXTRACTED_TEXT}}", normalizedContent || "");
+
         const prompt = `SYSTEM PROMPT:
-${AI_BUDDY_SYSTEM_PROMPT}
+${systemPrompt}
 
 USER INPUT TEXT:
 ${text || "None"}
 
 UPLOADED FILE CONTENT:
-${fileContent || "None"}
+${normalizedContent || "None"}
 
 METADATA (if any):
 ${metadata ? JSON.stringify(metadata) : "None"}
@@ -132,7 +101,54 @@ Please process the above information and return the mandatory JSON response.`;
         res.json(jsonResult);
     } catch (error) {
         console.error("AI Buddy process failed:", error);
+        const message = error instanceof Error ? error.message : "AI Buddy failed to process request";
+        if (message === "Draft generation blocked: attachment-only mode requires readable content.") {
+            return res.status(400).send(message);
+        }
         res.status(500).json({ error: "AI Buddy failed to process request" });
+    }
+});
+
+router.post("/gemini", async (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server" });
+    }
+
+    try {
+        const { messages = [], userMessage = "", systemPrompt = "" } = req.body || {};
+
+        if (!userMessage) {
+            return res.status(400).json({ error: "userMessage is required" });
+        }
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
+
+        const chat = model.startChat({
+            history: messages.map((msg) => ({
+                role: msg.role,
+                parts: [{ text: msg.parts }],
+            })),
+            generationConfig: {
+                temperature: 0.7,
+                topP: 0.95,
+                topK: 40,
+                maxOutputTokens: 2048,
+            },
+        });
+
+        const prompt = systemPrompt ? `${systemPrompt}\n\nUser: ${userMessage}` : userMessage;
+        const result = await chat.sendMessage(prompt);
+        const response = result.response;
+        const text = response.text();
+
+        res.json({ text });
+    } catch (error) {
+        console.error("Gemini proxy error:", error);
+        const message = error instanceof Error ? error.message : "Unknown Gemini error";
+        const status = message.includes("429") ? 429 : 500;
+        res.status(status).json({ error: message });
     }
 });
 

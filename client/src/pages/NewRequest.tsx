@@ -390,24 +390,30 @@ export default function NewRequest() {
   const [isDragging, setIsDragging] = useState(false);
   const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
 
+  const applyAiDraft = (draft: TaskDraft) => {
+    setTitle(draft.title);
+    setDescription(draft.description);
+    setCategory(draft.category);
+    setUrgency(draft.urgency ?? 'normal');
+    if (draft.deadline) {
+      const parsedDate = new Date(draft.deadline);
+      if (!isNaN(parsedDate.getTime())) {
+        setDeadline(parsedDate);
+      }
+    }
+    if (draft.whatsappNumbers && draft.whatsappNumbers.length > 0) {
+      setRequesterPhone(draft.whatsappNumbers.join(', '));
+    }
+  };
   // Initialize from AI Buddy state if provided
   useEffect(() => {
     if (location.state?.aiDraft) {
-      const draft = location.state.aiDraft as any;
-      if (draft.requestTitle) setTitle(draft.requestTitle);
-      if (draft.description) setDescription(draft.description);
-      if (draft.category) setCategory(draft.category as TaskCategory);
-      if (draft.urgency) setUrgency(draft.urgency.toLowerCase() as TaskUrgency);
-      if (draft.deadline) {
-        const parsedDate = parseIsoDate(draft.deadline) || new Date(draft.deadline);
-        if (!isNaN(parsedDate.getTime())) setDeadline(parsedDate);
+      const draft = location.state.aiDraft as TaskDraft;
+      if (draft) {
+        applyAiDraft(draft);
+        toast.success("AI Buddy: Draft applied to form!");
+        return;
       }
-      if (draft.phone) setRequesterPhone(draft.phone);
-      if (Array.isArray(draft.files) && draft.files.length > 0) {
-        setFiles(draft.files);
-      }
-
-      toast.success("AI Buddy: Draft applied to form!");
     }
   }, [location.state]);
   const glassPanelClass =
@@ -660,20 +666,12 @@ export default function NewRequest() {
 
   // Task Buddy AI Handler
   const handleTaskBuddyDraft = (draft: TaskDraft) => {
-    setTitle(draft.title);
-    setDescription(draft.description);
-    setCategory(draft.category);
-    setUrgency(draft.urgency);
-    if (draft.deadline) {
-      const parsedDate = new Date(draft.deadline);
-      if (!isNaN(parsedDate.getTime())) {
-        setDeadline(parsedDate);
-      }
+    const aiResponse = draft;
+    if (aiResponse) {
+      applyAiDraft(aiResponse);
+      toast.success('Task Buddy draft applied to form!');
+      return;
     }
-    if (draft.whatsappNumbers && draft.whatsappNumbers.length > 0) {
-      setRequesterPhone(draft.whatsappNumbers.join(', '));
-    }
-    toast.success('Task Buddy draft applied to form!');
   };
 
   const isFormValid = () => {

@@ -113,6 +113,7 @@ export default function AIMode() {
     const [lastUploadedFile, setLastUploadedFile] = useState<string | null>(null);
     const [lastUploadedFileId, setLastUploadedFileId] = useState<string | null>(null);
     const [allUploadedFiles, setAllUploadedFiles] = useState<any[]>([]);
+    const [attachmentText, setAttachmentText] = useState<string>('');
 
     const suggestions = [
         { icon: Briefcase, text: "Create a social media campaign for Diwali" },
@@ -173,7 +174,8 @@ export default function AIMode() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     text: userMessage.content,
-                    fileId: lastUploadedFileId
+                    fileId: lastUploadedFileId,
+                    attachmentText: attachmentText || undefined
                 })
             });
 
@@ -214,8 +216,14 @@ export default function AIMode() {
         setLastUploadedFile(file.name);
         setView('chat');
         setUploadStatus('uploading');
+        setAttachmentText('');
 
         try {
+            if (file.type.startsWith('text/')) {
+                const text = await file.text();
+                setAttachmentText(text.trim());
+            }
+
             const formData = new FormData();
             formData.append('file', file);
             formData.append('aiMode', 'true');
