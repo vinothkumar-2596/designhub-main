@@ -81,8 +81,6 @@ export default function Login() {
         return;
       }
       await loginWithGoogle(role);
-
-      navigate('/dashboard');
     } catch (error) {
       toast.error('Google login failed');
     }

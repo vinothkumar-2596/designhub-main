@@ -33,9 +33,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    const handleAuthMessage = (event: MessageEvent) => {
+      const allowedOrigins = [window.location.origin];
+      if (API_URL) {
+        try {
+          allowedOrigins.push(new URL(API_URL).origin);
+        } catch {
+          // ignore invalid API_URL
+        }
+      }
+      if (!allowedOrigins.includes(event.origin)) return;
+      if (!event.data || typeof event.data !== 'object') return;
+      if (event.data.type !== 'google-auth') return;
+      const token = event.data.token as string | undefined;
+      if (!token) return;
+
+      localStorage.setItem(TOKEN_KEY, token);
+      fetch(`${API_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(async (response) => {
+          if (!response.ok) throw new Error('Failed to load user');
+          const data = await response.json();
+          if (data?.user) {
+            setUser(data.user);
+            localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem(TOKEN_KEY);
+        });
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    return () => window.removeEventListener('message', handleAuthMessage);
+  }, []);
+
+  useEffect(() => {
     const url = new URL(window.location.href);
     const token = url.searchParams.get('token');
     if (!token || !API_URL) return;
+
+    if (window.opener && !window.opener.closed) {
+      try {
+        window.opener.postMessage({ type: 'google-auth', token }, window.location.origin);
+      } catch {
+        // no-op: fall back to handling in the current window
+      }
+    }
 
     localStorage.setItem(TOKEN_KEY, token);
     url.searchParams.delete('token');
@@ -56,6 +101,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         localStorage.removeItem(TOKEN_KEY);
       });
+
+    if (window.opener && !window.opener.closed) {
+      window.close();
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== USER_KEY) return;
+      if (!event.newValue) {
+        setUser(null);
+        return;
+      }
+      try {
+        setUser(JSON.parse(event.newValue));
+      } catch {
+        setUser(null);
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   const login = async (email: string, password: string, role: UserRole) => {
@@ -113,7 +180,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Google login not configured');
     }
     localStorage.setItem(ROLE_KEY, role);
-    window.location.href = data.url;
+    const width = 520;
+    const height = 640;
+    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+    const popup = window.open(
+      data.url,
+      'google-auth',
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+
+    if (!popup) {
+      window.location.href = data.url;
+      return;
+    }
+    popup.focus();
   };
 
   const logout = () => {

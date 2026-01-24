@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sparkles, Send, Loader2, CheckCircle2, X, Paperclip, User, Mic } from 'lucide-react';
-import { sendMessageToAI, type TaskDraft, type AIResponse } from '@/lib/ai';
+import { sendMessageToAI, mapActionPayloadToDraft, type TaskDraft, type AIResponse, type TaskBuddyActionPayload } from '@/lib/ai';
 import { toast } from 'sonner';
 
 interface Message {
@@ -90,7 +90,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         if ((!input.trim() && !hasAttachments) || isLoading) return;
 
         const systemEvent = hasAttachments
-            ? 'SYSTEM EVENT: User has uploaded file(s). Proceed with Improve Existing Content mode. Do not ask questions. Auto-fill draft.'
+            ? 'SYSTEM CONTEXT: User has uploaded file(s). Use attachments as available reference while following the step-by-step wizard.'
             : '';
         const fileContext = attachmentContext ? `\n\nATTACHED FILE CONTENT:\n${attachmentContext}` : '';
         const userText = systemEvent
@@ -128,6 +128,30 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                     timestamp: new Date()
                 };
                 setMessages(prev => [...prev, assistantMessage]);
+            } else if (response.type === 'action' && response.data) {
+                setQuotaBlocked(false);
+                const payload = response.data as TaskBuddyActionPayload;
+                const draft = mapActionPayloadToDraft(payload);
+                setTaskDraft(draft);
+                if (onTaskCreated) {
+                    onTaskCreated(draft);
+                    if (response.action === 'SUBMIT_REQUEST') {
+                        toast.success('Request ready to submit.');
+                    } else {
+                        toast.success('Draft saved.');
+                    }
+                    onClose();
+                } else {
+                    const assistantMessage: Message = {
+                        id: (Date.now() + 1).toString(),
+                        role: 'assistant',
+                        content: response.action === 'SUBMIT_REQUEST'
+                            ? "Your request is ready. Please review and submit."
+                            : "Draft saved. You can review it now.",
+                        timestamp: new Date()
+                    };
+                    setMessages(prev => [...prev, assistantMessage]);
+                }
             } else if (response.content) {
                 setQuotaBlocked(false);
                 const assistantMessage: Message = {
