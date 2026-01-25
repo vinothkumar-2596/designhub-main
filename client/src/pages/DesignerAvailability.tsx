@@ -1,86 +1,63 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { mockTasks } from '@/data/mockTasks';
+import { mergeLocalTasks } from '@/lib/taskStorage';
+import { Search } from 'lucide-react';
 import {
-  Calendar,
-  dateFnsLocalizer,
-  type Event as RBCEvent,
-  type View,
-  type ToolbarProps,
-} from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay } from 'date-fns';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Task as ScheduleTask } from '@/lib/designerSchedule';
-import { buildScheduleFromTasks, getDefaultDesignerId } from '@/lib/designerSchedule';
-import { API_URL } from '@/lib/api';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
-
-const localizer = dateFnsLocalizer({
+  addDays,
+  differenceInCalendarDays,
+  eachDayOfInterval,
+  endOfMonth,
   format,
-  parse,
-  startOfWeek,
-  getDay,
-  locales: {},
-});
+  isSameDay,
+  isSameMonth,
+  isWithinInterval,
+  startOfDay,
+  startOfMonth,
+} from 'date-fns';
+import type { Task as ScheduleTask } from '@/lib/designerSchedule';
+import {
+  DEFAULT_ESTIMATED_DAYS,
+  buildScheduleFromTasks,
+  getDefaultDesignerId,
+} from '@/lib/designerSchedule';
+import { API_URL, authFetch } from '@/lib/api';
 
-const priorityStyles: Record<ScheduleTask['priority'], { bg: string; border: string; text: string }> = {
-  VIP: { bg: '#ef4444', border: '#dc2626', text: '#ffffff' },
-  HIGH: { bg: '#f59e0b', border: '#d97706', text: '#0f172a' },
-  NORMAL: { bg: '#3b82f6', border: '#2563eb', text: '#ffffff' },
+const priorityClasses: Record<ScheduleTask['priority'], string> = {
+  VIP: 'gantt-priority-vip',
+  HIGH: 'gantt-priority-high',
+  NORMAL: 'gantt-priority-normal',
 };
-
-type AvailabilityEvent = RBCEvent & {
-  priority: ScheduleTask['priority'];
-  taskId: string;
-};
-
-function AvailabilityToolbar({ label, onNavigate }: ToolbarProps) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => onNavigate('PREV')}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onNavigate('TODAY')}
-        >
-          Today
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => onNavigate('NEXT')}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-      <div className="text-sm font-semibold text-foreground">{label}</div>
-    </div>
-  );
-}
 
 export default function DesignerAvailability() {
   const apiUrl = API_URL;
   const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const currentView: View = 'month';
+  const [query, setQuery] = useState('');
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollTrackRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 });
+  const today = useMemo(() => startOfDay(new Date()), []);
+  const [scrollState, setScrollState] = useState({
+    scrollLeft: 0,
+    scrollWidth: 0,
+    clientWidth: 0,
+    trackWidth: 0,
+  });
+  const getLocalSchedule = () =>
+    buildScheduleFromTasks(
+      typeof window === 'undefined' ? mockTasks : mergeLocalTasks(mockTasks)
+    );
 
   useEffect(() => {
     if (!apiUrl) {
-      setScheduleTasks([]);
+      setScheduleTasks(getLocalSchedule());
       return;
     }
     let isActive = true;
     const loadSchedule = async () => {
       try {
-        const response = await fetch(`${apiUrl}/api/tasks`);
+        const response = await authFetch(`${apiUrl}/api/tasks`);
         if (!response.ok) {
           throw new Error('Failed to load tasks');
         }
@@ -89,7 +66,7 @@ export default function DesignerAvailability() {
         setScheduleTasks(buildScheduleFromTasks(data));
       } catch {
         if (!isActive) return;
-        setScheduleTasks([]);
+        setScheduleTasks(getLocalSchedule());
       }
     };
     loadSchedule();
@@ -103,95 +80,426 @@ export default function DesignerAvailability() {
     [scheduleTasks]
   );
 
-  const events = useMemo<AvailabilityEvent[]>(() => {
+  const filteredTasks = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
     return scheduleTasks
       .filter(
         (task) =>
           task.designerId === designerId &&
           task.status !== 'COMPLETED' &&
           task.status !== 'EMERGENCY_PENDING' &&
-          task.actualStartDate &&
-          task.actualEndDate
+          (!normalizedQuery ||
+            task.title.toLowerCase().includes(normalizedQuery))
       )
-      .sort((a, b) =>
-        (a.actualStartDate?.getTime() ?? 0) - (b.actualStartDate?.getTime() ?? 0)
-      )
-      .map((task) => ({
-        title: task.title,
-        start: task.actualStartDate as Date,
-        end: task.actualEndDate as Date,
-        allDay: true,
-        priority: task.priority,
-        taskId: task.id,
-      }));
-  }, [designerId, scheduleTasks]);
+      .sort(
+        (a, b) =>
+          (a.actualStartDate?.getTime() ?? 0) - (b.actualStartDate?.getTime() ?? 0)
+      );
+  }, [designerId, query, scheduleTasks]);
 
-  const eventPropGetter = (event: AvailabilityEvent) => {
-    const style = priorityStyles[event.priority] || priorityStyles.NORMAL;
-    return {
-      style: {
-        backgroundColor: style.bg,
-        borderColor: style.border,
-        color: style.text,
-        borderRadius: '10px',
-        padding: '2px 10px',
-        boxShadow: '0 10px 22px -18px rgba(15, 23, 42, 0.45)',
-      },
+  const availabilityTasks = useMemo(() => {
+    return filteredTasks
+      .map((task) => {
+        const start = task.actualStartDate
+          ? startOfDay(new Date(task.actualStartDate))
+          : null;
+        const end = task.actualEndDate
+          ? startOfDay(new Date(task.actualEndDate))
+          : null;
+
+        if (start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+          return {
+            id: task.id,
+            title: task.title,
+            start,
+            end,
+            priority: task.priority,
+          };
+        }
+
+        const deadline = task.requestedDeadline
+          ? startOfDay(new Date(task.requestedDeadline))
+          : null;
+        const duration = Math.max(
+          Number(task.estimatedDays || DEFAULT_ESTIMATED_DAYS),
+          1
+        );
+
+        if (deadline && !Number.isNaN(deadline.getTime())) {
+          const derivedStart = addDays(deadline, -(duration - 1));
+          return {
+            id: task.id,
+            title: task.title,
+            start: derivedStart,
+            end: deadline,
+            priority: task.priority,
+          };
+        }
+
+        if (start && !Number.isNaN(start.getTime())) {
+          const derivedEnd = addDays(start, duration - 1);
+          return {
+            id: task.id,
+            title: task.title,
+            start,
+            end: derivedEnd,
+            priority: task.priority,
+          };
+        }
+
+        if (end && !Number.isNaN(end.getTime())) {
+          const derivedStart = addDays(end, -(duration - 1));
+          return {
+            id: task.id,
+            title: task.title,
+            start: derivedStart,
+            end,
+            priority: task.priority,
+          };
+        }
+
+        return null;
+      })
+      .filter((task): task is NonNullable<typeof task> => Boolean(task));
+  }, [filteredTasks]);
+
+  const [activeMonth, setActiveMonth] = useState(() => startOfMonth(today));
+  const [activeDate, setActiveDate] = useState(() => today);
+
+  useEffect(() => {
+    setActiveDate((current) => {
+      if (isSameMonth(current, activeMonth)) return current;
+      return isSameMonth(today, activeMonth) ? today : startOfMonth(activeMonth);
+    });
+  }, [activeMonth, today]);
+
+  const activeYear = activeMonth.getFullYear();
+  const monthsInYear = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) =>
+        startOfMonth(new Date(activeYear, index, 1))
+      ),
+    [activeYear]
+  );
+
+  const daysInMonth = useMemo(() => {
+    const start = startOfMonth(activeMonth);
+    const end = endOfMonth(activeMonth);
+    return eachDayOfInterval({ start, end });
+  }, [activeMonth]);
+
+  const monthStart = useMemo(() => startOfMonth(activeMonth), [activeMonth]);
+  const monthEnd = useMemo(() => endOfMonth(activeMonth), [activeMonth]);
+
+  const busyDayKeys = useMemo(() => {
+    const set = new Set<string>();
+    if (availabilityTasks.length === 0) return set;
+    availabilityTasks.forEach((task) => {
+      const start = task.start > monthStart ? task.start : monthStart;
+      const end = task.end < monthEnd ? task.end : monthEnd;
+      if (start > end) return;
+      for (let day = start; day <= end; day = addDays(day, 1)) {
+        set.add(format(day, 'yyyy-MM-dd'));
+      }
+    });
+    return set;
+  }, [availabilityTasks, monthEnd, monthStart]);
+
+  const monthBars = useMemo(() => {
+    return availabilityTasks
+      .map((task) => {
+        const rangeStart = task.start > monthStart ? task.start : monthStart;
+        const rangeEnd = task.end < monthEnd ? task.end : monthEnd;
+        if (rangeEnd < rangeStart) return null;
+        const startIndex = differenceInCalendarDays(rangeStart, monthStart);
+        const endIndex = differenceInCalendarDays(rangeEnd, monthStart);
+        return {
+          ...task,
+          rangeStart,
+          rangeEnd,
+          startIndex,
+          endIndex,
+        };
+      })
+      .filter((task): task is NonNullable<typeof task> => Boolean(task));
+  }, [availabilityTasks, monthEnd, monthStart]);
+
+  const tasksForDate = useMemo(() => {
+    if (!activeDate) return [];
+    return availabilityTasks.filter((task) =>
+      isWithinInterval(activeDate, { start: task.start, end: task.end })
+    );
+  }, [availabilityTasks, activeDate]);
+
+  const busyMonthKeys = useMemo(() => {
+    const set = new Set<string>();
+    availabilityTasks.forEach((task) => {
+      set.add(format(task.start, 'yyyy-MM'));
+      set.add(format(task.end, 'yyyy-MM'));
+    });
+    return set;
+  }, [availabilityTasks]);
+
+  const dayWidth = 44;
+  const gridTemplateStyle = useMemo(
+    () => ({
+      gridTemplateColumns: `repeat(${daysInMonth.length}, ${dayWidth}px)`,
+      minWidth: `${daysInMonth.length * dayWidth}px`,
+    }),
+    [daysInMonth.length]
+  );
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const index = daysInMonth.findIndex((day) => isSameDay(day, activeDate));
+    if (index < 0) {
+      container.scrollLeft = 0;
+      return;
+    }
+    requestAnimationFrame(() => {
+      const cells = container.querySelectorAll<HTMLElement>('.availability-daycell');
+      const cell = cells[index];
+      if (!cell) return;
+      const containerRect = container.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      const offsetLeft = cellRect.left - containerRect.left + container.scrollLeft;
+      const target = offsetLeft - (containerRect.width - cellRect.width) / 2;
+      container.scrollLeft = Math.max(0, target);
+    });
+  }, [activeDate, daysInMonth]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const update = () => {
+      const trackWidth = scrollTrackRef.current?.clientWidth ?? container.clientWidth;
+      setScrollState({
+        scrollLeft: container.scrollLeft,
+        scrollWidth: container.scrollWidth,
+        clientWidth: container.clientWidth,
+        trackWidth,
+      });
     };
-  };
+    update();
+    const onScroll = () => update();
+    container.addEventListener('scroll', onScroll, { passive: true });
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(update);
+      resizeObserver.observe(container);
+      if (scrollTrackRef.current) {
+        resizeObserver.observe(scrollTrackRef.current);
+      }
+    }
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      resizeObserver?.disconnect();
+    };
+  }, [daysInMonth.length]);
+
+  const thumbWidth = useMemo(() => {
+    if (scrollState.scrollWidth <= 0) return 0;
+    const ratio = scrollState.clientWidth / scrollState.scrollWidth;
+    return Math.max(28, Math.round(scrollState.trackWidth * ratio));
+  }, [scrollState.clientWidth, scrollState.scrollWidth, scrollState.trackWidth]);
+
+  const thumbLeft = useMemo(() => {
+    const maxScrollLeft = scrollState.scrollWidth - scrollState.clientWidth;
+    const maxThumbLeft = Math.max(0, scrollState.trackWidth - thumbWidth);
+    if (maxScrollLeft <= 0) return 0;
+    return (scrollState.scrollLeft / maxScrollLeft) * maxThumbLeft;
+  }, [scrollState.clientWidth, scrollState.scrollLeft, scrollState.scrollWidth, scrollState.trackWidth, thumbWidth]);
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!dragStateRef.current.isDragging) return;
+      if (!scrollRef.current || !scrollTrackRef.current) return;
+      const maxScrollLeft =
+        scrollRef.current.scrollWidth - scrollRef.current.clientWidth;
+      const trackWidth = scrollTrackRef.current.clientWidth;
+      const thumbTravel = Math.max(1, trackWidth - thumbWidth);
+      const deltaX = event.clientX - dragStateRef.current.startX;
+      const scrollDelta = (deltaX / thumbTravel) * maxScrollLeft;
+      scrollRef.current.scrollLeft =
+        dragStateRef.current.startScrollLeft + scrollDelta;
+    };
+    const handlePointerUp = () => {
+      dragStateRef.current.isDragging = false;
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [thumbWidth]);
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="animate-fade-in">
-          <h1 className="text-2xl font-bold text-foreground">
-            Designer Availability
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Review upcoming capacity and delivery windows
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-[#D9E6FF] bg-white/70 backdrop-blur-xl p-5 shadow-card">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="rounded-2xl border border-[#D9E6FF] bg-white/70 backdrop-blur-xl p-6 shadow-card">
+          <div className="availability-top">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Delivery schedule
-              </p>
-              <h2 className="text-lg font-semibold text-foreground">
-                Designer availability calendar
-              </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Requested deadlines are estimates. Actual starts follow availability.
+              <p className="availability-top__kicker">Availability</p>
+              <h1 className="availability-top__title">Designer availability</h1>
+              <p className="availability-top__subtitle">
+                Staff can quickly see which dates are busy and which tasks are committed.
               </p>
             </div>
-            <Badge
-              variant="outline"
-              className="h-fit text-[10px] uppercase tracking-[0.2em] text-muted-foreground"
-            >
-              Delivery Mode
-            </Badge>
+            <div className="availability-top__actions">
+              <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-sm">
+                <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search tasks"
+                  aria-label="Search tasks"
+                  className="search-elastic-input w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="mt-5 availability-calendar">
-            <Calendar
-              localizer={localizer}
-              events={events}
-              startAccessor="start"
-              endAccessor="end"
-              date={currentDate}
-              onNavigate={setCurrentDate}
-              view={currentView}
-              views={{ month: true }}
-              components={{
-                toolbar: AvailabilityToolbar,
-              }}
-              eventPropGetter={eventPropGetter}
-              popup
-              className="availability-calendar__root"
-            />
+          <div className="availability-months">
+            {monthsInYear.map((month) => {
+              const isActive = isSameMonth(month, activeMonth);
+              const isBusy = busyMonthKeys.has(format(month, 'yyyy-MM'));
+              return (
+                <button
+                  key={month.toISOString()}
+                  type="button"
+                  className="availability-month"
+                  data-active={isActive}
+                  data-busy={isBusy}
+                  onClick={() => setActiveMonth(month)}
+                >
+                  {format(month, 'MMM')}
+                </button>
+              );
+            })}
           </div>
+
+          <div className="availability-calendar">
+            <div className="availability-calendar__meta">
+              {format(activeMonth, 'MMMM yyyy')}
+            </div>
+            <div className="availability-calendar__scroll">
+              <div className="availability-calendar__scroll-inner" ref={scrollRef}>
+                <div className="availability-calendar__grid" style={gridTemplateStyle}>
+                  {daysInMonth.map((day) => {
+                    const key = format(day, 'yyyy-MM-dd');
+                    const isBusy = busyDayKeys.has(key);
+                    const isActive = isSameDay(day, activeDate);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        className="availability-daycell"
+                        data-busy={isBusy}
+                        data-active={isActive}
+                        onClick={() => setActiveDate(day)}
+                      >
+                        <span className="availability-daycell__num">
+                          {format(day, 'd')}
+                        </span>
+                        <span className="availability-daycell__dow">
+                          {format(day, 'EEE')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="availability-bars">
+                  {monthBars.length === 0 ? (
+                    <div className="availability-bars__empty">
+                      No tasks scheduled this month.
+                    </div>
+                  ) : (
+                    monthBars.map((task) => (
+                      <div
+                        key={task.id}
+                        className="availability-bar-row"
+                        style={gridTemplateStyle}
+                      >
+                        <div
+                          className={`availability-bar ${priorityClasses[task.priority] || ''}`}
+                          style={{
+                            gridColumn: `${task.startIndex + 1} / ${task.endIndex + 2}`,
+                          }}
+                        >
+                          <span className="availability-bar__label">{task.title}</span>
+                          <span className="availability-bar__tooltip">
+                            {task.title} - {format(task.rangeStart, 'MMM d')} -{' '}
+                            {format(task.rangeEnd, 'MMM d')}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="availability-scrollbar" aria-hidden="true">
+                <div
+                  className="availability-scrollbar__track"
+                  ref={scrollTrackRef}
+                  onPointerDown={(event) => {
+                    if (!scrollRef.current || !scrollTrackRef.current) return;
+                    const trackRect = scrollTrackRef.current.getBoundingClientRect();
+                    const clickX = event.clientX - trackRect.left;
+                    const maxScrollLeft =
+                      scrollRef.current.scrollWidth - scrollRef.current.clientWidth;
+                    const travel = Math.max(1, trackRect.width - thumbWidth);
+                    const ratio = Math.min(
+                      1,
+                      Math.max(0, (clickX - thumbWidth / 2) / travel)
+                    );
+                    scrollRef.current.scrollLeft = ratio * maxScrollLeft;
+                  }}
+                >
+                  <div
+                    className="availability-scrollbar__thumb"
+                    style={{
+                      width: `${thumbWidth}px`,
+                      transform: `translateX(${thumbLeft}px)`,
+                    }}
+                    onPointerDown={(event) => {
+                      if (!scrollRef.current) return;
+                      dragStateRef.current.isDragging = true;
+                      dragStateRef.current.startX = event.clientX;
+                      dragStateRef.current.startScrollLeft = scrollRef.current.scrollLeft;
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="availability-events">
+              <div className="availability-events__date">
+                {format(activeDate, 'MMMM d, yyyy')}
+              </div>
+              <div className="availability-events__list">
+                {tasksForDate.length === 0 ? (
+                  <div className="availability-events__empty">
+                    No tasks scheduled for this date.
+                  </div>
+                ) : (
+                  tasksForDate.map((task) => (
+                    <div
+                      key={task.id}
+                      className={`availability-event ${priorityClasses[task.priority] || ''}`}
+                    >
+                      <div className="availability-event__title">{task.title}</div>
+                      <div className="availability-event__meta">
+                        {format(task.start, 'MMM d')} - {format(task.end, 'MMM d')}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
         </div>
+      </div>
       </div>
     </DashboardLayout>
   );

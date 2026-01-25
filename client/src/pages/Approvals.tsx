@@ -20,7 +20,7 @@ import { Link } from 'react-router-dom';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 
 export default function Approvals() {
   const { user } = useAuth();
@@ -35,7 +35,7 @@ export default function Approvals() {
     const loadTasks = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`${apiUrl}/api/tasks`);
+        const response = await authFetch(`${apiUrl}/api/tasks`);
         if (!response.ok) {
           throw new Error('Failed to load tasks');
         }
@@ -129,7 +129,7 @@ export default function Approvals() {
     const newValue = decision === 'approved' ? 'Approved' : 'Rejected';
     const approvalNote = `Approval ${decision} by ${user?.name || 'Treasurer'}`;
     if (apiUrl) {
-      const response = await fetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
+      const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

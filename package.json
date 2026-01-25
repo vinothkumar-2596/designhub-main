@@ -9,5 +9,8 @@
         "dev": "npm run dev --workspace=client & npm run dev --workspace=backend",
         "build": "npm run build --workspace=client",
         "install:all": "npm install"
+    },
+    "devDependencies": {
+        "sass-embedded": "^1.97.3"
     }
 }

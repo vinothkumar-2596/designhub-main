@@ -295,7 +295,7 @@ export const toMobiscrollEvents = (tasks: Task[]) =>
         task.priority === 'VIP'
           ? '#ef4444'
           : task.priority === 'HIGH'
-            ? '#f59e0b'
+            ? '#0ea5e9'
             : '#3b82f6',
     }));
 

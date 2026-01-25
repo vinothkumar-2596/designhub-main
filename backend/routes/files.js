@@ -4,8 +4,10 @@ import { uploadToDrive, getDriveClient } from "../lib/drive.js";
 import { extractText } from "../lib/extractor.js";
 import { generateAIContent } from "../lib/ollama.js";
 import AIFile from "../models/AIFile.js";
+import { requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
+router.use(requireRole(["staff", "designer", "treasurer"]));
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -22,7 +24,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "File is required." });
     }
 
-    const { aiMode, taskTitle, uploadedBy } = req.body;
+    const { aiMode, taskTitle } = req.body;
+    const uploadedBy = req.user?.email || req.user?.name || req.body.uploadedBy || "Guest";
     const isAiMode = aiMode === "true";
 
     const baseFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "";
@@ -39,6 +42,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       makePublic,
       subfolderName,
     });
+    req.auditTargetId = file?.id || "";
 
     console.log("Drive upload success:", file?.id);
 
@@ -54,7 +58,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         driveId: file.id,
         driveUrl: file.webViewLink,
         extractedContent,
-        uploadedBy: uploadedBy || "Guest",
+        uploadedBy,
       });
       await aiFile.save();
       console.log("AI File metadata saved to MongoDB");
@@ -82,6 +86,7 @@ router.post("/ai-process", async (req, res) => {
     if (!fileId || !action) {
       return res.status(400).json({ error: "fileId and action are required." });
     }
+    req.auditTargetId = fileId;
 
     // 1. Get file metadata/content from MongoDB
     const aiFile = await AIFile.findOne({ driveId: fileId });

@@ -2,8 +2,10 @@ import express from "express";
 import { generateAIContent } from "../lib/ollama.js";
 import AIFile from "../models/AIFile.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
+router.use(requireRole(["staff", "designer", "treasurer"]));
 
 const AI_BUDDY_SYSTEM_PROMPT = `SYSTEM ROLE:
 You are Task Buddy AI operating in STRICT ATTACHMENT-ONLY MODE.

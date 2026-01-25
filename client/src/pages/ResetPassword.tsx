@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,7 +36,7 @@ export default function ResetPassword() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/auth/password/reset`, {
+      const response = await authFetch(`${API_URL}/api/auth/password/reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password }),

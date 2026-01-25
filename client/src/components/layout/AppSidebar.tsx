@@ -29,7 +29,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 
 interface NavItem {
@@ -85,6 +85,19 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!user) {
+      document.documentElement.style.removeProperty('--app-sidebar-width');
+      return;
+    }
+    const width = collapsed ? '5rem' : '18rem';
+    document.documentElement.style.setProperty('--app-sidebar-width', width);
+    return () => {
+      document.documentElement.style.removeProperty('--app-sidebar-width');
+    };
+  }, [collapsed, user]);
+
   if (!user) return null;
 
   const quickAccessItems = [
@@ -136,7 +149,7 @@ export function AppSidebar() {
   return (
     <aside
       className={cn(
-        'flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] shadow-[0_24px_60px_-40px_rgba(15,23,42,0.4)] transition-all duration-300 h-full sticky top-4',
+        'flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] shadow-[0_24px_60px_-40px_rgba(15,23,42,0.4)] transition-all duration-300 h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
         collapsed ? 'w-20' : 'w-72'
       )}
     >

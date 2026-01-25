@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, UserRole } from '@/types';
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -150,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!API_URL) {
       throw new Error('API URL is not configured');
     }
-    const response = await fetch(`${API_URL}/api/auth/signup`, {
+    const response = await authFetch(`${API_URL}/api/auth/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, role }),

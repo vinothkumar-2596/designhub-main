@@ -1,73 +1,8 @@
-import { API_URL } from './api';
+import { API_URL, authFetch } from './api';
 
 const AI_ENDPOINT = API_URL ? `${API_URL}/api/ai/gemini` : undefined;
 
-<<<<<<< HEAD
-export const TASK_BUDDY_SYSTEM_PROMPT = `CRITICAL OVERRIDE RULE — ATTACHMENT FIRST MODE
-=======
-if (!API_KEY) {
-    console.warn('Ã¢ÂšÂ Ã¯Â¸Â VITE_GEMINI_API_KEY not found. Task Buddy AI will not work.');
-}
->>>>>>> 3fa0528cf053ff60e8b40290fcf0012be26ad130
-
-If ANY document, image, or file is attached:
-
-<<<<<<< HEAD
-1. You MUST read and extract content from the attachment.
-2. You MUST NOT generate generic or new content.
-3. You MUST NOT use templates or assumptions.
-4. You MUST base the draft ONLY on the attached content.
-
---------------------------------
-CONTENT EXTRACTION RULES
---------------------------------
-
-• Extract text exactly as present in the document.
-• Preserve:
-  - Headings
-  - Dates
-  - Key phrases
-• Understand intent from the content itself.
-• Do NOT invent themes or objectives.
-
---------------------------------
-DRAFT CREATION (FROM ATTACHMENT)
---------------------------------
-
-Use this mapping:
-
-Request Title:
-? "Improve <Detected Content Type> Content"
-
-Category:
-? Auto-detect from content (e.g., Standee ? Banner)
-
-Notes for Designer:
-? "Use the attached content as primary reference. Improve layout, hierarchy, and visual appeal only."
-
---------------------------------
-STRICT PROHIBITIONS
---------------------------------
-
-? Do NOT rewrite content meaning
-? Do NOT add new messaging
-? Do NOT add marketing language
-? Do NOT generalize (e.g., “national pride themes”)
-? Do NOT ignore attachment text
-
---------------------------------
-FALLBACK RULE
---------------------------------
-
-ONLY if attachment is EMPTY or UNREADABLE:
-? Then ask user for clarification.
-
-Otherwise:
-? Attachment is FINAL SOURCE OF TRUTH.
-You are Task Buddy AI operating in SILENT AUTO-DRAFT MODE.
-=======
 export const TASK_BUDDY_SYSTEM_PROMPT = `You are TaskBuddy AI, a SMART REQUEST WIZARD inside the DesignDesk portal.
->>>>>>> 3fa0528cf053ff60e8b40290fcf0012be26ad130
 
 GOAL
 Help users create a design request by asking ONE question at a time, using OPTIONS instead of open-ended questions wherever possible.
@@ -149,9 +84,9 @@ MANDATORY FINAL PROMPT
 After all required fields are collected, ask exactly:
 "Do you want to continue or proceed now?"
 Give ONLY these options:
-- âœ… Send to Draft
-- ðŸ“Ž Add more details / attachments
-- ðŸš€ Submit request
+- Send to Draft
+- Add more details / attachments
+- Submit request
 
 OPTION LOGIC
 If user selects:
@@ -305,9 +240,7 @@ const mapActionUrgencyToTaskDraft = (value: string): TaskDraft['urgency'] => {
 
 export const mapActionPayloadToDraft = (payload: TaskBuddyActionPayload): TaskDraft => {
     const description = payload.attachments_note
-        ? `${payload.description}
-
-Attachments/Notes: ${payload.attachments_note}`.trim()
+        ? `${payload.description}\n\nAttachments/Notes: ${payload.attachments_note}`.trim()
         : payload.description;
     return {
         title: payload.request_title || 'Design Request',
@@ -369,7 +302,7 @@ export async function sendMessageToAI(
     }
 
     try {
-        const response = await fetch(AI_ENDPOINT, {
+        const response = await authFetch(AI_ENDPOINT, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

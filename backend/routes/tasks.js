@@ -11,13 +11,49 @@ import {
   sendSms,
 } from "../lib/notifications.js";
 import { getSocket } from "../socket.js";
+import { requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
+const TASK_ROLES = ["staff", "designer", "treasurer"];
+router.use(requireRole(TASK_ROLES));
+
+const getUserId = (req) => (req.user?._id ? req.user._id.toString() : "");
+
+const canAccessTask = (task, user) => {
+  if (!user) return false;
+  if (user.role === "admin" || user.role === "treasurer") return true;
+  const userId = user._id?.toString?.() || user._id;
+  if (user.role === "staff") {
+    return Boolean(task?.requesterId && task.requesterId === userId);
+  }
+  if (user.role === "designer") {
+    return Boolean(task?.assignedToId && task.assignedToId === userId);
+  }
+  return false;
+};
+
+const ensureTaskAccess = async (req, res, next) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({ error: "Task not found." });
+    }
+    if (!canAccessTask(task, req.user)) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+    req.task = task;
+    return next();
+  } catch (error) {
+    return res.status(400).json({ error: "Invalid task id." });
+  }
+};
 
 router.get("/", async (req, res) => {
   try {
     const { status, category, urgency, requesterId, requesterEmail, assignedToId, limit } = req.query;
     const query = {};
+    const userRole = req.user?.role || "";
+    const userId = getUserId(req);
 
     if (status) query.status = status;
     if (category) query.category = category;
@@ -33,6 +69,14 @@ router.get("/", async (req, res) => {
     }
     if (assignedToId) query.assignedToId = assignedToId;
 
+    if (userRole === "staff") {
+      query.requesterId = userId;
+    } else if (userRole === "designer") {
+      query.assignedToId = userId;
+    } else if (userRole !== "treasurer" && userRole !== "admin") {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+
     const safeLimit = Math.min(parseInt(limit || "100", 10), 500);
     const tasks = await Task.find(query).sort({ createdAt: -1 }).limit(safeLimit);
     res.json(tasks);
@@ -41,33 +85,40 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
   try {
     const now = new Date();
-    const requesterName = req.body.requesterName || "";
+    const actorId = getUserId(req);
+    const actorRole = req.user?.role || "staff";
+    const requesterName = req.body.requesterName || req.user?.name || "";
+    const requesterId = actorRole === "staff" ? actorId : (req.body.requesterId || actorId);
+    const requesterEmail = actorRole === "staff" ? (req.user?.email || "") : (req.body.requesterEmail || req.user?.email || "");
     const createdEntry = {
       type: "status",
       field: "created",
       oldValue: "",
       newValue: "Created",
       note: `New request submitted by ${requesterName || "Staff"}`,
-      userId: req.body.requesterId || "",
+      userId: requesterId || "",
       userName: requesterName || "",
-      userRole: req.body.userRole || "staff",
+      userRole: actorRole || "staff",
       createdAt: now
     };
     const payload = {
       ...req.body,
+      requesterId,
+      requesterEmail,
       changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
     };
     const task = await Task.create(payload);
+    req.auditTargetId = task.id || task._id?.toString?.() || "";
 
     await Activity.create({
       taskId: task._id,
       taskTitle: task.title,
       action: "created",
-      userId: req.body.requesterId || "",
-      userName: req.body.requesterName || ""
+      userId: requesterId || "",
+      userName: requesterName || ""
     });
 
     const baseUrl = process.env.FRONTEND_URL || "";
@@ -155,12 +206,9 @@ const hydrateMissingFileMeta = async (task) => {
   return task;
 };
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", ensureTaskAccess, async (req, res) => {
   try {
-    let task = await Task.findById(req.params.id);
-    if (!task) {
-      return res.status(404).json({ error: "Task not found." });
-    }
+    let task = req.task;
     task = await hydrateMissingFileMeta(task);
     res.json(task);
   } catch (error) {
@@ -168,7 +216,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", ensureTaskAccess, async (req, res) => {
   try {
     const task = await Task.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
@@ -179,12 +227,14 @@ router.patch("/:id", async (req, res) => {
       return res.status(404).json({ error: "Task not found." });
     }
 
+    req.auditTargetId = task.id || task._id?.toString?.() || "";
+
     await Activity.create({
       taskId: task._id,
       taskTitle: task.title,
       action: "updated",
-      userId: req.body.userId || "",
-      userName: req.body.userName || ""
+      userId: getUserId(req),
+      userName: req.user?.name || req.body.userName || ""
     });
 
     const io = getSocket();
@@ -201,15 +251,18 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.post("/:id/comments", async (req, res) => {
+router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
   try {
-    const { userId, userName, userRole, content, receiverRoles, parentId, mentions } = req.body;
+    const { content, receiverRoles, parentId, mentions } = req.body;
+    const userId = getUserId(req);
+    const userName = req.user?.name || req.body.userName || "";
+    const userRole = req.user?.role || "";
 
     if (!content || !content.trim()) {
       return res.status(400).json({ error: "Comment content is required." });
     }
 
-    const validRoles = ["staff", "treasurer", "designer"];
+    const validRoles = ["staff", "treasurer", "designer", "admin"];
     const senderRole = validRoles.includes(userRole) ? userRole : "";
     const normalizedMentions = Array.isArray(mentions)
       ? mentions.filter((role) => validRoles.includes(role))
@@ -303,18 +356,14 @@ router.post("/:id/comments", async (req, res) => {
   }
 });
 
-router.post("/:id/comments/seen", async (req, res) => {
+router.post("/:id/comments/seen", ensureTaskAccess, async (req, res) => {
   try {
-    const { role } = req.body;
-    const validRoles = ["staff", "treasurer", "designer"];
+    const role = req.user?.role || "";
+    const validRoles = ["staff", "treasurer", "designer", "admin"];
     if (!validRoles.includes(role)) {
       return res.status(400).json({ error: "Invalid role." });
     }
-
-    const task = await Task.findById(req.params.id);
-    if (!task) {
-      return res.status(404).json({ error: "Task not found." });
-    }
+    const task = req.task;
 
     let updated = false;
     const now = new Date();
@@ -348,11 +397,12 @@ router.post("/:id/comments/seen", async (req, res) => {
   }
 });
 
-router.post("/:id/assign", async (req, res) => {
+router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
   try {
-    const { assignedToId, assignedToName, role, userId, userName } = req.body;
+    const { assignedToId, assignedToName, userName } = req.body;
+    const role = req.user?.role || "";
 
-    if (!["staff", "treasurer"].includes(role)) {
+    if (!["staff", "treasurer", "admin"].includes(role)) {
       return res.status(403).json({ error: "Only staff or treasurer can assign tasks." });
     }
 
@@ -366,12 +416,14 @@ router.post("/:id/assign", async (req, res) => {
       return res.status(404).json({ error: "Task not found." });
     }
 
+    req.auditTargetId = task.id || task._id?.toString?.() || "";
+
     await Activity.create({
       taskId: task._id,
       taskTitle: task.title,
       action: "assigned",
-      userId: userId || "",
-      userName: userName || ""
+      userId: getUserId(req),
+      userName: req.user?.name || userName || ""
     });
 
     res.json(task);
@@ -380,18 +432,18 @@ router.post("/:id/assign", async (req, res) => {
   }
 });
 
-router.post("/:id/changes", async (req, res) => {
+router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
   try {
-    const { updates = {}, changes = [], userId, userName, userRole } = req.body;
+    const { updates = {}, changes = [], userName } = req.body;
+    const userId = getUserId(req);
+    const userRole = req.user?.role || "";
+    const resolvedUserName = req.user?.name || userName || "";
 
     if (!Array.isArray(changes) || changes.length === 0) {
       return res.status(400).json({ error: "Change list is required." });
     }
 
-    const task = await Task.findById(req.params.id);
-    if (!task) {
-      return res.status(404).json({ error: "Task not found." });
-    }
+    const task = req.task;
 
     const nextCount = (task.changeCount || 0) + changes.length;
     const changeEntries = changes.map((change) => ({
@@ -401,7 +453,7 @@ router.post("/:id/changes", async (req, res) => {
       newValue: change.newValue ?? "",
       note: change.note || "",
       userId: userId || "",
-      userName: userName || "",
+      userName: resolvedUserName || "",
       userRole: userRole || "",
       createdAt: new Date()
     }));
@@ -433,12 +485,14 @@ router.post("/:id/changes", async (req, res) => {
       runValidators: true
     });
 
+    req.auditTargetId = updatedTask?.id || updatedTask?._id?.toString?.() || "";
+
     await Activity.create({
       taskId: task._id,
       taskTitle: task.title,
       action: "updated",
       userId: userId || "",
-      userName: userName || ""
+      userName: resolvedUserName || ""
     });
 
     const finalFileChanges =
@@ -502,7 +556,7 @@ router.post("/:id/changes", async (req, res) => {
             to: task.requesterEmail,
             taskTitle: task.title,
             files,
-            designerName: userName,
+            designerName: resolvedUserName,
             taskUrl,
             submittedAt,
             taskDetails: {
@@ -535,7 +589,7 @@ router.post("/:id/changes", async (req, res) => {
           to,
           taskTitle: updatedTask.title,
           files,
-          designerName: userName,
+          designerName: resolvedUserName,
           taskUrl,
           deadline: updatedTask.deadline,
           taskId: updatedTask.id || updatedTask._id?.toString?.(),
@@ -568,6 +622,23 @@ router.post("/:id/changes", async (req, res) => {
         taskId: updatedTask.id || updatedTask._id?.toString?.(),
         task: updatedTask
       });
+    }
+
+    const approvalChange = changes.find((change) =>
+      ["approvalStatus", "deadlineApprovalStatus", "emergencyApprovalStatus"].includes(change.field)
+    );
+    if (approvalChange) {
+      const nextValue = String(approvalChange.newValue || "").toLowerCase();
+      if (nextValue === "approved") {
+        req.auditAction = approvalChange.field === "emergencyApprovalStatus"
+          ? "EMERGENCY_OVERRIDE"
+          : "REQUEST_APPROVED";
+      } else if (nextValue === "rejected") {
+        req.auditAction = "REQUEST_REJECTED";
+      }
+    }
+    if (changes.some((change) => String(change.field || "").toLowerCase().includes("emergency") && String(change.note || "").toLowerCase().includes("override"))) {
+      req.auditAction = "EMERGENCY_OVERRIDE";
     }
 
     res.json(updatedTask);

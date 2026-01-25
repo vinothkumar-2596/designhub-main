@@ -365,7 +365,7 @@ function LinearProgressWithLabel(props: LinearProgressProps & { value: number })
   );
 }
 
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 
 export default function NewRequest() {
   const navigate = useNavigate();
@@ -447,7 +447,7 @@ export default function NewRequest() {
     let isActive = true;
     const loadSchedule = async () => {
       try {
-        const response = await fetch(`${apiUrl}/api/tasks`);
+        const response = await authFetch(`${apiUrl}/api/tasks`);
         if (!response.ok) {
           throw new Error('Failed to load tasks');
         }
@@ -548,8 +548,13 @@ export default function NewRequest() {
           let errorMsg = 'Upload failed';
           try {
             const errData = JSON.parse(xhr.responseText);
-            errorMsg = errData.error || errorMsg;
+            errorMsg = errData.error || errData.message || errorMsg;
           } catch { }
+          if (errorMsg === 'Upload failed') {
+            errorMsg = xhr.status
+              ? `Upload failed (HTTP ${xhr.status})`
+              : 'Upload failed (Unknown error)';
+          }
 
           updateFile(localId, { uploading: false, error: errorMsg });
 
@@ -561,7 +566,7 @@ export default function NewRequest() {
                 onClick: async () => {
                   // Open in new tab
                   try {
-                    const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                    const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
                     const data = await res.json();
                     if (data.url) {
                       window.open(data.url, '_blank');
@@ -576,7 +581,7 @@ export default function NewRequest() {
               duration: 10000,
             });
           } else {
-            toast.error('File upload failed', { description: file.name });
+            toast.error('File upload failed', { description: errorMsg });
           }
 
           resolve();
@@ -616,8 +621,9 @@ export default function NewRequest() {
       };
 
       xhr.onerror = () => {
-        updateFile(localId, { uploading: false, error: 'Upload failed' });
-        toast.error('File upload failed', { description: file.name });
+        const errorMsg = 'Network error. Please check your connection.';
+        updateFile(localId, { uploading: false, error: errorMsg });
+        toast.error('File upload failed', { description: errorMsg });
         resolve();
       };
 
@@ -757,7 +763,7 @@ export default function NewRequest() {
             uploadedBy: user?.id || '',
           })),
         };
-        const response = await fetch(`${apiUrl}/api/tasks`, {
+        const response = await authFetch(`${apiUrl}/api/tasks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -1174,7 +1180,7 @@ export default function NewRequest() {
                                 e.stopPropagation();
                                 try {
                                   const apiUrl = API_URL;
-                                  const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                                  const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
                                   const data = await res.json();
                                   if (data.url) {
                                     window.open(data.url, '_blank');

@@ -33,7 +33,7 @@ import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 
 const roleLabels: Record<string, string> = {
   designer: 'Designer',
@@ -116,7 +116,7 @@ export default function Dashboard() {
     const loadTasks = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`${apiUrl}/api/tasks`);
+        const response = await authFetch(`${apiUrl}/api/tasks`);
         if (!response.ok) {
           throw new Error('Failed to load tasks');
         }
@@ -426,7 +426,7 @@ export default function Dashboard() {
     const newValue = decision === 'approved' ? 'Approved' : 'Rejected';
     const approvalNote = `Approval ${decision} by ${user?.name || 'Treasurer'}`;
     if (apiUrl) {
-      const response = await fetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
+      const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -587,7 +587,7 @@ export default function Dashboard() {
 
         {/* Hero + Notice */}
         <div className="grid gap-5 lg:grid-cols-[1.6fr,1fr]">
-          <div className="relative overflow-hidden rounded-2xl border bg-card pt-5 pl-5 pr-4 pb-4 shadow-card">
+          <div className="relative overflow-hidden rounded-2xl border bg-card pt-5 pl-5 pr-4 pb-4 shadow-card min-h-[242px] lg:min-h-[264px]">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_hsl(var(--primary)_/_0.12),_transparent_55%)]" />
             <div className="relative z-10 flex h-full flex-col justify-between gap-4">
               <div className="space-y-2">
@@ -627,7 +627,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white p-5 shadow-card">
+          <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white p-5 shadow-card min-h-[242px] lg:min-h-[264px]">
             <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] blur-2xl" />
             <div className="relative flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF3FF] text-primary ring-1 ring-[#D9E6FF]">
@@ -644,7 +644,7 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2" aria-hidden="true">
+            <div className="mt-5 hidden" aria-hidden="true">
               {summaryItems.map((item) => (
                 <div
                   key={item.label}

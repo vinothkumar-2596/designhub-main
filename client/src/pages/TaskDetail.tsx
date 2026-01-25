@@ -108,7 +108,7 @@ const fileActionButtonClass =
 const badgeGlassClass =
   'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] shadow-[0_16px_30px_-22px_rgba(30,58,138,0.38)] backdrop-blur-xl';
 
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -442,7 +442,7 @@ export default function TaskDetail() {
           if (sizeFetchRef.current.has(driveId)) return;
           sizeFetchRef.current.add(driveId);
           try {
-            const response = await fetch(`${apiUrl}/api/files/metadata`, {
+            const response = await authFetch(`${apiUrl}/api/files/metadata`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ fileId: driveId }),
@@ -481,7 +481,7 @@ export default function TaskDetail() {
         persistTask(nextTask);
         return nextTask;
       });
-      fetch(`${apiUrl}/api/tasks/${taskState.id}`, {
+      authFetch(`${apiUrl}/api/tasks/${taskState.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ files: updatedFiles }),
@@ -804,7 +804,7 @@ export default function TaskDetail() {
     const apiUrl = API_URL;
     if (apiUrl) {
       try {
-        const response = await fetch(`${apiUrl}/api/tasks/${taskState.id}/changes`, {
+        const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/changes`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -848,7 +848,7 @@ export default function TaskDetail() {
     const loadTask = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`${apiUrl}/api/tasks/${id}`);
+        const response = await authFetch(`${apiUrl}/api/tasks/${id}`);
         if (!response.ok) {
           throw new Error('Task not found');
         }
@@ -899,7 +899,7 @@ export default function TaskDetail() {
     const markSeen = async () => {
       if (apiUrl) {
         try {
-          const response = await fetch(`${apiUrl}/api/tasks/${taskState.id}/comments/seen`, {
+          const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/comments/seen`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ role: user.role }),
@@ -945,7 +945,7 @@ export default function TaskDetail() {
 
     if (apiUrl) {
       try {
-        const response = await fetch(`${apiUrl}/api/tasks/${taskState.id}/comments`, {
+        const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/comments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1089,7 +1089,7 @@ export default function TaskDetail() {
 
     try {
       if (apiUrl) {
-        const response = await fetch(`${apiUrl}/api/tasks/${taskState.id}`, {
+        const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(apiUpdates),
@@ -1303,7 +1303,7 @@ export default function TaskDetail() {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('taskTitle', taskState.title);
-        const response = await fetch(`${apiUrl}/api/files/upload`, {
+        const response = await authFetch(`${apiUrl}/api/files/upload`, {
           method: 'POST',
           body: formData,
         });
@@ -1369,7 +1369,7 @@ export default function TaskDetail() {
             label: 'Connect',
             onClick: async () => {
               try {
-                const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
                 const data = await res.json();
                 if (data.url) {
                   window.open(data.url, '_blank');
@@ -1502,7 +1502,7 @@ export default function TaskDetail() {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('taskTitle', taskState.title);
-        const response = await fetch(`${apiUrl}/api/files/upload`, {
+        const response = await authFetch(`${apiUrl}/api/files/upload`, {
           method: 'POST',
           body: formData,
         });
@@ -1543,7 +1543,7 @@ export default function TaskDetail() {
             label: 'Connect',
             onClick: async () => {
               try {
-                const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
                 const data = await res.json();
                 if (data.url) {
                   window.open(data.url, '_blank');

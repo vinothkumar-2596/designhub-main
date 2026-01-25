@@ -1,7 +1,9 @@
 import express from "express";
 import { getDriveAuthUrl, saveDriveToken } from "../lib/drive.js";
+import { requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
+router.use(requireRole(["treasurer"]));
 
 router.get("/auth-url", (_req, res) => {
   try {

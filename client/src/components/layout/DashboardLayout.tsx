@@ -32,7 +32,7 @@ import { mergeLocalTasks } from '@/lib/taskStorage';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -92,7 +92,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     if (!apiUrl) return;
     const loadTasks = async () => {
       try {
-        const response = await fetch(`${apiUrl}/api/tasks`);
+        const response = await authFetch(`${apiUrl}/api/tasks`);
         if (!response.ok) {
           throw new Error('Failed to load tasks');
         }
@@ -839,7 +839,16 @@ function DashboardShell({
   return (
     <div className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] p-4 md:p-6">
       <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6">
-        <AppSidebar />
+        <div
+          className="relative flex-shrink-0"
+          style={{ width: 'var(--app-sidebar-width, 18rem)' }}
+        >
+          <div
+            aria-hidden="true"
+            className="h-full w-full opacity-0 pointer-events-none"
+          />
+          <AppSidebar />
+        </div>
         <main className="flex-1 min-w-0 flex justify-center">
           <div className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] flex flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin relative" onScroll={handleContentScroll}>

@@ -4,6 +4,10 @@ import http from 'http';
 import dotenv from 'dotenv';
 import connectDB from './lib/db.js';
 import { initSocket } from './socket.js';
+import { attachClientMeta } from './middleware/clientMeta.js';
+import { globalLimiter } from './middleware/rateLimit.js';
+import { requireAuth } from './middleware/auth.js';
+import { auditWriteActions } from './middleware/audit.js';
 
 // Load environment variables
 dotenv.config();
@@ -39,6 +43,10 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+app.use(attachClientMeta);
+app.use(globalLimiter);
+app.use(requireAuth);
+app.use(auditWriteActions);
 
 // Routes
 import authRoutes from './routes/auth.js';

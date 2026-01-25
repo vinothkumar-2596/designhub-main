@@ -13,7 +13,7 @@ import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 
 export default function MyRequests() {
   const { user } = useAuth();
@@ -37,7 +37,7 @@ export default function MyRequests() {
         const params = new URLSearchParams();
         if (emailValue) params.set('requesterEmail', emailValue);
         if (idValue) params.set('requesterId', idValue);
-        const response = await fetch(`${apiUrl}/api/tasks?${params.toString()}`);
+        const response = await authFetch(`${apiUrl}/api/tasks?${params.toString()}`);
         if (!response.ok) {
           throw new Error('Failed to load requests');
         }

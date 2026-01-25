@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 import {
     Image as ImageIcon,
     Paperclip,
@@ -169,7 +169,7 @@ export default function AIMode() {
         // AI Buddy Logic
         try {
             const apiUrl = API_URL;
-            const res = await fetch(`${apiUrl}/api/ai/buddy`, {
+            const res = await authFetch(`${apiUrl}/api/ai/buddy`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -230,7 +230,7 @@ export default function AIMode() {
             formData.append('uploadedBy', user?.name || 'Guest');
 
             const apiUrl = API_URL;
-            const response = await fetch(`${apiUrl}/api/files/upload`, {
+            const response = await authFetch(`${apiUrl}/api/files/upload`, {
                 method: 'POST',
                 body: formData,
             });
@@ -289,7 +289,7 @@ export default function AIMode() {
                             onClick={async () => {
                                 try {
                                     const apiUrl = API_URL;
-                                    const res = await fetch(`${apiUrl}/api/drive/auth-url`);
+                                    const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
                                     const data = await res.json();
                                     if (data.url) {
                                         window.open(data.url, '_blank');
@@ -331,7 +331,7 @@ export default function AIMode() {
             formData.append('uploadedBy', user?.name || 'Guest');
 
             const apiUrl = API_URL;
-            const response = await fetch(`${apiUrl}/api/files/upload`, {
+            const response = await authFetch(`${apiUrl}/api/files/upload`, {
                 method: 'POST',
                 body: formData,
             });
@@ -520,7 +520,7 @@ export default function AIMode() {
 
             try {
                 const apiUrl = API_URL;
-                const res = await fetch(`${apiUrl}/api/files/ai-process`, {
+                const res = await authFetch(`${apiUrl}/api/files/ai-process`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

@@ -4,47 +4,63 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { google } from "googleapis";
 import User from "../models/User.js";
+import RefreshToken from "../models/RefreshToken.js";
 import { sendPasswordResetEmail } from "../lib/notifications.js";
+import { signAccessToken, requireAuth, requireRole } from "../middleware/auth.js";
+import { authLimiter } from "../middleware/rateLimit.js";
+import { logAudit, logAuditFromRequest } from "../lib/audit.js";
 
 const router = express.Router();
 
 const getJwtSecret = () => process.env.JWT_SECRET || "dev-secret";
+const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
+const REFRESH_COOKIE_NAME = process.env.REFRESH_COOKIE_NAME || "refreshToken";
 
-const signToken = (user) => {
-  const secret = getJwtSecret();
-  return jwt.sign(
-    {
-      sub: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-    },
-    secret,
-    { expiresIn: "7d" }
-  );
+const hashToken = (value) => {
+  return crypto.createHash("sha256").update(value).digest("hex");
 };
 
-const requireAdmin = (req, res, next) => {
-  const token = req.header("x-admin-token");
-  if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: "Unauthorized." });
-  }
-  return next();
+const createRefreshToken = async (user, req) => {
+  const rawToken = crypto.randomBytes(64).toString("hex");
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+  await RefreshToken.create({
+    userId: user._id,
+    tokenHash,
+    expiresAt,
+    createdByIp: req.clientIp || "",
+    userAgent: req.userAgent || ""
+  });
+  return { rawToken, tokenHash, expiresAt };
 };
 
-const requireAuth = (req, res, next) => {
-  const header = req.header("authorization") || "";
-  if (!header.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized." });
-  }
-  const token = header.replace("Bearer ", "");
-  try {
-    const payload = jwt.verify(token, getJwtSecret());
-    req.auth = payload;
-    return next();
-  } catch (error) {
-    return res.status(401).json({ error: "Invalid token." });
-  }
+const setRefreshCookie = (res, token, expiresAt) => {
+  const isProduction = process.env.NODE_ENV === "production";
+  res.cookie(REFRESH_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: "lax",
+    expires: expiresAt,
+    path: "/api/auth"
+  });
+};
+
+const clearRefreshCookie = (res) => {
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: "/api/auth" });
+};
+
+const getRefreshTokenFromRequest = (req) => {
+  const headerToken = req.header("x-refresh-token");
+  if (headerToken) return headerToken;
+  if (req.body?.refreshToken) return req.body.refreshToken;
+  const cookieHeader = req.headers?.cookie;
+  if (!cookieHeader) return null;
+  const cookies = cookieHeader.split(";").reduce((acc, part) => {
+    const [key, ...rest] = part.split("=");
+    acc[key.trim()] = decodeURIComponent(rest.join("=").trim());
+    return acc;
+  }, {});
+  return cookies[REFRESH_COOKIE_NAME] || null;
 };
 
 const getGoogleClient = () => {
@@ -62,10 +78,6 @@ const normalizeRole = (role) => {
   return role && allowedRoles.includes(role) ? role : "staff";
 };
 
-const hashToken = (value) => {
-  return crypto.createHash("sha256").update(value).digest("hex");
-};
-
 const buildResetUrl = (token) => {
   const base =
     process.env.RESET_PASSWORD_URL ||
@@ -75,7 +87,8 @@ const buildResetUrl = (token) => {
   return url.toString();
 };
 
-router.post("/login", async (req, res) => {
+router.post("/login", authLimiter, async (req, res) => {
+  req.skipAudit = true;
   try {
     const { email, password } = req.body;
 
@@ -83,11 +96,30 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required." });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user || user.isActive === false) {
+      await logAudit({
+        actorUserId: user?._id,
+        actorRole: user?.role || "",
+        action: "LOGIN_FAILED",
+        targetId: user?._id?.toString?.() || "",
+        ipAddress: req.clientIp || "",
+        userAgent: req.userAgent || "",
+        meta: { email: normalizedEmail }
+      });
       return res.status(401).json({ error: "Invalid credentials." });
     }
     if (user.authProvider === "google" && !user.password) {
+      await logAudit({
+        actorUserId: user._id,
+        actorRole: user.role,
+        action: "LOGIN_FAILED",
+        targetId: user._id.toString(),
+        ipAddress: req.clientIp || "",
+        userAgent: req.userAgent || "",
+        meta: { email: normalizedEmail }
+      });
       return res.status(401).json({ error: "Use Google sign-in for this account." });
     }
 
@@ -104,16 +136,136 @@ router.post("/login", async (req, res) => {
     }
 
     if (!passwordMatch) {
+      await logAudit({
+        actorUserId: user._id,
+        actorRole: user.role,
+        action: "LOGIN_FAILED",
+        targetId: user._id.toString(),
+        ipAddress: req.clientIp || "",
+        userAgent: req.userAgent || "",
+        meta: { email: normalizedEmail }
+      });
       return res.status(401).json({ error: "Invalid credentials." });
     }
 
-    res.json({ token: signToken(user), user: user.toJSON() });
+    const accessToken = signAccessToken(user);
+    const { rawToken, expiresAt } = await createRefreshToken(user, req);
+    setRefreshCookie(res, rawToken, expiresAt);
+
+    await logAudit({
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "LOGIN_SUCCESS",
+      targetId: user._id.toString(),
+      ipAddress: req.clientIp || "",
+      userAgent: req.userAgent || "",
+      meta: { email: normalizedEmail }
+    });
+
+    res.json({ token: accessToken, user: user.toJSON() });
   } catch (error) {
     res.status(500).json({ error: "Login failed." });
   }
 });
 
-router.post("/signup", async (req, res) => {
+router.post("/refresh", authLimiter, async (req, res) => {
+  req.skipAudit = true;
+  try {
+    const refreshToken = getRefreshTokenFromRequest(req);
+    if (!refreshToken) {
+      await logAudit({
+        actorUserId: null,
+        actorRole: "",
+        action: "REFRESH_REUSED_DETECTED",
+        targetId: "",
+        ipAddress: req.clientIp || "",
+        userAgent: req.userAgent || "",
+        meta: { reason: "missing" }
+      });
+      return res.status(401).json({ error: "Unauthorized." });
+    }
+
+    const tokenHash = hashToken(refreshToken);
+    const storedToken = await RefreshToken.findOne({ tokenHash });
+
+    if (!storedToken) {
+      await logAudit({
+        actorUserId: null,
+        actorRole: "",
+        action: "REFRESH_REUSED_DETECTED",
+        targetId: "",
+        ipAddress: req.clientIp || "",
+        userAgent: req.userAgent || "",
+        meta: { reason: "not_found" }
+      });
+      return res.status(401).json({ error: "Unauthorized." });
+    }
+
+    if (storedToken.revokedAt || storedToken.replacedByTokenHash) {
+      await logAudit({
+        actorUserId: storedToken.userId,
+        actorRole: "",
+        action: "REFRESH_REUSED_DETECTED",
+        targetId: storedToken.userId?.toString?.() || "",
+        ipAddress: req.clientIp || "",
+        userAgent: req.userAgent || "",
+        meta: { reason: "reused" }
+      });
+      return res.status(401).json({ error: "Unauthorized." });
+    }
+
+    if (storedToken.expiresAt && storedToken.expiresAt <= new Date()) {
+      await logAudit({
+        actorUserId: storedToken.userId,
+        actorRole: "",
+        action: "REFRESH_REUSED_DETECTED",
+        targetId: storedToken.userId?.toString?.() || "",
+        ipAddress: req.clientIp || "",
+        userAgent: req.userAgent || "",
+        meta: { reason: "expired" }
+      });
+      return res.status(401).json({ error: "Unauthorized." });
+    }
+
+    const user = await User.findById(storedToken.userId);
+    if (!user || user.isActive === false) {
+      await logAudit({
+        actorUserId: storedToken.userId,
+        actorRole: "",
+        action: "REFRESH_REUSED_DETECTED",
+        targetId: storedToken.userId?.toString?.() || "",
+        ipAddress: req.clientIp || "",
+        userAgent: req.userAgent || "",
+        meta: { reason: "user_inactive" }
+      });
+      return res.status(401).json({ error: "Unauthorized." });
+    }
+
+    const { rawToken, tokenHash: newHash, expiresAt } = await createRefreshToken(user, req);
+    storedToken.revokedAt = new Date();
+    storedToken.replacedByTokenHash = newHash;
+    storedToken.revokedReason = "rotated";
+    await storedToken.save();
+
+    setRefreshCookie(res, rawToken, expiresAt);
+
+    await logAudit({
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "REFRESH_ROTATED",
+      targetId: user._id.toString(),
+      ipAddress: req.clientIp || "",
+      userAgent: req.userAgent || "",
+      meta: { refreshTokenId: storedToken.id }
+    });
+
+    res.json({ token: signAccessToken(user) });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to refresh session." });
+  }
+});
+
+router.post("/signup", requireRole(["admin"]), async (req, res) => {
   try {
     const { email, password, role, name } = req.body;
 
@@ -135,8 +287,13 @@ router.post("/signup", async (req, res) => {
       name: name || email.split("@")[0],
       authProvider: "local",
     });
+    req.auditTargetId = user.id || user._id?.toString?.() || "";
 
-    res.status(201).json({ token: signToken(user), user: user.toJSON() });
+    const accessToken = signAccessToken(user);
+    const { rawToken, expiresAt } = await createRefreshToken(user, req);
+    setRefreshCookie(res, rawToken, expiresAt);
+
+    res.status(201).json({ token: accessToken, user: user.toJSON() });
   } catch (error) {
     res.status(400).json({ error: "Failed to create account." });
   }
@@ -268,7 +425,32 @@ router.get("/google/callback", async (req, res) => {
       }
     }
 
-    const token = signToken(user);
+    if (user.isActive === false) {
+      await logAudit({
+        actorUserId: user._id,
+        actorRole: user.role,
+        action: "LOGIN_FAILED",
+        targetId: user._id.toString(),
+        ipAddress: req.clientIp || "",
+        userAgent: req.userAgent || "",
+        meta: { email: normalizedEmail, provider: "google", reason: "inactive" }
+      });
+      return res.status(401).json({ error: "Account is inactive." });
+    }
+
+    const token = signAccessToken(user);
+    const { rawToken, expiresAt } = await createRefreshToken(user, req);
+    setRefreshCookie(res, rawToken, expiresAt);
+
+    await logAudit({
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "LOGIN_SUCCESS",
+      targetId: user._id.toString(),
+      ipAddress: req.clientIp || "",
+      userAgent: req.userAgent || "",
+      meta: { email: normalizedEmail, provider: "google" }
+    });
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:8080";
     const redirectUrl = new URL("/login", frontendUrl);
     redirectUrl.searchParams.set("token", token);
@@ -279,9 +461,28 @@ router.get("/google/callback", async (req, res) => {
   }
 });
 
+router.post("/logout", requireAuth, async (req, res) => {
+  req.skipAudit = true;
+  try {
+    const refreshToken = getRefreshTokenFromRequest(req);
+    if (refreshToken) {
+      const tokenHash = hashToken(refreshToken);
+      await RefreshToken.updateOne(
+        { tokenHash, revokedAt: { $exists: false } },
+        { $set: { revokedAt: new Date(), revokedReason: "logout" } }
+      );
+    }
+    clearRefreshCookie(res);
+    await logAuditFromRequest(req, "LOGOUT", req.user?._id?.toString?.() || "");
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to logout." });
+  }
+});
+
 router.get("/me", requireAuth, async (req, res) => {
   try {
-    const user = await User.findById(req.auth.sub);
+    const user = await User.findById(req.user?._id);
     if (!user) {
       return res.status(404).json({ error: "User not found." });
     }
@@ -291,7 +492,7 @@ router.get("/me", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/users", requireAdmin, async (req, res) => {
+router.post("/users", requireRole(["admin"]), async (req, res) => {
   try {
     const { email, password, role, name } = req.body;
     const allowedRoles = ["staff", "treasurer", "designer", "other", "admin"];
@@ -315,6 +516,7 @@ router.post("/users", requireAdmin, async (req, res) => {
       role,
       name: name || ""
     });
+    req.auditTargetId = user.id || user._id?.toString?.() || "";
 
     res.status(201).json({ user: user.toJSON() });
   } catch (error) {
@@ -322,7 +524,7 @@ router.post("/users", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/users", requireAdmin, async (req, res) => {
+router.get("/users", requireRole(["admin"]), async (req, res) => {
   try {
     const users = await User.find().sort({ createdAt: -1 });
     res.json(users.map((user) => user.toJSON()));

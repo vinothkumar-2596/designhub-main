@@ -34,7 +34,7 @@ import { cn } from '@/lib/utils';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 
 const scheduleStatusStyles: Record<ScheduleTask['status'], string> = {
   QUEUED: 'border border-border bg-secondary text-muted-foreground',
@@ -105,7 +105,7 @@ export default function Tasks() {
     if (!apiUrl) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`${apiUrl}/api/tasks`);
+      const response = await authFetch(`${apiUrl}/api/tasks`);
       if (!response.ok) {
         throw new Error('Failed to load tasks');
       }
@@ -225,7 +225,7 @@ export default function Tasks() {
     const linkedTask = tasks.find((task) => task.id === taskId);
     const now = new Date();
     const oldLabel = linkedTask?.status ? taskStatusLabels[linkedTask.status] : 'Pending';
-    fetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
+    authFetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -262,7 +262,7 @@ export default function Tasks() {
       return;
     }
     const now = new Date();
-    fetch(`${apiUrl}/api/tasks/${taskId}`, {
+    authFetch(`${apiUrl}/api/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -291,7 +291,7 @@ export default function Tasks() {
       return;
     }
     const now = new Date();
-    fetch(`${apiUrl}/api/tasks/${taskId}`, {
+    authFetch(`${apiUrl}/api/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

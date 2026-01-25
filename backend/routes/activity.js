@@ -1,7 +1,9 @@
 import express from "express";
 import Activity from "../models/Activity.js";
+import { requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
+router.use(requireRole(["staff", "designer", "treasurer"]));
 
 router.get("/", async (req, res) => {
   try {

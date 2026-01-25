@@ -15,6 +15,7 @@ const UserSchema = new mongoose.Schema(
       enum: ["staff", "treasurer", "designer", "other", "admin"],
       default: "other"
     },
+    isActive: { type: Boolean, default: true },
     authProvider: {
       type: String,
       enum: ["local", "google"],
@@ -35,6 +36,7 @@ UserSchema.set("toJSON", {
     ret.id = ret._id.toString();
     delete ret._id;
     delete ret.password;
+    delete ret.isActive;
     return ret;
   }
 });

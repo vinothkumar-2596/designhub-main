@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { API_URL } from '@/lib/api';
+import { API_URL, authFetch } from '@/lib/api';
 import { UserRole } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -102,7 +102,7 @@ export default function Login() {
       if (!API_URL) {
         throw new Error('API URL is not configured');
       }
-      const response = await fetch(`${API_URL}/api/auth/password/forgot`, {
+      const response = await authFetch(`${API_URL}/api/auth/password/forgot`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resetEmail }),

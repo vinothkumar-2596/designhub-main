@@ -5,6 +5,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { UserRole } from '@/types';
 import { User, Bell, Palette, Users, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,6 +41,13 @@ export default function Settings() {
   const [defaultCategory, setDefaultCategory] = useState('');
   const [defaultUrgency, setDefaultUrgency] = useState('normal');
   const [deadlineBufferDays, setDeadlineBufferDays] = useState('3');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingProfile, setPendingProfile] = useState<{
+    name: string;
+    email: string;
+    phone?: string;
+  } | null>(null);
+  const sanitizeName = (value: string) => value.replace(/\d+/g, '');
 
   useEffect(() => {
     setFullName(user?.name || '');
@@ -58,13 +75,27 @@ export default function Settings() {
     toast.success(`Switched to ${roleOptions.find(r => r.value === role)?.label} view`);
   };
 
+  const applyProfileUpdate = (payload: { name: string; email: string; phone?: string }) => {
+    updateUser(payload);
+    toast.success('Profile updated locally');
+  };
+
   const handleSaveProfile = () => {
-    updateUser({
-      name: fullName.trim() || user?.name || '',
+    const sanitizedName = sanitizeName(fullName).trim();
+    const nextProfile = {
+      name: sanitizedName || user?.name || '',
       email: email.trim() || user?.email || '',
       phone: phone.trim() || undefined,
-    });
-    toast.success('Profile updated locally');
+    };
+    const currentEmail = (user?.email || '').trim();
+    const nextEmail = (nextProfile.email || '').trim();
+    const emailChanged = currentEmail !== nextEmail;
+    if (emailChanged) {
+      setPendingProfile(nextProfile);
+      setConfirmOpen(true);
+      return;
+    }
+    applyProfileUpdate(nextProfile);
   };
 
   const handleSaveDefaults = () => {
@@ -119,7 +150,7 @@ export default function Settings() {
                 <Input
                   id="name"
                   value={fullName}
-                  onChange={(event) => setFullName(event.target.value)}
+                  onChange={(event) => setFullName(sanitizeName(event.target.value))}
                 />
               </div>
               <div className="space-y-2">
@@ -274,6 +305,44 @@ export default function Settings() {
           </div>
         </div>
       </div>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm email change</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are changing the account email. Please confirm to proceed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-xl border border-[#D9E6FF] bg-[#F6F8FF]/70 px-4 py-3 text-sm text-[#2F3A56]">
+            <div className="flex justify-between gap-4">
+              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Current</span>
+              <span className="font-medium">{user?.email || '—'}</span>
+            </div>
+            <div className="mt-2 flex justify-between gap-4">
+              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">New</span>
+              <span className="font-medium">{pendingProfile?.email || '—'}</span>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setPendingProfile(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingProfile) return;
+                applyProfileUpdate(pendingProfile);
+                setPendingProfile(null);
+              }}
+            >
+              Confirm change
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
