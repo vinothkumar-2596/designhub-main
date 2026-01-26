@@ -86,6 +86,46 @@ export default function MyRequests() {
     return () => window.removeEventListener('storage', onStorage);
   }, [useLocalData]);
 
+  useEffect(() => {
+    if (!apiUrl) return;
+    const handleTaskUpdated = (event: Event) => {
+      const payload = (event as CustomEvent).detail;
+      if (!payload) return;
+      const id = payload.id || payload._id;
+      if (!id) return;
+      const hydrated = {
+        ...payload,
+        id,
+        deadline: new Date(payload.deadline),
+        createdAt: new Date(payload.createdAt),
+        updatedAt: new Date(payload.updatedAt),
+        proposedDeadline: payload.proposedDeadline ? new Date(payload.proposedDeadline) : undefined,
+        deadlineApprovedAt: payload.deadlineApprovedAt ? new Date(payload.deadlineApprovedAt) : undefined,
+        files: payload.files?.map((file: any) => ({
+          ...file,
+          uploadedAt: new Date(file.uploadedAt),
+        })),
+        comments: payload.comments?.map((comment: any) => ({
+          ...comment,
+          createdAt: new Date(comment.createdAt),
+        })),
+        changeHistory: payload.changeHistory?.map((entry: any) => ({
+          ...entry,
+          createdAt: new Date(entry.createdAt),
+        })),
+      };
+      setTasks((prev) => {
+        const index = prev.findIndex((task) => (task.id || (task as any)._id) === id);
+        if (index === -1) return prev;
+        const next = [...prev];
+        next[index] = hydrated;
+        return next;
+      });
+    };
+    window.addEventListener('designhub:task:updated', handleTaskUpdated);
+    return () => window.removeEventListener('designhub:task:updated', handleTaskUpdated);
+  }, [apiUrl]);
+
   const hydratedTasks = useMemo(() => {
     if (!useLocalData) return tasks;
     if (typeof window === 'undefined') return mockTasks;

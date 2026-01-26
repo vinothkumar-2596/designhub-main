@@ -171,8 +171,26 @@ export default function Dashboard() {
         return [hydrated, ...prev];
       });
     };
+    const handleTaskUpdated = (event: Event) => {
+      const payload = (event as CustomEvent).detail;
+      if (!payload) return;
+      const id = payload.id || payload._id;
+      if (!id) return;
+      setTasks((prev) => {
+        const index = prev.findIndex((task) => (task.id || (task as any)._id) === id);
+        if (index === -1) return prev;
+        const hydrated = hydrateTask({ ...payload, id });
+        const next = [...prev];
+        next[index] = hydrated;
+        return next;
+      });
+    };
     window.addEventListener('designhub:request:new', handleNewRequest);
-    return () => window.removeEventListener('designhub:request:new', handleNewRequest);
+    window.addEventListener('designhub:task:updated', handleTaskUpdated);
+    return () => {
+      window.removeEventListener('designhub:request:new', handleNewRequest);
+      window.removeEventListener('designhub:task:updated', handleTaskUpdated);
+    };
   }, [apiUrl]);
 
   const hydratedTasks = useMemo(() => {

@@ -3,7 +3,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
   AlertDialog,
@@ -16,7 +15,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { UserRole } from '@/types';
-import { User, Bell, Palette, Users, Briefcase } from 'lucide-react';
+import { User, Palette, Users, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEffect, useState } from 'react';
 import {
@@ -49,50 +48,27 @@ export default function Settings() {
     email: string;
     phone?: string;
   } | null>(null);
-  const defaultPreferences = {
-    emailNotifications: true,
-    whatsappNotifications: false,
-    deadlineReminders: true,
-  };
-  const [notificationPrefs, setNotificationPrefs] = useState(defaultPreferences);
   const sanitizeName = (value: string) => value.replace(/\d+/g, '');
+  const normalizeIndianPhone = (value: string) => {
+    const raw = value.trim();
+    if (!raw) return '';
+    const digits = raw.replace(/[^\d]/g, '');
+    if (!digits) return '';
+    const withCountry = digits.startsWith('91') ? digits.slice(2) : digits;
+    const normalized =
+      digits.length === 10
+        ? digits
+        : withCountry.length === 10
+          ? withCountry
+          : '';
+    return normalized ? `+91${normalized}` : '';
+  };
 
   useEffect(() => {
     setFullName(user?.name || '');
     setEmail(user?.email || '');
     setPhone(user?.phone || '');
-    const savedPrefs = user?.notificationPreferences || {};
-    setNotificationPrefs({ ...defaultPreferences, ...savedPrefs });
   }, [user]);
-
-  const updateNotificationPrefs = async (nextPrefs: typeof notificationPrefs) => {
-    const previous = notificationPrefs;
-    setNotificationPrefs(nextPrefs);
-    updateUser({ notificationPreferences: nextPrefs });
-    if (!apiUrl) {
-      toast.success('Notification preferences updated locally');
-      return;
-    }
-    try {
-      const response = await authFetch(`${apiUrl}/api/auth/preferences`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nextPrefs),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to update preferences');
-      }
-      const data = await response.json();
-      const syncedPrefs = data?.preferences ? { ...defaultPreferences, ...data.preferences } : nextPrefs;
-      setNotificationPrefs(syncedPrefs);
-      updateUser({ notificationPreferences: syncedPrefs });
-      toast.success('Notification preferences updated');
-    } catch {
-      setNotificationPrefs(previous);
-      updateUser({ notificationPreferences: previous });
-      toast.error('Failed to update notification preferences');
-    }
-  };
 
   useEffect(() => {
     const saved = localStorage.getItem('designhub:requestDefaults');
@@ -121,10 +97,15 @@ export default function Settings() {
 
   const handleSaveProfile = () => {
     const sanitizedName = sanitizeName(fullName).trim();
+    const normalizedPhone = normalizeIndianPhone(phone);
+    if (phone.trim() && !normalizedPhone) {
+      toast.error('Enter a valid Indian WhatsApp number (e.g., +919876543210).');
+      return;
+    }
     const nextProfile = {
       name: sanitizedName || user?.name || '',
       email: email.trim() || user?.email || '',
-      phone: phone.trim() || undefined,
+      phone: normalizedPhone || undefined,
     };
     const currentEmail = (user?.email || '').trim();
     const nextEmail = (nextProfile.email || '').trim();
@@ -206,12 +187,12 @@ export default function Settings() {
                 <Input
                   id="phone"
                   type="tel"
-                  placeholder="+18005551234"
+                  placeholder="+919876543210"
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Used for WhatsApp updates about requests and final files.
+                  Use an Indian number with country code (e.g., +919876543210).
                 </p>
               </div>
             </div>
@@ -302,64 +283,6 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Notifications */}
-        <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
-          <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Notifications
-          </h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-foreground">Email Notifications</p>
-                <p className="text-sm text-muted-foreground">
-                  Receive updates about your tasks via email
-                </p>
-              </div>
-              <Switch
-                checked={notificationPrefs.emailNotifications}
-                onCheckedChange={(checked) =>
-                  updateNotificationPrefs({ ...notificationPrefs, emailNotifications: checked })
-                }
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-foreground">WhatsApp Notifications</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    Get instant updates on WhatsApp
-                  </p>
-                  <a href="/whatsapp-templates" className="text-[10px] text-primary hover:underline bg-primary/5 px-2 py-0.5 rounded-full font-semibold">
-                    VIEW TEMPLATES
-                  </a>
-                </div>
-              </div>
-              <Switch
-                checked={notificationPrefs.whatsappNotifications}
-                onCheckedChange={(checked) =>
-                  updateNotificationPrefs({ ...notificationPrefs, whatsappNotifications: checked })
-                }
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-foreground">Deadline Reminders</p>
-                <p className="text-sm text-muted-foreground">
-                  Get notified before task deadlines
-                </p>
-              </div>
-              <Switch
-                checked={notificationPrefs.deadlineReminders}
-                onCheckedChange={(checked) =>
-                  updateNotificationPrefs({ ...notificationPrefs, deadlineReminders: checked })
-                }
-              />
-            </div>
-          </div>
-        </div>
       </div>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

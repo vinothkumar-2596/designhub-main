@@ -31,6 +31,8 @@ import { mockTasks } from '@/data/mockTasks';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { API_URL, authFetch } from '@/lib/api';
 import { createSocket } from '@/lib/socket';
@@ -55,6 +57,15 @@ type NotificationItem = {
   readAt?: Date | null;
 };
 
+type GlobalViewer = {
+  userId: string;
+  userName: string;
+  userRole?: string;
+  userEmail?: string;
+  lastSeenAt?: string;
+  avatar?: string;
+};
+
 export function DashboardLayout({ children, headerActions, background }: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
   const apiUrl = API_URL;
@@ -64,6 +75,8 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [serverNotifications, setServerNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [globalViewers, setGlobalViewers] = useState<GlobalViewer[]>([]);
+  const [globalTypers, setGlobalTypers] = useState<GlobalViewer[]>([]);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const autoPreviewShownRef = useRef(false);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,6 +91,14 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
   const userId = user?.id || (user as { _id?: string } | null)?._id || '';
   const useServerNotifications = Boolean(apiUrl);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const getInitials = useCallback((name: string) => {
+    const safe = (name || '').trim();
+    if (!safe) return '?';
+    const parts = safe.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }, []);
 
   const normalizeNotification = useCallback((entry: any): NotificationItem => {
     const createdAt = entry?.createdAt ? new Date(entry.createdAt) : new Date();
@@ -256,10 +277,20 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
       console.log('Socket connected');
       socket.emit('join', { userId });
       console.log('Joined room', userId);
+      if (user?.email) {
+        socket.emit('join', { userId: user.email });
+        console.log('Joined room', user.email);
+      }
       if (user?.role === 'designer') {
         socket.emit('join', { userId: 'designers:queue' });
         console.log('Joined room designers:queue');
       }
+      socket.emit('presence:global:join', {
+        userId,
+        userName: user?.name,
+        userRole: user?.role,
+        userEmail: user?.email,
+      });
       socket.emit('notifications:join', { userId });
       fetchNotifications(lastFetchedAtRef.current);
       fetchUnreadCount();
@@ -267,6 +298,8 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
 
     const handleDisconnect = () => {
       setIsRealtimeConnected(false);
+      setGlobalViewers([]);
+      setGlobalTypers([]);
     };
 
     const handleNewNotification = (payload: any) => {
@@ -285,22 +318,73 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
       }
     };
 
+    const handleTaskUpdated = (payload: any) => {
+      if (!payload?.task) return;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('designhub:task:updated', { detail: payload.task }));
+      }
+    };
+
+    const handleGlobalPresenceUpdate = (payload: any) => {
+      const viewers = Array.isArray(payload?.viewers) ? payload.viewers : [];
+      setGlobalViewers(
+        viewers.map((viewer: any) => ({
+          userId: viewer.userId,
+          userName: viewer.userName || 'Someone',
+          userRole: viewer.userRole,
+          userEmail: viewer.userEmail,
+          lastSeenAt: viewer.lastSeenAt,
+        }))
+      );
+    };
+
+    const handleGlobalTypingUpdate = (payload: any) => {
+      const typers = Array.isArray(payload?.typers) ? payload.typers : [];
+      setGlobalTypers(
+        typers.map((viewer: any) => ({
+          userId: viewer.userId,
+          userName: viewer.userName || 'Someone',
+          userRole: viewer.userRole,
+          userEmail: viewer.userEmail,
+          lastSeenAt: viewer.lastTypingAt,
+        }))
+      );
+    };
+
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('notification:new', handleNewNotification);
     socket.on('request:new', handleNewRequest);
+    socket.on('task:updated', handleTaskUpdated);
+    socket.on('presence:global:update', handleGlobalPresenceUpdate);
+    socket.on('typing:global:update', handleGlobalTypingUpdate);
 
     return () => {
+      socket.emit('presence:global:leave', { userId });
       socket.emit('notifications:leave', { userId });
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('notification:new', handleNewNotification);
       socket.off('request:new', handleNewRequest);
+      socket.off('task:updated', handleTaskUpdated);
+      socket.off('presence:global:update', handleGlobalPresenceUpdate);
+      socket.off('typing:global:update', handleGlobalTypingUpdate);
       socket.disconnect();
       notificationsSocketRef.current = null;
       setIsRealtimeConnected(false);
     };
-  }, [apiUrl, userId, user?.role, fetchNotifications, fetchUnreadCount, mergeNotifications, normalizeNotification, updateLastFetchedAt]);
+  }, [
+    apiUrl,
+    userId,
+    user?.email,
+    user?.name,
+    user?.role,
+    fetchNotifications,
+    fetchUnreadCount,
+    mergeNotifications,
+    normalizeNotification,
+    updateLastFetchedAt,
+  ]);
 
   useEffect(() => {
     if (!apiUrl || !userId || isRealtimeConnected) return;
@@ -402,6 +486,43 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     });
     return { byId, byTitle };
   }, [hydratedTasks]);
+
+  const globalPresenceList = useMemo(() => {
+    const list = [...globalViewers];
+    list.sort((a, b) => {
+      if (a.userId === userId) return -1;
+      if (b.userId === userId) return 1;
+      return (a.userName || '').localeCompare(b.userName || '');
+    });
+    return list;
+  }, [globalViewers, userId]);
+
+  const globalPresenceSummary = useMemo(() => {
+    const visible = globalPresenceList.slice(0, 4);
+    return {
+      visible,
+      extraCount: Math.max(0, globalPresenceList.length - visible.length),
+    };
+  }, [globalPresenceList]);
+
+  const globalTypingList = useMemo(() => {
+    const list = [...globalTypers];
+    list.sort((a, b) => {
+      if (a.userId === userId) return -1;
+      if (b.userId === userId) return 1;
+      return (a.userName || '').localeCompare(b.userName || '');
+    });
+    return list;
+  }, [globalTypers, userId]);
+
+  const globalTypingSummary = useMemo(() => {
+    const visible = globalTypingList.slice(0, 4);
+    return {
+      visible,
+      extraCount: Math.max(0, globalTypingList.length - visible.length),
+      total: globalTypingList.length,
+    };
+  }, [globalTypingList]);
 
   const extractTitleFromNotification = useCallback((title: string) => {
     if (!title) return '';
@@ -736,6 +857,85 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     };
   }, [notificationsOpen]);
 
+  const headerPresenceAction = useMemo(() => {
+    if (!user) return null;
+    const isTyping = globalTypingSummary.total > 0;
+    const avatars = isTyping ? globalTypingSummary.visible : globalPresenceSummary.visible;
+    if (avatars.length === 0) return null;
+    const extraCount = isTyping ? globalTypingSummary.extraCount : globalPresenceSummary.extraCount;
+    const label = isTyping
+      ? (() => {
+          const preferred =
+            globalTypingList.find((viewer) => viewer.userId !== userId) || globalTypingList[0];
+          const rawName = (preferred?.userName || 'Someone').trim();
+          const shortName = rawName ? rawName.slice(0, 5) : 'User';
+          return `${shortName} typing...`;
+        })()
+      : 'Currently viewing';
+    return (
+      <div className="flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-1.5 shadow-sm">
+        <span
+          className={
+            (isTyping
+              ? 'text-xs font-semibold text-muted-foreground'
+              : 'text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground') +
+            ' whitespace-nowrap'
+          }
+        >
+          {label}
+        </span>
+        {isTyping && (
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:150ms]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:300ms]" />
+          </span>
+        )}
+        <div className="flex -space-x-2">
+          {avatars.map((viewer) => {
+            const isSelf = viewer.userId === userId;
+            const labelRole =
+              viewer.userRole
+                ? viewer.userRole.charAt(0).toUpperCase() + viewer.userRole.slice(1)
+                : 'User';
+            return (
+              <Tooltip key={viewer.userId}>
+                <TooltipTrigger asChild>
+                  <Avatar
+                    className={cn(
+                      'h-6 w-6 border-2 border-white shadow-sm bg-white/90',
+                      isSelf && 'ring-2 ring-primary/40'
+                    )}
+                  >
+                    <AvatarImage src={viewer.avatar} alt={viewer.userName} />
+                    <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-semibold">
+                      {getInitials(viewer.userName)}
+                    </AvatarFallback>
+                  </Avatar>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="end">
+                  <div className="text-xs font-semibold">
+                    {viewer.userName}
+                    {isSelf ? ' (you)' : ''}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">{labelRole}</div>
+                  {viewer.userEmail && (
+                    <div className="text-[11px] text-muted-foreground">{viewer.userEmail}</div>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+          {extraCount > 0 && (
+            <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[#E6F1FF] text-[9px] font-semibold text-primary shadow-sm">
+              +{extraCount}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }, [globalPresenceSummary, globalTypingSummary, user, userId, getInitials]);
+
   useEffect(() => {
     const onOpenGuidelines = () => {
       setIsGuidelinesOpen(true);
@@ -869,6 +1069,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
           {location.pathname !== '/new-request' && (
             <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} className="mr-2" />
           )}
+          {headerPresenceAction}
           {notificationAction}
           {headerActions}
         </>
@@ -1245,7 +1446,7 @@ function DashboardShell({
                 <div className="relative z-20">
                   <div className="shrink-0 border-b border-[#D9E6FF] bg-white/60 backdrop-blur-md px-4 md:px-6 py-3">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div className="relative w-full md:max-w-md" ref={searchContainerRef}>
+                      <div className="relative w-full max-w-[220px] sm:max-w-[280px] md:max-w-md" ref={searchContainerRef}>
                         <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-sm">
                           <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
                           <div className="relative flex-1">
@@ -1286,7 +1487,7 @@ function DashboardShell({
                         </div>
                         {showPanel && (
                           <div
-                            className="absolute left-0 right-0 mt-2 rounded-2xl border border-[#C9D7FF] bg-[#F6F8FF]/95 backdrop-blur-xl shadow-xl animate-dropdown overflow-hidden z-40"
+                            className="absolute left-0 right-0 mt-2 rounded-2xl border border-[#C9D7FF] bg-white/98 backdrop-blur-2xl shadow-xl animate-dropdown overflow-hidden z-50"
                             onMouseDown={(event) => event.preventDefault()}
                           >
                             <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">

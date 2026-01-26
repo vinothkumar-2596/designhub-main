@@ -155,7 +155,7 @@ export function AppSidebar() {
   const renderCollapsedTooltip = (label: string) => {
     if (!collapsed) return null;
     return (
-      <span className="pointer-events-none absolute left-full top-1/2 ml-3 -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] px-3 py-1 text-[11px] font-semibold text-[#2F3A56] opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100">
+      <span className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] px-3 py-1 text-[11px] font-semibold text-[#2F3A56] opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 max-w-[140px] overflow-hidden text-ellipsis">
         {label}
       </span>
     );

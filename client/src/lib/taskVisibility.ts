@@ -12,7 +12,7 @@ const isDesignerTask = (task: Task, user: User) => {
   if (assignedId && assignedId === user.id) return true;
 
   const assignedName = normalizeValue(task.assignedToName);
-  const isUnassigned = !assignedId && !assignedName;
+  const isUnassigned = !assignedId;
   if (isUnassigned) return true;
 
   const userName = normalizeValue(user.name);
@@ -42,7 +42,36 @@ export const isTaskVisibleToUser = (task: Task, user?: User | null) => {
   if (user.role === 'staff') {
     const requesterEmail = normalizeValue(task.requesterEmail || '');
     const userEmail = normalizeValue(user.email);
-    return task.requesterId === user.id || (userEmail && requesterEmail === userEmail);
+    const emailPrefix = userEmail.split('@')[0];
+    const requesterName = normalizeValue(task.requesterName || '');
+    const userName = normalizeValue(user.name);
+    if (task.requesterId === user.id) return true;
+    if (userEmail && requesterEmail === userEmail) return true;
+    if (
+      requesterName &&
+      userName &&
+      (requesterName === userName ||
+        requesterName.includes(userName) ||
+        userName.includes(requesterName))
+    ) {
+      return true;
+    }
+    if (requesterName && emailPrefix && requesterName.includes(emailPrefix)) return true;
+    const history = Array.isArray(task.changeHistory) ? task.changeHistory : [];
+    const createdEntry = history.find((entry) => entry?.field === 'created');
+    if (createdEntry?.userId && createdEntry.userId === user.id) return true;
+    const creatorName = normalizeValue(createdEntry?.userName);
+    if (
+      creatorName &&
+      userName &&
+      (creatorName === userName ||
+        creatorName.includes(userName) ||
+        userName.includes(creatorName))
+    ) {
+      return true;
+    }
+    if (creatorName && emailPrefix && creatorName.includes(emailPrefix)) return true;
+    return false;
   }
 
   if (user.role === 'designer') {

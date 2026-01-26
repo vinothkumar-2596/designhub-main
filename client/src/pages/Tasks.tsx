@@ -142,8 +142,26 @@ export default function Tasks() {
         return [hydrated, ...prev];
       });
     };
+    const handleTaskUpdated = (event: Event) => {
+      const payload = (event as CustomEvent).detail;
+      if (!payload) return;
+      const id = payload.id || payload._id;
+      if (!id) return;
+      setTasks((prev) => {
+        const index = prev.findIndex((task) => (task.id || (task as any)._id) === id);
+        if (index === -1) return prev;
+        const hydrated = hydrateTask({ ...payload, id });
+        const next = [...prev];
+        next[index] = hydrated;
+        return next;
+      });
+    };
     window.addEventListener('designhub:request:new', handleNewRequest);
-    return () => window.removeEventListener('designhub:request:new', handleNewRequest);
+    window.addEventListener('designhub:task:updated', handleTaskUpdated);
+    return () => {
+      window.removeEventListener('designhub:request:new', handleNewRequest);
+      window.removeEventListener('designhub:task:updated', handleTaskUpdated);
+    };
   }, [apiUrl]);
 
   const hydratedTasks = useMemo(() => {
@@ -154,7 +172,19 @@ export default function Tasks() {
 
   const scheduleSourceTasks = useMemo(() => {
     if (!apiUrl || useLocalData) return [];
-    return filterTasksForUser(tasks, user);
+    const visible = filterTasksForUser(tasks, user);
+    if (!user || user.role !== 'designer') return visible;
+    return visible.map((task) => {
+      const assignedId =
+        (task as { assignedTo?: string; assignedToId?: string }).assignedTo ||
+        (task as { assignedToId?: string }).assignedToId ||
+        '';
+      const assignedName = task.assignedToName || '';
+      if (!assignedId && !assignedName) {
+        return { ...task, assignedToId: user.id };
+      }
+      return task;
+    });
   }, [apiUrl, tasks, useLocalData, user]);
 
   const scheduleTasks = useMemo(
@@ -189,8 +219,11 @@ export default function Tasks() {
   );
 
   const designerId = useMemo(
-    () => getDefaultDesignerId(scheduleTasks),
-    [scheduleTasks]
+    () =>
+      user?.role === 'designer' && user.id
+        ? user.id
+        : getDefaultDesignerId(scheduleTasks),
+    [scheduleTasks, user?.id, user?.role]
   );
   const designerScheduleTasks = useMemo(
     () =>

@@ -1,5 +1,6 @@
 import express from "express";
 import Task from "../models/Task.js";
+import mongoose from "mongoose";
 import { getDriveClient } from "../lib/drive.js";
 import Activity from "../models/Activity.js";
 import User from "../models/User.js";
@@ -25,6 +26,13 @@ router.use(requireRole(TASK_ROLES));
 const getUserId = (req) => (req.user?._id ? req.user._id.toString() : "");
 const normalizeValue = (value) => (value ? String(value).trim().toLowerCase() : "");
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const normalizeId = (value) => (value ? String(value) : "");
+const toObjectId = (value) => {
+  if (!value) return null;
+  const raw = String(value);
+  if (!mongoose.Types.ObjectId.isValid(raw)) return null;
+  return new mongoose.Types.ObjectId(raw);
+};
 const buildTaskLink = (taskId) => (taskId ? `/task/${taskId}` : "");
 const defaultNotificationPreferences = {
   emailNotifications: true,
@@ -84,6 +92,66 @@ const resolveNotificationPreferences = async ({ userId, email, fallbackUser }) =
   return { ...defaultNotificationPreferences, ...(user?.notificationPreferences || {}) };
 };
 
+const normalizeAssignedName = (value) => {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  return raw.replace(/\(.*?\)/g, "").trim();
+};
+
+const resolveAssignedUser = async ({
+  assignedToId,
+  assignedTo,
+  assignedToName,
+  assignedToEmail
+} = {}) => {
+  let resolvedId = assignedToId || assignedTo || "";
+  let resolvedName = assignedToName || "";
+  const cleanedName = normalizeAssignedName(resolvedName);
+  const normalizedEmail = normalizeValue(assignedToEmail);
+  let user = null;
+
+  if (!resolvedId && normalizedEmail) {
+    resolvedId = await resolveUserIdByEmail(normalizedEmail);
+  }
+
+  if (resolvedId) {
+    user = await User.findById(resolvedId).select("_id name email role isActive");
+  }
+
+  if (!user && normalizedEmail) {
+    user = await User.findOne({
+      email: normalizedEmail,
+      role: "designer",
+      isActive: { $ne: false }
+    }).select("_id name email role isActive");
+  }
+
+  if (!user && cleanedName) {
+    user = await User.findOne({
+      name: new RegExp(`^${escapeRegExp(cleanedName)}$`, "i"),
+      role: "designer",
+      isActive: { $ne: false }
+    }).select("_id name email role isActive");
+  }
+
+  if (user) {
+    resolvedId = resolvedId || user._id?.toString?.() || "";
+    if (user.name) {
+      resolvedName = user.name;
+    } else if (!resolvedName && user.email) {
+      resolvedName = user.email.split("@")[0] || "";
+    }
+  } else if (!resolvedName && cleanedName) {
+    resolvedName = cleanedName;
+  }
+
+  return {
+    assignedToId: resolvedId || "",
+    assignedToName: resolvedName || ""
+  };
+};
+
 const canAccessTask = (task, user) => {
   if (!user) return false;
   if (user.role === "admin" || user.role === "treasurer") return true;
@@ -91,13 +159,39 @@ const canAccessTask = (task, user) => {
   if (user.role === "staff") {
     const userEmail = normalizeValue(user.email);
     const requesterEmail = normalizeValue(task?.requesterEmail);
-    return Boolean(
-      (task?.requesterId && task.requesterId === userId) ||
-      (userEmail && requesterEmail && requesterEmail === userEmail)
-    );
+    const userName = normalizeValue(user.name);
+    const requesterName = normalizeValue(task?.requesterName);
+    const emailPrefix = userEmail.split("@")[0];
+    const requesterId = normalizeId(task?.requesterId);
+    if (
+      (requesterId && requesterId === userId) ||
+      (userEmail && requesterEmail && requesterEmail === userEmail) ||
+      (requesterName && userName && (requesterName === userName || requesterName.includes(userName) || userName.includes(requesterName))) ||
+      (requesterName && emailPrefix && requesterName.includes(emailPrefix))
+    ) {
+      return true;
+    }
+    const history = Array.isArray(task?.changeHistory) ? task.changeHistory : [];
+    const createdEntry = history.find((entry) => entry?.field === "created");
+    const createdUserId = normalizeId(createdEntry?.userId);
+    if (createdUserId && createdUserId === userId) return true;
+    const creatorName = normalizeValue(createdEntry?.userName);
+    if (
+      creatorName &&
+      userName &&
+      (creatorName === userName || creatorName.includes(userName) || userName.includes(creatorName))
+    ) {
+      return true;
+    }
+    if (creatorName && emailPrefix && creatorName.includes(emailPrefix)) {
+      return true;
+    }
+    if (history.some((entry) => normalizeId(entry?.userId) === userId)) return true;
+    return false;
   }
   if (user.role === "designer") {
     const assignedName = normalizeValue(task?.assignedToName);
+    const assignedId = normalizeId(task?.assignedToId || task?.assignedTo);
     const userName = normalizeValue(user.name);
     const userEmail = normalizeValue(user.email);
     const emailPrefix = userEmail.split("@")[0];
@@ -109,7 +203,7 @@ const canAccessTask = (task, user) => {
         userName.includes(assignedName));
     const emailMatches = assignedName && emailPrefix && assignedName.includes(emailPrefix);
     return Boolean(
-      (task?.assignedToId && task.assignedToId === userId) ||
+      (assignedId && assignedId === userId) ||
       nameMatches ||
       emailMatches
     );
@@ -126,16 +220,42 @@ const ensureTaskAccess = async (req, res, next) => {
     const isReadOnly =
       req.method === "GET" ||
       req.method === "HEAD";
-    const isUnassigned =
-      (!task.assignedToId || task.assignedToId === "") &&
-      (!task.assignedToName || task.assignedToName === "");
+    const isUnassigned = !normalizeId(task.assignedToId);
     const isCommentWrite =
       req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/comments");
+    const isChangeWrite =
+      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/changes");
+    if (req.user?.role === "staff" && isReadOnly) {
+      req.task = task;
+      return next();
+    }
     if (req.user?.role === "designer" && isReadOnly && isUnassigned) {
       req.task = task;
       return next();
     }
+    if (req.user?.role === "staff" && isChangeWrite) {
+      const bodyChanges = Array.isArray(req.body?.changes) ? req.body.changes : [];
+      const isFileOnly =
+        bodyChanges.length > 0 &&
+        bodyChanges.every(
+          (change) =>
+            (change?.type === "file_added" && change?.field === "files") ||
+            (change?.type === "update" && change?.field === "design_version")
+        );
+      const updates = req.body?.updates || {};
+      const allowedKeys = ["files", "designVersions", "activeDesignVersionId", "updatedAt"];
+      const updatesOk =
+        updates && Object.keys(updates).every((key) => allowedKeys.includes(key));
+      if (isFileOnly && updatesOk) {
+        req.task = task;
+        return next();
+      }
+    }
     if (req.user?.role === "designer" && isUnassigned && isCommentWrite) {
+      req.task = task;
+      return next();
+    }
+    if (req.user?.role === "designer" && isUnassigned && isChangeWrite) {
       req.task = task;
       return next();
     }
@@ -175,24 +295,61 @@ router.get("/", async (req, res) => {
 
     if (userRole === "staff") {
       const orClauses = [{ requesterId: userId }];
+      const userObjectId = toObjectId(userId);
+      if (userObjectId) {
+        orClauses.push({ requesterId: userObjectId });
+      }
       if (userEmail) {
         orClauses.push({ requesterEmail: userEmail });
+      }
+      if (userName) {
+        const nameRegex = new RegExp(escapeRegExp(userName), "i");
+        orClauses.push({ requesterName: nameRegex });
+        orClauses.push({
+          changeHistory: {
+            $elemMatch: { field: "created", userName: nameRegex }
+          }
+        });
+      }
+      if (userId) {
+        orClauses.push({
+          changeHistory: {
+            $elemMatch: { field: "created", userId }
+          }
+        });
       }
       query.$or = orClauses;
     } else if (userRole === "designer") {
       const orClauses = [{ assignedToId: userId }];
+      const userObjectId = toObjectId(userId);
+      if (userObjectId) {
+        orClauses.push({ assignedToId: userObjectId });
+      }
+      const idUnsetClause = { $or: [{ assignedToId: "" }, { assignedToId: null }, { assignedToId: { $exists: false } }] };
+
       if (userName) {
-        orClauses.push({ assignedToName: new RegExp(`^${escapeRegExp(userName)}$`, "i") });
+        orClauses.push({
+          $and: [
+            idUnsetClause,
+            { assignedToName: new RegExp(escapeRegExp(userName), "i") }
+          ]
+        });
       }
       if (emailPrefix) {
-        orClauses.push({ assignedToName: new RegExp(escapeRegExp(emailPrefix), "i") });
+        orClauses.push({
+          $and: [
+            idUnsetClause,
+            { assignedToName: new RegExp(escapeRegExp(emailPrefix), "i") }
+          ]
+        });
       }
       orClauses.push({
         $and: [
-          { $or: [{ assignedToId: "" }, { assignedToId: null }, { assignedToId: { $exists: false } }] },
+          idUnsetClause,
           { $or: [{ assignedToName: "" }, { assignedToName: null }, { assignedToName: { $exists: false } }] },
         ],
       });
+      orClauses.push(idUnsetClause);
       query.$or = orClauses;
     } else if (userRole !== "treasurer" && userRole !== "admin") {
       return res.status(403).json({ error: "Forbidden." });
@@ -231,6 +388,14 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
       requesterEmail,
       changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
     };
+    const resolvedAssignment = await resolveAssignedUser({
+      assignedToId: payload.assignedToId,
+      assignedTo: payload.assignedTo,
+      assignedToName: payload.assignedToName,
+      assignedToEmail: payload.assignedToEmail
+    });
+    payload.assignedToId = resolvedAssignment.assignedToId;
+    payload.assignedToName = resolvedAssignment.assignedToName;
     const dedupeWindowMs = Number(process.env.TASK_DEDUPE_WINDOW_MS || 120000);
     const dedupeSince = new Date(Date.now() - dedupeWindowMs);
     const baseDedupeQuery = {
@@ -319,6 +484,18 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
       const targetRoom = task.assignedToId ? String(task.assignedToId) : "designers:queue";
       io.to(targetRoom).emit("request:new", payloadTask);
       console.log(`Emitted request:new to room: ${targetRoom}`);
+      if (!task.assignedToId) {
+        getUserIdsByRole(["designer"]).then((userIds) => {
+          userIds.forEach((designerId) => {
+            io.to(String(designerId)).emit("request:new", payloadTask);
+          });
+          if (userIds.length > 0) {
+            console.log(`Emitted request:new to ${userIds.length} designer rooms`);
+          }
+        }).catch((error) => {
+          console.error("Request emit error (designer rooms):", error?.message || error);
+        });
+      }
     }
 
     if (!task.assignedToId) {
@@ -440,8 +617,26 @@ router.get("/:id", ensureTaskAccess, async (req, res) => {
   }
 });
 
+router.get("/:id/changes", ensureTaskAccess, async (req, res) => {
+  try {
+    const task = req.task;
+    res.json(Array.isArray(task?.changeHistory) ? task.changeHistory : []);
+  } catch (error) {
+    res.status(400).json({ error: "Invalid task id." });
+  }
+});
+
 router.patch("/:id", ensureTaskAccess, async (req, res) => {
   try {
+    const userRole = req.user?.role || "";
+    if (
+      req.body?.status &&
+      String(req.body.status).toLowerCase() === "completed" &&
+      userRole !== "designer" &&
+      userRole !== "admin"
+    ) {
+      return res.status(403).json({ error: "Only designers can complete tasks." });
+    }
     const task = await Task.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
@@ -663,18 +858,25 @@ router.post("/:id/comments/seen", ensureTaskAccess, async (req, res) => {
 
 router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
   try {
-    const { assignedToId, assignedToName, userName } = req.body;
+    const { assignedToId, assignedToName, assignedTo, assignedToEmail, userName } = req.body;
     const role = req.user?.role || "";
 
     if (!["staff", "treasurer", "admin"].includes(role)) {
       return res.status(403).json({ error: "Only staff or treasurer can assign tasks." });
     }
 
-  const task = await Task.findByIdAndUpdate(
-    req.params.id,
-    { assignedToId: assignedToId || "", assignedToName: assignedToName || "" },
-    { new: true, runValidators: true }
-  );
+    const resolvedAssignment = await resolveAssignedUser({
+      assignedToId,
+      assignedTo,
+      assignedToName,
+      assignedToEmail
+    });
+
+    const task = await Task.findByIdAndUpdate(
+      req.params.id,
+      { assignedToId: resolvedAssignment.assignedToId, assignedToName: resolvedAssignment.assignedToName },
+      { new: true, runValidators: true }
+    );
 
     if (!task) {
       return res.status(404).json({ error: "Task not found." });
@@ -682,34 +884,44 @@ router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
 
     req.auditTargetId = task.id || task._id?.toString?.() || "";
 
-  await Activity.create({
-    taskId: task._id,
-    taskTitle: task.title,
-    action: "assigned",
-    userId: getUserId(req),
-    userName: req.user?.name || userName || ""
-  });
+    await Activity.create({
+      taskId: task._id,
+      taskTitle: task.title,
+      action: "assigned",
+      userId: getUserId(req),
+      userName: req.user?.name || userName || ""
+    });
 
-    if (assignedToId) {
+    if (resolvedAssignment.assignedToId) {
       const taskId = task.id || task._id?.toString?.();
       const taskLink = buildTaskLink(taskId);
       createNotification({
-        userId: assignedToId,
+        userId: resolvedAssignment.assignedToId,
         title: `Task assigned: ${task.title}`,
         message: `${req.user?.name || userName || "Staff"} assigned this task to you.`,
         type: "task",
         link: taskLink,
         taskId,
-        eventId: `assign:${taskId}:${assignedToId}:${new Date().toISOString()}`,
+        eventId: `assign:${taskId}:${resolvedAssignment.assignedToId}:${new Date().toISOString()}`,
       })
         .then(emitNotification)
         .catch((error) => {
-        console.error("Notification error (assign):", error?.message || error);
-      });
-  }
+          console.error("Notification error (assign):", error?.message || error);
+        });
+    }
 
-  res.json(task);
-} catch (error) {
+    const io = getSocket();
+    if (io) {
+      const payloadTask = typeof task.toJSON === "function" ? task.toJSON() : task;
+      const targetRoom = resolvedAssignment.assignedToId
+        ? String(resolvedAssignment.assignedToId)
+        : "designers:queue";
+      io.to(targetRoom).emit("request:new", payloadTask);
+      console.log(`Emitted request:new to room: ${targetRoom}`);
+    }
+
+    res.json(task);
+  } catch (error) {
     res.status(400).json({ error: "Failed to assign task." });
   }
 });
@@ -724,10 +936,20 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
     if (!Array.isArray(changes) || changes.length === 0) {
       return res.status(400).json({ error: "Change list is required." });
     }
+    const statusChangeInput = changes.find((change) => change?.field === "status");
+    const nextStatus =
+      updates?.status || statusChangeInput?.newValue || statusChangeInput?.newValue?.toString?.();
+    if (
+      nextStatus &&
+      String(nextStatus).toLowerCase() === "completed" &&
+      userRole !== "designer" &&
+      userRole !== "admin"
+    ) {
+      return res.status(403).json({ error: "Only designers can complete tasks." });
+    }
 
     const task = req.task;
 
-    const nextCount = (task.changeCount || 0) + changes.length;
     const changeEntries = changes.map((change) => ({
       type: change.type || "update",
       field: change.field || "",
@@ -739,6 +961,16 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       userRole: userRole || "",
       createdAt: new Date()
     }));
+    const hasFileUploadChange = changes.some(
+      (change) => change?.type === "file_added" && change?.field === "files"
+    );
+    const sanitizedEntries = hasFileUploadChange
+      ? changeEntries.filter((entry) => entry.field !== "status")
+      : changeEntries;
+    const sanitizedChanges = hasFileUploadChange
+      ? changes.filter((change) => change?.field !== "status")
+      : changes;
+    const nextCount = (task.changeCount || 0) + sanitizedEntries.length;
     const isFinalFileChange = (change) => {
       if (!change) return false;
       if (change.type !== "file_added" || change.field !== "files") return false;
@@ -746,15 +978,28 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       return /final\s*file/.test(note);
     };
 
-    const finalChangeEntries = changeEntries.filter(isFinalFileChange);
+    const finalChangeEntries = sanitizedEntries.filter(isFinalFileChange);
 
     const updateDoc = {
-      $inc: { changeCount: changes.length },
-      $push: { changeHistory: { $each: changeEntries } }
+      $inc: { changeCount: sanitizedEntries.length },
+      $push: { changeHistory: { $each: sanitizedEntries } }
     };
 
-    if (Object.keys(updates).length > 0) {
-      updateDoc.$set = updates;
+    const nextSet = { ...(Object.keys(updates).length > 0 ? updates : {}) };
+    if (hasFileUploadChange) {
+      delete nextSet.status;
+      delete nextSet.assignedToId;
+      delete nextSet.assignedToName;
+      delete nextSet.assignedTo;
+      delete nextSet.assignedToEmail;
+    }
+    const isUnassigned = !normalizeId(task.assignedToId);
+    if (userRole === "designer" && isUnassigned) {
+      nextSet.assignedToId = userId || "";
+      nextSet.assignedToName = resolvedUserName || "";
+    }
+    if (Object.keys(nextSet).length > 0) {
+      updateDoc.$set = nextSet;
     }
 
     if (nextCount >= 3 && task.approvalStatus !== "pending") {
@@ -776,7 +1021,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       userName: resolvedUserName || ""
     });
 
-    const finalFileChanges = changes.filter(isFinalFileChange);
+    const finalFileChanges = sanitizedChanges.filter(isFinalFileChange);
 
     if (finalFileChanges.length > 0) {
       const baseUrl = process.env.FRONTEND_URL || "";
@@ -789,7 +1034,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       });
 
       // Notify on status updates
-      const statusChange = changes.find(c => c.field === "status");
+      const statusChange = sanitizedChanges.find(c => c.field === "status");
       if (statusChange && requesterPrefs.whatsappNotifications) {
         const recipients = [
           updatedTask.requesterPhone,
@@ -827,11 +1072,25 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       }
       const submittedAt = finalChangeEntries[0]?.createdAt;
 
-      let resolvedRequesterEmail = updatedTask.requesterEmail || task.requesterEmail;
-      if (!resolvedRequesterEmail && updatedTask.requesterId) {
-        const requesterUser = await User.findById(updatedTask.requesterId);
+    let resolvedRequesterEmail = updatedTask.requesterEmail || task.requesterEmail;
+    if (!resolvedRequesterEmail && updatedTask.requesterId) {
+      const requesterUser = await User.findById(updatedTask.requesterId);
+      resolvedRequesterEmail = requesterUser?.email || "";
+    }
+    if (!resolvedRequesterEmail) {
+      const history = Array.isArray(updatedTask.changeHistory) ? updatedTask.changeHistory : [];
+      const createdEntry = history.find((entry) => entry?.field === "created");
+      if (createdEntry?.userId) {
+        const requesterUser = await User.findById(createdEntry.userId);
+        resolvedRequesterEmail = requesterUser?.email || "";
+      } else if (createdEntry?.userName) {
+        const requesterUser = await User.findOne({
+          name: new RegExp(`^${escapeRegExp(createdEntry.userName)}$`, "i"),
+          isActive: { $ne: false }
+        });
         resolvedRequesterEmail = requesterUser?.email || "";
       }
+    }
 
       if (resolvedRequesterEmail && requesterPrefs.emailNotifications) {
         const emailSent = await sendFinalFilesEmail({
@@ -890,12 +1149,25 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       ? new Date(changeEntries[0].createdAt).toISOString()
       : new Date().toISOString();
 
-    const requesterUserId =
+    let requesterUserId =
       updatedTask.requesterId ||
       task.requesterId ||
       (updatedTask.requesterEmail
         ? await resolveUserIdByEmail(updatedTask.requesterEmail)
         : "");
+    if (!requesterUserId) {
+      const history = Array.isArray(updatedTask.changeHistory) ? updatedTask.changeHistory : [];
+      const createdEntry = history.find((entry) => entry?.field === "created");
+      if (createdEntry?.userId) {
+        requesterUserId = createdEntry.userId;
+      } else if (createdEntry?.userName) {
+        const requesterUser = await User.findOne({
+          name: new RegExp(`^${escapeRegExp(createdEntry.userName)}$`, "i"),
+          isActive: { $ne: false }
+        });
+        requesterUserId = requesterUser?._id?.toString?.() || "";
+      }
+    }
     const designerUserId = updatedTask.assignedToId || task.assignedToId || "";
 
     const notifyUser = (userId, payload) => {
@@ -918,7 +1190,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       });
     }
 
-    const statusEntry = changeEntries.find((entry) => entry.field === "status");
+    const statusEntry = sanitizedEntries.find((entry) => entry.field === "status");
     if (statusEntry && requesterUserId) {
       const nextStatus = String(statusEntry.newValue || "").toLowerCase();
       if (nextStatus.includes("completed")) {
@@ -969,7 +1241,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       });
     }
 
-    const approvalEntry = changeEntries.find((entry) => entry.field === "approval_status");
+    const approvalEntry = sanitizedEntries.find((entry) => entry.field === "approval_status");
     if (approvalEntry && userRole === "treasurer") {
       const decision = String(approvalEntry.newValue || "").toLowerCase();
       const payload = {
@@ -1025,10 +1297,24 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
 
     const io = getSocket();
     if (io) {
-      io.to(updatedTask.id || updatedTask._id?.toString?.()).emit("task:updated", {
-        taskId: updatedTask.id || updatedTask._id?.toString?.(),
-        task: updatedTask
-      });
+      const payloadTask = typeof updatedTask.toJSON === "function" ? updatedTask.toJSON() : updatedTask;
+      const updatedTaskId = payloadTask?.id || updatedTask.id || updatedTask._id?.toString?.();
+      const updatePayload = {
+        taskId: updatedTaskId,
+        task: payloadTask,
+      };
+      io.to(updatedTaskId).emit("task:updated", updatePayload);
+      if (requesterUserId) {
+        io.to(String(requesterUserId)).emit("task:updated", updatePayload);
+      }
+      const requesterEmail = payloadTask?.requesterEmail || updatedTask.requesterEmail || task.requesterEmail;
+      if (requesterEmail) {
+        io.to(String(requesterEmail)).emit("task:updated", updatePayload);
+      }
+      if (designerUserId) {
+        io.to(String(designerUserId)).emit("task:updated", updatePayload);
+      }
+      console.log(`Emitted task:updated for ${updatedTaskId}`);
     }
 
     const approvalChange = changes.find((change) =>

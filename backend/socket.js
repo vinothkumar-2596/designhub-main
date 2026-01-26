@@ -2,6 +2,8 @@ import { Server } from "socket.io";
 
 let io;
 const presenceByTask = new Map();
+const globalPresence = new Map();
+const globalTyping = new Map();
 
 const ensurePresenceStore = (taskId) => {
   if (!presenceByTask.has(taskId)) {
@@ -35,6 +37,44 @@ const removeSocketFromPresence = (taskId, socketId) => {
   }
   if (store.size === 0) {
     presenceByTask.delete(taskId);
+  }
+};
+
+const getGlobalPresenceSnapshot = () =>
+  Array.from(globalPresence.values()).map((entry) => ({
+    userId: entry.userId,
+    userName: entry.userName,
+    userRole: entry.userRole,
+    userEmail: entry.userEmail,
+    lastSeenAt: entry.lastSeenAt,
+  }));
+
+const removeSocketFromGlobalPresence = (userId, socketId) => {
+  if (!userId) return;
+  const entry = globalPresence.get(userId);
+  if (!entry) return;
+  entry.sockets.delete(socketId);
+  if (entry.sockets.size === 0) {
+    globalPresence.delete(userId);
+  }
+};
+
+const getGlobalTypingSnapshot = () =>
+  Array.from(globalTyping.values()).map((entry) => ({
+    userId: entry.userId,
+    userName: entry.userName,
+    userRole: entry.userRole,
+    userEmail: entry.userEmail,
+    lastTypingAt: entry.lastTypingAt,
+  }));
+
+const removeSocketFromGlobalTyping = (userId, socketId) => {
+  if (!userId) return;
+  const entry = globalTyping.get(userId);
+  if (!entry) return;
+  entry.sockets.delete(socketId);
+  if (entry.sockets.size === 0) {
+    globalTyping.delete(userId);
   }
 };
 
@@ -108,6 +148,30 @@ export const initSocket = (httpServer) => {
     socket.on("comment:typing", (payload) => {
       if (!payload?.taskId) return;
       socket.to(payload.taskId).emit("comment:typing", payload);
+      if (!payload.userId) return;
+      const key = String(payload.userId);
+      if (payload.isTyping) {
+        const now = new Date().toISOString();
+        const existing = globalTyping.get(key) || {
+          userId: key,
+          userName: payload.userName || "Unknown",
+          userRole: payload.userRole || "",
+          userEmail: payload.userEmail || "",
+          sockets: new Set(),
+          lastTypingAt: now,
+        };
+        existing.userName = payload.userName || existing.userName;
+        existing.userRole = payload.userRole || existing.userRole;
+        existing.userEmail = payload.userEmail || existing.userEmail;
+        existing.lastTypingAt = now;
+        existing.sockets.add(socket.id);
+        globalTyping.set(key, existing);
+      } else {
+        removeSocketFromGlobalTyping(key, socket.id);
+      }
+      io.to("presence:global").emit("typing:global:update", {
+        typers: getGlobalTypingSnapshot(),
+      });
     });
 
     socket.on("notifications:join", ({ userId }) => {
@@ -118,6 +182,45 @@ export const initSocket = (httpServer) => {
     socket.on("notifications:leave", ({ userId }) => {
       if (!userId) return;
       socket.leave(String(userId));
+    });
+
+    socket.on("presence:global:join", ({ userId, userName, userRole, userEmail }) => {
+      if (!userId) return;
+      const key = String(userId);
+      const now = new Date().toISOString();
+      const existing = globalPresence.get(key) || {
+        userId: key,
+        userName: userName || "Unknown",
+        userRole: userRole || "",
+        userEmail: userEmail || "",
+        sockets: new Set(),
+        lastSeenAt: now,
+      };
+      existing.userName = userName || existing.userName;
+      existing.userRole = userRole || existing.userRole;
+      existing.userEmail = userEmail || existing.userEmail;
+      existing.lastSeenAt = now;
+      existing.sockets.add(socket.id);
+      globalPresence.set(key, existing);
+      socket.data.globalPresenceUserId = key;
+      socket.join("presence:global");
+      io.to("presence:global").emit("presence:global:update", {
+        viewers: getGlobalPresenceSnapshot(),
+      });
+    });
+
+    socket.on("presence:global:leave", ({ userId }) => {
+      const key = userId ? String(userId) : socket.data.globalPresenceUserId;
+      if (!key) return;
+      removeSocketFromGlobalPresence(key, socket.id);
+      removeSocketFromGlobalTyping(key, socket.id);
+      socket.leave("presence:global");
+      io.to("presence:global").emit("presence:global:update", {
+        viewers: getGlobalPresenceSnapshot(),
+      });
+      io.to("presence:global").emit("typing:global:update", {
+        typers: getGlobalTypingSnapshot(),
+      });
     });
 
     socket.on("disconnect", () => {
@@ -131,6 +234,18 @@ export const initSocket = (httpServer) => {
           });
         });
         socket.data.presenceTasks.clear();
+      }
+      if (socket.data.globalPresenceUserId) {
+        removeSocketFromGlobalPresence(socket.data.globalPresenceUserId, socket.id);
+        io.to("presence:global").emit("presence:global:update", {
+          viewers: getGlobalPresenceSnapshot(),
+        });
+      }
+      if (socket.data.globalPresenceUserId) {
+        removeSocketFromGlobalTyping(socket.data.globalPresenceUserId, socket.id);
+        io.to("presence:global").emit("typing:global:update", {
+          typers: getGlobalTypingSnapshot(),
+        });
       }
       console.log("Socket disconnected:", socket.id);
     });
