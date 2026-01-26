@@ -29,6 +29,11 @@ export interface User {
   avatar?: string;
   department?: string;
   phone?: string;
+  notificationPreferences?: {
+    emailNotifications: boolean;
+    whatsappNotifications: boolean;
+    deadlineReminders: boolean;
+  };
 }
 
 export interface TaskComment {

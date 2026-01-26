@@ -2,6 +2,7 @@ import express from "express";
 import Task from "../models/Task.js";
 import { getDriveClient } from "../lib/drive.js";
 import Activity from "../models/Activity.js";
+import User from "../models/User.js";
 import {
   sendFinalFilesEmail,
   sendFinalFilesSms,
@@ -10,6 +11,10 @@ import {
   sendStatusUpdateSms,
   sendSms,
 } from "../lib/notifications.js";
+import {
+  createNotification,
+  createNotificationsForUsers,
+} from "../lib/notificationService.js";
 import { getSocket } from "../socket.js";
 import { requireRole } from "../middleware/auth.js";
 
@@ -18,16 +23,96 @@ const TASK_ROLES = ["staff", "designer", "treasurer"];
 router.use(requireRole(TASK_ROLES));
 
 const getUserId = (req) => (req.user?._id ? req.user._id.toString() : "");
+const normalizeValue = (value) => (value ? String(value).trim().toLowerCase() : "");
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const buildTaskLink = (taskId) => (taskId ? `/task/${taskId}` : "");
+const defaultNotificationPreferences = {
+  emailNotifications: true,
+  whatsappNotifications: false,
+  deadlineReminders: true,
+};
+
+const emitNotification = (notification) => {
+  if (!notification) return;
+  const io = getSocket();
+  if (!io) return;
+  const data = typeof notification.toJSON === "function" ? notification.toJSON() : notification;
+  if (!data?.userId) return;
+  io.to(`user:${data.userId}`).emit("notification:new", data);
+};
+
+const emitNotifications = (notifications) => {
+  if (!Array.isArray(notifications)) return;
+  notifications.forEach((note) => emitNotification(note));
+};
+
+const getUserIdsByRole = async (roles = []) => {
+  if (!roles.length) return [];
+  const users = await User.find({
+    role: { $in: roles },
+    isActive: { $ne: false }
+  }).select("_id");
+  return users.map((user) => user._id.toString());
+};
+
+const resolveUserIdByEmail = async (email) => {
+  const normalized = normalizeValue(email);
+  if (!normalized) return "";
+  const user = await User.findOne({ email: normalized });
+  return user?._id?.toString?.() || "";
+};
+
+const resolveNotificationPreferences = async ({ userId, email, fallbackUser }) => {
+  if (fallbackUser && userId) {
+    const fallbackId =
+      typeof fallbackUser._id === "string"
+        ? fallbackUser._id
+        : fallbackUser._id?.toString?.();
+    if (fallbackId && fallbackId === userId) {
+      return { ...defaultNotificationPreferences, ...(fallbackUser.notificationPreferences || {}) };
+    }
+  }
+  let user = null;
+  if (userId) {
+    user = await User.findById(userId).select("notificationPreferences");
+  } else if (email) {
+    const normalized = normalizeValue(email);
+    if (normalized) {
+      user = await User.findOne({ email: normalized }).select("notificationPreferences");
+    }
+  }
+  return { ...defaultNotificationPreferences, ...(user?.notificationPreferences || {}) };
+};
 
 const canAccessTask = (task, user) => {
   if (!user) return false;
   if (user.role === "admin" || user.role === "treasurer") return true;
   const userId = user._id?.toString?.() || user._id;
   if (user.role === "staff") {
-    return Boolean(task?.requesterId && task.requesterId === userId);
+    const userEmail = normalizeValue(user.email);
+    const requesterEmail = normalizeValue(task?.requesterEmail);
+    return Boolean(
+      (task?.requesterId && task.requesterId === userId) ||
+      (userEmail && requesterEmail && requesterEmail === userEmail)
+    );
   }
   if (user.role === "designer") {
-    return Boolean(task?.assignedToId && task.assignedToId === userId);
+    const assignedName = normalizeValue(task?.assignedToName);
+    const userName = normalizeValue(user.name);
+    const userEmail = normalizeValue(user.email);
+    const emailPrefix = userEmail.split("@")[0];
+    const nameMatches =
+      assignedName &&
+      userName &&
+      (assignedName === userName ||
+        assignedName.includes(userName) ||
+        userName.includes(assignedName));
+    const emailMatches = assignedName && emailPrefix && assignedName.includes(emailPrefix);
+    return Boolean(
+      (task?.assignedToId && task.assignedToId === userId) ||
+      nameMatches ||
+      emailMatches
+    );
   }
   return false;
 };
@@ -54,6 +139,9 @@ router.get("/", async (req, res) => {
     const query = {};
     const userRole = req.user?.role || "";
     const userId = getUserId(req);
+    const userEmail = normalizeValue(req.user?.email);
+    const userName = normalizeValue(req.user?.name);
+    const emailPrefix = userEmail.split("@")[0];
 
     if (status) query.status = status;
     if (category) query.category = category;
@@ -70,9 +158,20 @@ router.get("/", async (req, res) => {
     if (assignedToId) query.assignedToId = assignedToId;
 
     if (userRole === "staff") {
-      query.requesterId = userId;
+      const orClauses = [{ requesterId: userId }];
+      if (userEmail) {
+        orClauses.push({ requesterEmail: userEmail });
+      }
+      query.$or = orClauses;
     } else if (userRole === "designer") {
-      query.assignedToId = userId;
+      const orClauses = [{ assignedToId: userId }];
+      if (userName) {
+        orClauses.push({ assignedToName: new RegExp(`^${escapeRegExp(userName)}$`, "i") });
+      }
+      if (emailPrefix) {
+        orClauses.push({ assignedToName: new RegExp(escapeRegExp(emailPrefix), "i") });
+      }
+      query.$or = orClauses;
     } else if (userRole !== "treasurer" && userRole !== "admin") {
       return res.status(403).json({ error: "Forbidden." });
     }
@@ -121,31 +220,85 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
       userName: requesterName || ""
     });
 
+    const taskId = task.id || task._id?.toString?.();
+    const taskLink = buildTaskLink(taskId);
+    const createdEventId = `task:${taskId}:created`;
+    getUserIdsByRole(["treasurer"]).then((userIds) => {
+      if (userIds.length === 0) return;
+      return createNotificationsForUsers(userIds, {
+        title: `New request: ${task.title}`,
+        message: `Submitted by ${requesterName || "Staff"}`,
+        type: "task",
+        link: taskLink,
+        eventId: createdEventId,
+      }).then(emitNotifications);
+    }).catch((error) => {
+      console.error("Notification error (task created):", error?.message || error);
+    });
+
+    if (requesterId) {
+      createNotification({
+        userId: requesterId,
+        title: `Request submitted: ${task.title}`,
+        message: "Your request has been submitted.",
+        type: "task",
+        link: taskLink,
+        eventId: `requester:${taskId}:created`,
+      })
+        .then(emitNotification)
+        .catch((error) => {
+          console.error("Notification error (requester created):", error?.message || error);
+        });
+    }
+
+    if (task.assignedToId) {
+      createNotification({
+        userId: task.assignedToId,
+        title: `New task assigned: ${task.title}`,
+        message: `${requesterName || "Staff"} assigned a task to you.`,
+        type: "task",
+        link: taskLink,
+        eventId: `assign:${taskId}:${task.assignedToId}:${now.toISOString()}`,
+      })
+        .then(emitNotification)
+        .catch((error) => {
+          console.error("Notification error (assign on create):", error?.message || error);
+        });
+    }
+
     const baseUrl = process.env.FRONTEND_URL || "";
     const taskUrl = baseUrl
       ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}`
       : "";
 
-    const recipients = [
-      task.requesterPhone,
-      ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
-    ].filter((p) => p && p.trim() !== "");
+    const requesterPrefs = await resolveNotificationPreferences({
+      userId: task.requesterId,
+      email: task.requesterEmail,
+      fallbackUser: req.user,
+    });
 
-    if (recipients.length === 0 && process.env.TWILIO_DEFAULT_TO) {
-      recipients.push(process.env.TWILIO_DEFAULT_TO);
+    if (requesterPrefs.whatsappNotifications) {
+      const recipients = [
+        task.requesterPhone,
+        ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
+      ].filter((p) => p && p.trim() !== "");
+
+      if (recipients.length === 0 && process.env.TWILIO_DEFAULT_TO) {
+        recipients.push(process.env.TWILIO_DEFAULT_TO);
+      }
+
+      // Non-blocking notification
+      Promise.all(recipients.map(to =>
+        sendTaskCreatedSms({
+          to,
+          taskTitle: task.title,
+          taskUrl,
+          deadline: task.deadline,
+          requesterName: task.requesterName,
+          taskId: task.id || task._id?.toString?.()
+        })
+      )).catch(err => console.error("Background Notification Error (Create Task):", err));
     }
-
-    // Non-blocking notification
-    Promise.all(recipients.map(to =>
-      sendTaskCreatedSms({
-        to,
-        taskTitle: task.title,
-        taskUrl,
-        deadline: task.deadline,
-        requesterName: task.requesterName,
-        taskId: task.id || task._id?.toString?.()
-      })
-    )).catch(err => console.error("Background Notification Error (Create Task):", err));
 
     res.status(201).json(task);
   } catch (error) {
@@ -320,26 +473,65 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
       ? task.comments[task.comments.length - 1]
       : null;
 
-    // Notify recipients via WhatsApp/SMS
-    const recipients = [
-      task.requesterPhone,
-      ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
-    ].filter((p) => p && p.trim() !== "");
-
-    if (recipients.length > 0) {
-      const baseUrl = process.env.FRONTEND_URL || "";
-      const taskUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}` : "";
-
-      // Non-blocking notification
-      Promise.all(recipients.map(to =>
-        sendCommentNotificationSms({
-          to,
-          taskTitle: task.title,
-          userName: userName,
-          content: content,
-          taskUrl: taskUrl
+    if (createdComment) {
+      const requesterUserId =
+        task.requesterId ||
+        (task.requesterEmail ? await resolveUserIdByEmail(task.requesterEmail) : "");
+      const designerUserId = task.assignedToId || "";
+      const treasurerUserIds = await getUserIdsByRole(["treasurer"]);
+      const allRecipients = new Set([
+        requesterUserId,
+        designerUserId,
+        ...treasurerUserIds,
+      ]);
+      const finalRecipients = Array.from(allRecipients).filter(Boolean);
+      if (finalRecipients.length > 0) {
+        const snippet =
+          content.length > 140 ? `${content.slice(0, 137)}...` : content;
+        const commentEventId = createdComment._id
+          ? `comment:${createdComment._id.toString()}`
+          : undefined;
+        createNotificationsForUsers(finalRecipients, {
+          title: `New message on ${task.title}`,
+          message: `${userName || "Staff"}: ${snippet}`,
+          type: "comment",
+          link: buildTaskLink(task.id || task._id?.toString?.()),
+          eventId: commentEventId,
         })
-      )).catch(err => console.error("Background Notification Error (Comment):", err));
+          .then(emitNotifications)
+          .catch((error) => {
+            console.error("Notification error (comment):", error?.message || error);
+          });
+      }
+    }
+
+    const requesterPrefs = await resolveNotificationPreferences({
+      userId: task.requesterId,
+      email: task.requesterEmail,
+    });
+
+    // Notify recipients via WhatsApp/SMS
+    if (requesterPrefs.whatsappNotifications) {
+      const recipients = [
+        task.requesterPhone,
+        ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
+      ].filter((p) => p && p.trim() !== "");
+
+      if (recipients.length > 0) {
+        const baseUrl = process.env.FRONTEND_URL || "";
+        const taskUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}` : "";
+
+        // Non-blocking notification
+        Promise.all(recipients.map(to =>
+          sendCommentNotificationSms({
+            to,
+            taskTitle: task.title,
+            userName: userName,
+            content: content,
+            taskUrl: taskUrl
+          })
+        )).catch(err => console.error("Background Notification Error (Comment):", err));
+      }
     }
 
     const io = getSocket();
@@ -406,11 +598,11 @@ router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
       return res.status(403).json({ error: "Only staff or treasurer can assign tasks." });
     }
 
-    const task = await Task.findByIdAndUpdate(
-      req.params.id,
-      { assignedToId: assignedToId || "", assignedToName: assignedToName || "" },
-      { new: true, runValidators: true }
-    );
+  const task = await Task.findByIdAndUpdate(
+    req.params.id,
+    { assignedToId: assignedToId || "", assignedToName: assignedToName || "" },
+    { new: true, runValidators: true }
+  );
 
     if (!task) {
       return res.status(404).json({ error: "Task not found." });
@@ -418,16 +610,33 @@ router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
 
     req.auditTargetId = task.id || task._id?.toString?.() || "";
 
-    await Activity.create({
-      taskId: task._id,
-      taskTitle: task.title,
-      action: "assigned",
-      userId: getUserId(req),
-      userName: req.user?.name || userName || ""
-    });
+  await Activity.create({
+    taskId: task._id,
+    taskTitle: task.title,
+    action: "assigned",
+    userId: getUserId(req),
+    userName: req.user?.name || userName || ""
+  });
 
-    res.json(task);
-  } catch (error) {
+  if (assignedToId) {
+    const taskId = task.id || task._id?.toString?.();
+    const taskLink = buildTaskLink(taskId);
+    createNotification({
+      userId: assignedToId,
+      title: `Task assigned: ${task.title}`,
+      message: `${req.user?.name || userName || "Staff"} assigned this task to you.`,
+      type: "task",
+      link: taskLink,
+      eventId: `assign:${taskId}:${assignedToId}:${new Date().toISOString()}`,
+    })
+      .then(emitNotification)
+      .catch((error) => {
+        console.error("Notification error (assign):", error?.message || error);
+      });
+  }
+
+  res.json(task);
+} catch (error) {
     res.status(400).json({ error: "Failed to assign task." });
   }
 });
@@ -457,15 +666,14 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       userRole: userRole || "",
       createdAt: new Date()
     }));
-    const finalChangeEntries =
-      userRole === "designer"
-        ? changeEntries.filter(
-          (change) =>
-            change?.type === "file_added" &&
-            change?.field === "files" &&
-            change?.note === "Final file uploaded"
-        )
-        : [];
+    const isFinalFileChange = (change) => {
+      if (!change) return false;
+      if (change.type !== "file_added" || change.field !== "files") return false;
+      const note = String(change.note || "").toLowerCase();
+      return /final\s*file/.test(note);
+    };
+
+    const finalChangeEntries = changeEntries.filter(isFinalFileChange);
 
     const updateDoc = {
       $inc: { changeCount: changes.length },
@@ -495,25 +703,21 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       userName: resolvedUserName || ""
     });
 
-    const finalFileChanges =
-      userRole === "designer"
-        ? changes.filter(
-          (change) =>
-            change?.type === "file_added" &&
-            change?.field === "files" &&
-            change?.note === "Final file uploaded"
-        )
-        : [];
+    const finalFileChanges = changes.filter(isFinalFileChange);
 
     if (finalFileChanges.length > 0) {
       const baseUrl = process.env.FRONTEND_URL || "";
       const taskUrl = baseUrl
         ? `${baseUrl.replace(/\/$/, "")}/task/${updatedTask.id || updatedTask._id}`
         : undefined;
+      const requesterPrefs = await resolveNotificationPreferences({
+        userId: updatedTask.requesterId,
+        email: updatedTask.requesterEmail || task.requesterEmail,
+      });
 
       // Notify on status updates
       const statusChange = changes.find(c => c.field === "status");
-      if (statusChange) {
+      if (statusChange && requesterPrefs.whatsappNotifications) {
         const recipients = [
           updatedTask.requesterPhone,
           ...(Array.isArray(updatedTask.secondaryPhones) ? updatedTask.secondaryPhones : [])
@@ -550,28 +754,35 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       }
       const submittedAt = finalChangeEntries[0]?.createdAt;
 
-      if (task.requesterEmail) {
-        try {
-          await sendFinalFilesEmail({
-            to: task.requesterEmail,
-            taskTitle: task.title,
-            files,
-            designerName: resolvedUserName,
-            taskUrl,
-            submittedAt,
-            taskDetails: {
-              id: updatedTask.id || updatedTask._id?.toString?.() || updatedTask._id,
-              status: updatedTask.status,
-              category: updatedTask.category,
-              deadline: updatedTask.deadline,
-              requesterName: updatedTask.requesterName,
-              requesterEmail: updatedTask.requesterEmail,
-              requesterDepartment: updatedTask.requesterDepartment,
-            },
-          });
-        } catch (error) {
-          console.error("Final files notification error:", error?.message || error);
+      let resolvedRequesterEmail = updatedTask.requesterEmail || task.requesterEmail;
+      if (!resolvedRequesterEmail && updatedTask.requesterId) {
+        const requesterUser = await User.findById(updatedTask.requesterId);
+        resolvedRequesterEmail = requesterUser?.email || "";
+      }
+
+      if (resolvedRequesterEmail && requesterPrefs.emailNotifications) {
+        const emailSent = await sendFinalFilesEmail({
+          to: resolvedRequesterEmail,
+          taskTitle: task.title,
+          files,
+          designerName: resolvedUserName,
+          taskUrl,
+          submittedAt,
+          taskDetails: {
+            id: updatedTask.id || updatedTask._id?.toString?.() || updatedTask._id,
+            status: updatedTask.status,
+            category: updatedTask.category,
+            deadline: updatedTask.deadline,
+            requesterName: updatedTask.requesterName,
+            requesterEmail: resolvedRequesterEmail,
+            requesterDepartment: updatedTask.requesterDepartment,
+          },
+        });
+        if (!emailSent) {
+          console.warn("Final files email failed to send. Check SMTP configuration.");
         }
+      } else {
+        console.warn("Final files email skipped: requester email missing.");
       }
 
       const recipients = [
@@ -579,23 +790,140 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
         ...(Array.isArray(updatedTask.secondaryPhones) ? updatedTask.secondaryPhones : [])
       ].filter((p) => p && p.trim() !== "");
 
-      if (recipients.length === 0 && process.env.TWILIO_DEFAULT_TO) {
-        recipients.push(process.env.TWILIO_DEFAULT_TO);
-      }
+      if (requesterPrefs.whatsappNotifications) {
+        if (recipients.length === 0 && process.env.TWILIO_DEFAULT_TO) {
+          recipients.push(process.env.TWILIO_DEFAULT_TO);
+        }
 
-      // Non-blocking notification
-      Promise.all(recipients.map(to =>
-        sendFinalFilesSms({
-          to,
-          taskTitle: updatedTask.title,
-          files,
-          designerName: resolvedUserName,
-          taskUrl,
-          deadline: updatedTask.deadline,
-          taskId: updatedTask.id || updatedTask._id?.toString?.(),
-          requesterName: updatedTask.requesterName
-        })
-      )).catch(err => console.error("Background Notification Error (Final Files):", err));
+        // Non-blocking notification
+        Promise.all(recipients.map(to =>
+          sendFinalFilesSms({
+            to,
+            taskTitle: updatedTask.title,
+            files,
+            designerName: resolvedUserName,
+            taskUrl,
+            deadline: updatedTask.deadline,
+            taskId: updatedTask.id || updatedTask._id?.toString?.(),
+            requesterName: updatedTask.requesterName
+          })
+        )).catch(err => console.error("Background Notification Error (Final Files):", err));
+      }
+    }
+
+    const taskId = updatedTask?.id || updatedTask?._id?.toString?.();
+    const taskLink = buildTaskLink(taskId);
+    const changeStamp = changeEntries[0]?.createdAt
+      ? new Date(changeEntries[0].createdAt).toISOString()
+      : new Date().toISOString();
+
+    const requesterUserId =
+      updatedTask.requesterId ||
+      task.requesterId ||
+      (updatedTask.requesterEmail
+        ? await resolveUserIdByEmail(updatedTask.requesterEmail)
+        : "");
+    const designerUserId = updatedTask.assignedToId || task.assignedToId || "";
+
+    const notifyUser = (userId, payload) => {
+      if (!userId) return;
+      createNotification({ userId, ...payload })
+        .then((note) => emitNotification(note))
+        .catch((error) => {
+          console.error("Notification error:", error?.message || error);
+        });
+    };
+
+    if (finalFileChanges.length > 0 && requesterUserId) {
+      notifyUser(requesterUserId, {
+        title: `Final files uploaded: ${updatedTask.title}`,
+        message: `${resolvedUserName || "Designer"} shared final deliverables.`,
+        type: "file",
+        link: taskLink,
+        eventId: `final:${taskId}:${changeStamp}`,
+      });
+    }
+
+    const statusEntry = changeEntries.find((entry) => entry.field === "status");
+    if (statusEntry && requesterUserId) {
+      const nextStatus = String(statusEntry.newValue || "").toLowerCase();
+      if (nextStatus.includes("completed")) {
+        notifyUser(requesterUserId, {
+          title: `Task completed: ${updatedTask.title}`,
+          message: `${resolvedUserName || "Designer"} marked this task as completed.`,
+          type: "task",
+          link: taskLink,
+          eventId: `status:${taskId}:${nextStatus}:${changeStamp}`,
+        });
+      }
+    }
+
+    const deadlineEntry = changeEntries.find((entry) => entry.field === "deadline_request");
+    if (deadlineEntry && requesterUserId) {
+      const decision = String(deadlineEntry.newValue || "").toLowerCase();
+      if (decision.includes("approved")) {
+        notifyUser(requesterUserId, {
+          title: `Deadline approved: ${updatedTask.title}`,
+          message: deadlineEntry.note || "Your deadline request was approved.",
+          type: "task",
+          link: taskLink,
+          eventId: `deadline:${taskId}:${decision}:${changeStamp}`,
+        });
+      } else if (decision.includes("rejected")) {
+        notifyUser(requesterUserId, {
+          title: `Deadline update: ${updatedTask.title}`,
+          message: deadlineEntry.note || "Your deadline request was rejected.",
+          type: "task",
+          link: taskLink,
+          eventId: `deadline:${taskId}:${decision}:${changeStamp}`,
+        });
+      }
+    }
+
+    const emergencyEntry = changeEntries.find((entry) => entry.field === "emergency_approval");
+    if (emergencyEntry && requesterUserId) {
+      notifyUser(requesterUserId, {
+        title: `Emergency ${String(emergencyEntry.newValue || "").toLowerCase()}: ${updatedTask.title}`,
+        message: emergencyEntry.note || "Emergency request updated.",
+        type: "task",
+        link: taskLink,
+        eventId: `emergency:${taskId}:${changeStamp}`,
+      });
+    }
+
+    const approvalEntry = changeEntries.find((entry) => entry.field === "approval_status");
+    if (approvalEntry && userRole === "treasurer") {
+      const decision = String(approvalEntry.newValue || "").toLowerCase();
+      const payload = {
+        title: `Approval ${decision}: ${updatedTask.title}`,
+        message: approvalEntry.note || `Treasurer ${decision} this request.`,
+        type: "task",
+        link: taskLink,
+        eventId: `approval:${taskId}:${decision}:${changeStamp}`,
+      };
+      if (requesterUserId) notifyUser(requesterUserId, payload);
+      if (designerUserId) notifyUser(designerUserId, payload);
+    }
+
+    if (userRole === "staff" && designerUserId) {
+      const staffFields = new Set([
+        "description",
+        "files",
+        "deadline_request",
+        "status",
+        "staff_note",
+        "created",
+      ]);
+      const staffEntry = changeEntries.find((entry) => staffFields.has(entry.field));
+      if (staffEntry) {
+        notifyUser(designerUserId, {
+          title: `Task updated: ${updatedTask.title}`,
+          message: staffEntry.note || `${resolvedUserName || "Staff"} updated ${staffEntry.field.replace(/_/g, " ")}`,
+          type: "task",
+          link: taskLink,
+          eventId: `staff:${taskId}:${staffEntry.field}:${changeStamp}`,
+        });
+      }
     }
 
     // Notify on deadline changes
@@ -608,7 +936,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
 
       if (recipients.length > 0) {
         const newDeadline = updatedTask.deadline ? new Date(updatedTask.deadline).toLocaleDateString() : "n/a";
-        const body = `DesignDesk Update: The deadline for "${updatedTask.title}" has been updated to ${newDeadline}.`;
+        const body = `DesignDesk-Official Update: The deadline for "${updatedTask.title}" has been updated to ${newDeadline}.`;
 
         // Non-blocking notification
         Promise.all(recipients.map(to => sendSms({ to, body })))
@@ -649,3 +977,4 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
 });
 
 export default router;
+

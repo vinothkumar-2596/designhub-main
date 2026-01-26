@@ -20,7 +20,7 @@ Deadline: {{deadline}}
 
 Our team will review your request and keep you updated through the dashboard.
 
-– SMVEC Design Desk`
+– SMVEC DesignDesk`
     },
     {
         id: 'task_started',
@@ -37,7 +37,7 @@ Status: Started
 
 We’ll keep you informed as progress continues.
 
-– SMVEC Design Desk`
+– SMVEC DesignDesk`
     },
     {
         id: 'task_in_progress',
@@ -55,7 +55,7 @@ Status: In Progress
 Design work is actively underway.  
 You can track updates anytime from your dashboard.
 
-– SMVEC Design Desk`
+– SMVEC DesignDesk`
     },
     {
         id: 'task_submitted_for_review',
@@ -72,7 +72,7 @@ Status: Submitted for Review
 
 Please review the update in your dashboard and share feedback if required.
 
-– SMVEC Design Desk`
+– SMVEC DesignDesk`
     },
     {
         id: 'task_final_files_uploaded',
@@ -90,7 +90,7 @@ Status: Completed
 You can download the final files from your dashboard.
 
 Thank you for working with us,  
-SMVEC Design Desk`
+SMVEC DesignDesk`
     },
     {
         id: 'forgot_password_otp',
@@ -117,7 +117,7 @@ export default function WhatsAppTemplates() {
                 <div className="animate-fade-in">
                     <h1 className="text-2xl font-bold text-foreground">WhatsApp Templates</h1>
                     <p className="text-muted-foreground mt-1">
-                        Official messaging templates for the SMVEC Design Desk workflow
+                        Official messaging templates for the SMVEC DesignDesk workflow
                     </p>
                 </div>
 
@@ -151,3 +151,4 @@ export default function WhatsAppTemplates() {
         </DashboardLayout>
     );
 }
+

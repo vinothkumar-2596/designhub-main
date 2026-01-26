@@ -21,7 +21,7 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
     const hasActivity = notifications.length > 0;
 
     return (
-        <div className="group relative overflow-hidden rounded-[32px] border border-slate-100 bg-white p-2 shadow-xl shadow-slate-200/50 transition-all hover:shadow-2xl hover:shadow-slate-200/60 h-full flex flex-col">
+        <div className="group relative overflow-hidden rounded-[32px] border border-slate-100 bg-white p-2 shadow-xl shadow-slate-200/50 transition-all hover:shadow-2xl hover:shadow-slate-200/60 flex flex-col">
             {/* Visual Glass Header Section */}
             <div className="relative h-64 w-full overflow-hidden rounded-[24px] bg-slate-50/50">
                 {/* Background Gradients */}

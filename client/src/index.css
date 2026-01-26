@@ -201,6 +201,11 @@
     animation: dropdownIn 240ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
+  .animate-word-swap {
+    animation: wordSwap 1.8s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform, opacity;
+  }
+
   .icon-draw {
     display: block;
   }
@@ -855,6 +860,29 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+
+  .scrollbar-brand {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary)) transparent;
+  }
+
+  .scrollbar-brand::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-brand::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-brand::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--primary));
+    border-radius: 999px;
+  }
+
+  .scrollbar-brand::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--primary) / 0.8);
+  }
 }
 
 @keyframes fadeIn {
@@ -910,6 +938,25 @@
   }
   100% {
     transform: translateY(0%);
+  }
+}
+
+@keyframes wordSwap {
+  0% {
+    opacity: 0;
+    transform: translateY(0.4em);
+  }
+  22% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  78% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-0.2em);
   }
 }
 

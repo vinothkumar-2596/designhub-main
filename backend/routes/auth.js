@@ -87,6 +87,26 @@ const buildResetUrl = (token) => {
   return url.toString();
 };
 
+const getTwoFactorApiKey = () =>
+  process.env.TWO_FACTOR_API_KEY || process.env.TWOFACTOR_API_KEY || "";
+
+const normalizeOtpPhone = (value) => {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  if (raw.startsWith("+")) return raw;
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 11 && digits.startsWith("0")) {
+    return `+91${digits.slice(1)}`;
+  }
+  if (digits.startsWith("91") && digits.length >= 12) {
+    return `+${digits}`;
+  }
+  return `+${digits}`;
+};
+
 router.post("/login", authLimiter, async (req, res) => {
   req.skipAudit = true;
   try {
@@ -301,9 +321,34 @@ router.post("/signup", requireRole(["admin"]), async (req, res) => {
 
 router.post("/password/forgot", async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, phone, sessionId, otp } = req.body;
     if (!email) {
       return res.status(400).json({ error: "Email is required." });
+    }
+    if (!phone || !sessionId || !otp) {
+      return res.status(400).json({ error: "Phone, session ID, and OTP are required." });
+    }
+
+    const apiKey = getTwoFactorApiKey();
+    if (!apiKey) {
+      return res.status(500).json({ error: "OTP service is not configured." });
+    }
+
+    const normalizedPhone = normalizeOtpPhone(phone);
+    if (!normalizedPhone) {
+      return res.status(400).json({ error: "Invalid phone number." });
+    }
+
+    const verifyUrl = `https://2factor.in/API/V1/${apiKey}/SMS/VERIFY/${encodeURIComponent(
+      sessionId
+    )}/${encodeURIComponent(otp)}`;
+    const verifyResponse = await fetch(verifyUrl, { method: "POST" });
+    const verifyData = await verifyResponse.json().catch(() => ({}));
+    const verifyStatus = String(verifyData?.Status || "").toLowerCase();
+    if (!verifyResponse.ok || verifyStatus !== "success") {
+      return res
+        .status(400)
+        .json({ error: verifyData?.Details || "OTP verification failed." });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -321,6 +366,66 @@ router.post("/password/forgot", async (req, res) => {
     return res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to start password reset." });
+  }
+});
+
+router.post("/password/otp/send", authLimiter, async (req, res) => {
+  req.skipAudit = true;
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: "Phone number is required." });
+    }
+    const apiKey = getTwoFactorApiKey();
+    if (!apiKey) {
+      return res.status(500).json({ error: "OTP service is not configured." });
+    }
+    const normalized = normalizeOtpPhone(phone);
+    if (!normalized) {
+      return res.status(400).json({ error: "Invalid phone number." });
+    }
+    const url = `https://2factor.in/API/V1/${apiKey}/SMS/${encodeURIComponent(
+      normalized
+    )}/AUTOGEN/OTP1`;
+    const response = await fetch(url);
+    const data = await response.json().catch(() => ({}));
+    const status = String(data?.Status || "").toLowerCase();
+    if (!response.ok || status !== "success") {
+      return res
+        .status(400)
+        .json({ error: data?.Details || "Failed to send OTP." });
+    }
+    return res.json({ success: true, sessionId: data?.Details || "" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to send OTP." });
+  }
+});
+
+router.post("/password/otp/verify", authLimiter, async (req, res) => {
+  req.skipAudit = true;
+  try {
+    const { sessionId, otp } = req.body;
+    if (!sessionId || !otp) {
+      return res.status(400).json({ error: "Session ID and OTP are required." });
+    }
+    const apiKey = getTwoFactorApiKey();
+    if (!apiKey) {
+      return res.status(500).json({ error: "OTP service is not configured." });
+    }
+    const url = `https://2factor.in/API/V1/${apiKey}/SMS/VERIFY/${encodeURIComponent(
+      sessionId
+    )}/${encodeURIComponent(otp)}`;
+    const response = await fetch(url, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    const status = String(data?.Status || "").toLowerCase();
+    if (!response.ok || status !== "success") {
+      return res
+        .status(400)
+        .json({ error: data?.Details || "OTP verification failed." });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to verify OTP." });
   }
 });
 
@@ -489,6 +594,43 @@ router.get("/me", requireAuth, async (req, res) => {
     res.json({ user: user.toJSON() });
   } catch (error) {
     res.status(500).json({ error: "Failed to load user." });
+  }
+});
+
+router.get("/preferences", requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user?._id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+    res.json({ preferences: user.notificationPreferences || {} });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to load preferences." });
+  }
+});
+
+router.patch("/preferences", requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user?._id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+    const current = user.notificationPreferences || {};
+    const next = { ...current };
+    if (typeof req.body?.emailNotifications === "boolean") {
+      next.emailNotifications = req.body.emailNotifications;
+    }
+    if (typeof req.body?.whatsappNotifications === "boolean") {
+      next.whatsappNotifications = req.body.whatsappNotifications;
+    }
+    if (typeof req.body?.deadlineReminders === "boolean") {
+      next.deadlineReminders = req.body.deadlineReminders;
+    }
+    user.notificationPreferences = next;
+    await user.save();
+    res.json({ preferences: user.notificationPreferences });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update preferences." });
   }
 });
 

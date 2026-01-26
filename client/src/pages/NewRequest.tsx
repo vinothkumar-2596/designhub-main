@@ -365,7 +365,7 @@ function LinearProgressWithLabel(props: LinearProgressProps & { value: number })
   );
 }
 
-import { API_URL, authFetch } from '@/lib/api';
+import { API_URL, authFetch, getAuthToken } from '@/lib/api';
 
 export default function NewRequest() {
   const navigate = useNavigate();
@@ -533,6 +533,10 @@ export default function NewRequest() {
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${apiUrl}/api/files/upload`);
+      const token = getAuthToken();
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
 
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;

@@ -84,6 +84,8 @@ export default function AIMode() {
     const [view, setView] = useState<'initial' | 'chat'>('initial');
     const [isTyping, setIsTyping] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const shouldAutoScrollRef = useRef(true);
+    const hasInitializedScrollRef = useRef(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const { toast } = useToast();
@@ -121,11 +123,38 @@ export default function AIMode() {
         { icon: HelpCircle, text: "How do I request a website redesign?" }
     ];
 
+    const getScrollViewport = () =>
+        scrollRef.current?.closest('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
+
     useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+        if (view !== 'chat') {
+            shouldAutoScrollRef.current = true;
+            hasInitializedScrollRef.current = false;
+            return;
         }
-    }, [messages, isTyping]);
+        const viewport = getScrollViewport();
+        if (!viewport) return;
+        const handleScroll = () => {
+            const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+            shouldAutoScrollRef.current = distance < 80;
+        };
+        handleScroll();
+        viewport.addEventListener('scroll', handleScroll, { passive: true });
+        return () => viewport.removeEventListener('scroll', handleScroll);
+    }, [view]);
+
+    useEffect(() => {
+        if (view !== 'chat') return;
+        const viewport = getScrollViewport();
+        if (!viewport) return;
+        const shouldScroll = !hasInitializedScrollRef.current || shouldAutoScrollRef.current;
+        if (shouldScroll) {
+            window.requestAnimationFrame(() => {
+                viewport.scrollTop = viewport.scrollHeight;
+            });
+        }
+        hasInitializedScrollRef.current = true;
+    }, [messages, isTyping, view]);
 
     // Typing Animation Effect
     useEffect(() => {

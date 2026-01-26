@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { API_URL, authFetch } from '@/lib/api';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[] = [
   { value: 'designer', label: 'Designer', icon: Palette },
@@ -35,6 +36,7 @@ const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[]
 
 export default function Settings() {
   const { user, switchRole, updateUser } = useAuth();
+  const apiUrl = API_URL;
   const [fullName, setFullName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState(user?.phone || '');
@@ -47,13 +49,50 @@ export default function Settings() {
     email: string;
     phone?: string;
   } | null>(null);
+  const defaultPreferences = {
+    emailNotifications: true,
+    whatsappNotifications: false,
+    deadlineReminders: true,
+  };
+  const [notificationPrefs, setNotificationPrefs] = useState(defaultPreferences);
   const sanitizeName = (value: string) => value.replace(/\d+/g, '');
 
   useEffect(() => {
     setFullName(user?.name || '');
     setEmail(user?.email || '');
     setPhone(user?.phone || '');
+    const savedPrefs = user?.notificationPreferences || {};
+    setNotificationPrefs({ ...defaultPreferences, ...savedPrefs });
   }, [user]);
+
+  const updateNotificationPrefs = async (nextPrefs: typeof notificationPrefs) => {
+    const previous = notificationPrefs;
+    setNotificationPrefs(nextPrefs);
+    updateUser({ notificationPreferences: nextPrefs });
+    if (!apiUrl) {
+      toast.success('Notification preferences updated locally');
+      return;
+    }
+    try {
+      const response = await authFetch(`${apiUrl}/api/auth/preferences`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextPrefs),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update preferences');
+      }
+      const data = await response.json();
+      const syncedPrefs = data?.preferences ? { ...defaultPreferences, ...data.preferences } : nextPrefs;
+      setNotificationPrefs(syncedPrefs);
+      updateUser({ notificationPreferences: syncedPrefs });
+      toast.success('Notification preferences updated');
+    } catch {
+      setNotificationPrefs(previous);
+      updateUser({ notificationPreferences: previous });
+      toast.error('Failed to update notification preferences');
+    }
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('designhub:requestDefaults');
@@ -180,62 +219,64 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Request Defaults */}
-        <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
-          <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Briefcase className="h-5 w-5" />
-            Request Defaults
-          </h2>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Default Category</Label>
-                <Select value={defaultCategory} onValueChange={setDefaultCategory}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="No default" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="banner">Banner</SelectItem>
-                    <SelectItem value="campaign_or_others">Campaign or others</SelectItem>
-                    <SelectItem value="social_media_creative">Social Media Creative</SelectItem>
-                    <SelectItem value="website_assets">Website Assets</SelectItem>
-                    <SelectItem value="ui_ux">UI/UX</SelectItem>
-                    <SelectItem value="led_backdrop">LED Backdrop</SelectItem>
-                    <SelectItem value="brochure">Brochure</SelectItem>
-                    <SelectItem value="flyer">Flyer</SelectItem>
-                  </SelectContent>
-                </Select>
+        {/* Request Defaults (Designer only) */}
+        {user?.role === 'designer' && (
+          <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
+            <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+              <Briefcase className="h-5 w-5" />
+              Request Defaults
+            </h2>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Default Category</Label>
+                  <Select value={defaultCategory} onValueChange={setDefaultCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="No default" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="banner">Banner</SelectItem>
+                      <SelectItem value="campaign_or_others">Campaign or others</SelectItem>
+                      <SelectItem value="social_media_creative">Social Media Creative</SelectItem>
+                      <SelectItem value="website_assets">Website Assets</SelectItem>
+                      <SelectItem value="ui_ux">UI/UX</SelectItem>
+                      <SelectItem value="led_backdrop">LED Backdrop</SelectItem>
+                      <SelectItem value="brochure">Brochure</SelectItem>
+                      <SelectItem value="flyer">Flyer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Default Urgency</Label>
+                  <Select value={defaultUrgency} onValueChange={setDefaultUrgency}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="intermediate">Intermediate</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
-                <Label>Default Urgency</Label>
-                <Select value={defaultUrgency} onValueChange={setDefaultUrgency}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="normal">Normal</SelectItem>
-                    <SelectItem value="intermediate">Intermediate</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Default Deadline Buffer (days)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={deadlineBufferDays}
+                  onChange={(event) => setDeadlineBufferDays(event.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used to auto-set the deadline when creating a new request.
+                </p>
               </div>
+              <Button onClick={handleSaveDefaults}>Save Defaults</Button>
             </div>
-            <div className="space-y-2">
-              <Label>Default Deadline Buffer (days)</Label>
-              <Input
-                type="number"
-                min="0"
-                value={deadlineBufferDays}
-                onChange={(event) => setDeadlineBufferDays(event.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Used to auto-set the deadline when creating a new request.
-              </p>
-            </div>
-            <Button onClick={handleSaveDefaults}>Save Defaults</Button>
           </div>
-        </div>
+        )}
 
         {/* Role Switcher (Demo) */}
         <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
@@ -275,7 +316,12 @@ export default function Settings() {
                   Receive updates about your tasks via email
                 </p>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={notificationPrefs.emailNotifications}
+                onCheckedChange={(checked) =>
+                  updateNotificationPrefs({ ...notificationPrefs, emailNotifications: checked })
+                }
+              />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -290,7 +336,12 @@ export default function Settings() {
                   </a>
                 </div>
               </div>
-              <Switch />
+              <Switch
+                checked={notificationPrefs.whatsappNotifications}
+                onCheckedChange={(checked) =>
+                  updateNotificationPrefs({ ...notificationPrefs, whatsappNotifications: checked })
+                }
+              />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -300,7 +351,12 @@ export default function Settings() {
                   Get notified before task deadlines
                 </p>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={notificationPrefs.deadlineReminders}
+                onCheckedChange={(checked) =>
+                  updateNotificationPrefs({ ...notificationPrefs, deadlineReminders: checked })
+                }
+              />
             </div>
           </div>
         </div>

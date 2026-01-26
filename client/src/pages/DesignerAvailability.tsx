@@ -344,7 +344,7 @@ export default function DesignerAvailability() {
               <p className="availability-top__kicker">Availability</p>
               <h1 className="availability-top__title">Designer availability</h1>
               <p className="availability-top__subtitle">
-                Staff can quickly see which dates are busy and which tasks are committed.
+                See which dates are busy and which tasks are committed.
               </p>
             </div>
             <div className="availability-top__actions">

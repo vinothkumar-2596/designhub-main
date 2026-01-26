@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
+import { filterTasksForUser } from '@/lib/taskVisibility';
 import { API_URL, authFetch } from '@/lib/api';
 
 const scheduleStatusStyles: Record<ScheduleTask['status'], string> = {
@@ -134,22 +135,27 @@ export default function Tasks() {
 
   const scheduleSourceTasks = useMemo(() => {
     if (!apiUrl || useLocalData) return [];
-    return tasks;
-  }, [apiUrl, tasks, useLocalData]);
+    return filterTasksForUser(tasks, user);
+  }, [apiUrl, tasks, useLocalData, user]);
 
   const scheduleTasks = useMemo(
     () => buildScheduleFromTasks(scheduleSourceTasks),
     [scheduleSourceTasks]
   );
 
+  const visibleTasks = useMemo(
+    () => filterTasksForUser(hydratedTasks, user),
+    [hydratedTasks, user]
+  );
+
   useEffect(() => {
     setScopeLabel('Requests');
-    setItems(buildSearchItemsFromTasks(hydratedTasks));
-  }, [hydratedTasks, setItems, setScopeLabel]);
+    setItems(buildSearchItemsFromTasks(visibleTasks));
+  }, [visibleTasks, setItems, setScopeLabel]);
 
   const filteredTasks = useMemo(
     () =>
-      hydratedTasks.filter((task) =>
+      visibleTasks.filter((task) =>
         matchesSearch(query, [
           task.title,
           task.description,
@@ -160,7 +166,7 @@ export default function Tasks() {
           task.urgency,
         ])
       ),
-    [hydratedTasks, query]
+    [visibleTasks, query]
   );
 
   const designerId = useMemo(
@@ -591,7 +597,7 @@ export default function Tasks() {
             ) : filteredTasks.length > 0 ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {filteredTasks.map((task, index) => (
-                  <div key={task.id} style={{ animationDelay: `${index * 50}ms` }}>
+                  <div key={task.id} className="h-full" style={{ animationDelay: `${index * 50}ms` }}>
                     <TaskCard task={task} />
                   </div>
                 ))}

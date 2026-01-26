@@ -6,6 +6,42 @@ import { spawn } from "child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const normalizeEnvValue = (value) => {
+  if (!value) return "";
+  const trimmed = String(value).trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+};
+
+const normalizeGmailPassword = (value) => {
+  const normalized = normalizeEnvValue(value);
+  return normalized.replace(/\s+/g, "");
+};
+
+const resolveExistingPath = (candidates) => {
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+};
+
+const getLocalLogoPath = () => {
+  const fromEnv = normalizeEnvValue(process.env.BRAND_LOGO_PATH);
+  return resolveExistingPath([
+    fromEnv,
+    path.resolve(__dirname, "../../public/favicon.png"),
+    path.resolve(__dirname, "../../client/public/favicon.png"),
+    path.resolve(__dirname, "../../client/public/logo.png"),
+  ]);
+};
+
 const normalizeWhatsAppNumber = (value) => {
   if (!value) return "";
   const trimmed = String(value).trim();
@@ -258,7 +294,7 @@ Deadline: ${deadlineLabel}
 
 Our team will review your request and keep you updated through the dashboard.
 
-– SMVEC Design Desk`;
+– SMVEC DesignDesk`;
 
   const templateVariables = getTemplateVariables(deadline || new Date());
   return sendMessage({ to, body, templateVariables });
@@ -286,7 +322,7 @@ Status: Completed
 You can download the final files from your dashboard.
 
 Thank you for working with us,  
-SMVEC Design Desk`;
+SMVEC DesignDesk`;
 
   const templateVariables = getTemplateVariables(deadline || new Date());
   return sendMessage({ to, body, templateVariables });
@@ -296,7 +332,7 @@ export const sendCommentNotificationSms = async ({ to, taskTitle, userName, cont
   const safeTitle = clampText(taskTitle || "your request", 50);
   const safeContent = clampText(content || "", 100);
   const nameLabel = userName ? `${userName} commented: ` : "New comment: ";
-  const body = `DesignDesk Update on "${safeTitle}": ${nameLabel}"${safeContent}"${taskUrl ? ` View: ${taskUrl}` : ""}`;
+  const body = `DesignDesk-Official Update on "${safeTitle}": ${nameLabel}"${safeContent}"${taskUrl ? ` View: ${taskUrl}` : ""}`;
   return sendMessage({ to, body });
 };
 
@@ -317,7 +353,7 @@ Status: Started
 
 We’ll keep you informed as progress continues.
 
-– SMVEC Design Desk`;
+– SMVEC DesignDesk`;
   } else if (status.includes("in progress") || status.includes("progress")) {
     body = `Hello ${nameLabel},
 
@@ -330,7 +366,7 @@ Status: In Progress
 Design work is actively underway.  
 You can track updates anytime from your dashboard.
 
-– SMVEC Design Desk`;
+– SMVEC DesignDesk`;
   } else if (status.includes("review")) {
     body = `Hello ${nameLabel},
 
@@ -342,14 +378,14 @@ Status: Submitted for Review
 
 Please review the update in your dashboard and share feedback if required.
 
-– SMVEC Design Desk`;
+– SMVEC DesignDesk`;
   } else {
     body = `Hello ${nameLabel},
 
-DesignDesk Update: The status of your task "${taskTitle}" is now "${newStatus}".
+DesignDesk-Official Update: The status of your task "${taskTitle}" is now "${newStatus}".
 Task ID: ${taskId || "N/A"}
 
-– SMVEC Design Desk`;
+– SMVEC DesignDesk`;
   }
 
   return sendMessage({ to, body });
@@ -372,15 +408,40 @@ Please do not share this code with anyone.
 };
 
 const buildMailer = () => {
-  const user = process.env.GMAIL_SMTP_USER;
-  const pass = process.env.GMAIL_SMTP_PASS;
-  if (!user || !pass) {
+  const smtpHost = normalizeEnvValue(process.env.SMTP_HOST);
+  const smtpPortRaw = normalizeEnvValue(process.env.SMTP_PORT);
+  const smtpSecureRaw = normalizeEnvValue(process.env.SMTP_SECURE);
+  const user =
+    normalizeEnvValue(process.env.SMTP_USER) ||
+    normalizeEnvValue(process.env.GMAIL_SMTP_USER);
+  const passRaw =
+    normalizeEnvValue(process.env.SMTP_PASS) ||
+    normalizeEnvValue(process.env.GMAIL_SMTP_PASS);
+  if (!user || !passRaw) {
+    console.warn("SMTP not configured; missing SMTP/GMAIL user or password.");
     return null;
+  }
+  const pass = smtpHost ? normalizeEnvValue(passRaw) : normalizeGmailPassword(passRaw);
+  if (!smtpHost && passRaw !== pass) {
+    console.warn("SMTP password contained spaces; normalized before sending.");
   }
   const allowSelfSigned = process.env.SMTP_ALLOW_SELF_SIGNED === "true";
   if (allowSelfSigned) {
     console.warn("SMTP_ALLOW_SELF_SIGNED enabled; TLS certificate validation is relaxed.");
   }
+
+  if (smtpHost) {
+    const port = Number(smtpPortRaw || 587);
+    const secure = smtpSecureRaw ? smtpSecureRaw === "true" : port === 465;
+    return nodemailer.createTransport({
+      host: smtpHost,
+      port,
+      secure,
+      auth: { user, pass },
+      tls: { rejectUnauthorized: !allowSelfSigned },
+    });
+  }
+
   return nodemailer.createTransport({
     service: "gmail",
     auth: { user, pass },
@@ -434,8 +495,9 @@ export const sendFinalFilesEmail = async ({
     });
   };
 
-  const brandName = process.env.BRAND_NAME || "DesignDesk";
-  const fromAddress = process.env.GMAIL_SMTP_FROM || process.env.GMAIL_SMTP_USER;
+  const brandName = process.env.BRAND_NAME || "DesignDesk-Official";
+  const fromAddress =
+    normalizeEnvValue(process.env.GMAIL_SMTP_FROM) || normalizeEnvValue(process.env.GMAIL_SMTP_USER);
   const from = fromAddress
     ? fromAddress.includes("<")
       ? fromAddress
@@ -446,12 +508,12 @@ export const sendFinalFilesEmail = async ({
   const fileItems = Array.isArray(files) ? files : [];
   const brandColor = process.env.BRAND_PRIMARY_HEX || "#34429D";
   const brandSoft = process.env.BRAND_PRIMARY_SOFT || "#EEF1FF";
-  const baseUrl = process.env.FRONTEND_URL || "";
+  const baseUrl = normalizeEnvValue(process.env.FRONTEND_URL);
   const logoUrl =
-    process.env.BRAND_LOGO_URL ||
+    normalizeEnvValue(process.env.BRAND_LOGO_URL) ||
     (baseUrl ? `${baseUrl.replace(/\/$/, "")}/favicon.png` : "");
-  const localLogoPath = path.resolve(__dirname, "../../public/favicon.png");
-  const hasLocalLogo = fs.existsSync(localLogoPath);
+  const localLogoPath = getLocalLogoPath();
+  const hasLocalLogo = Boolean(localLogoPath);
   const logoCid = "design-desk-logo";
   const requesterLabel = taskDetails?.requesterName
     ? `${taskDetails.requesterName}${taskDetails.requesterEmail ? ` (${taskDetails.requesterEmail})` : ""}${taskDetails.requesterDepartment ? ` - ${taskDetails.requesterDepartment}` : ""
@@ -645,7 +707,7 @@ export const sendFinalFilesEmail = async ({
     const info = await transporter.sendMail({
       from,
       to,
-      subject: `DesignDesk: Final files uploaded for ${safeTitle}`,
+      subject: `DesignDesk-Official: Final files uploaded for ${safeTitle}`,
       text: lines.join("\n"),
       html,
       attachments: hasLocalLogo
@@ -676,8 +738,9 @@ export const sendPasswordResetEmail = async ({ to, resetUrl }) => {
     return false;
   }
 
-  const brandName = process.env.BRAND_NAME || "DesignDesk";
-  const fromAddress = process.env.GMAIL_SMTP_FROM || process.env.GMAIL_SMTP_USER;
+  const brandName = process.env.BRAND_NAME || "DesignDesk-Official";
+  const fromAddress =
+    normalizeEnvValue(process.env.GMAIL_SMTP_FROM) || normalizeEnvValue(process.env.GMAIL_SMTP_USER);
   const from = fromAddress
     ? fromAddress.includes("<")
       ? fromAddress
@@ -747,3 +810,5 @@ If you did not request this, you can safely ignore this email.`;
     return false;
   }
 };
+
+

@@ -1,5 +1,27 @@
 import Task from "../models/Task.js";
+import User from "../models/User.js";
 import { sendMessage } from "./notifications.js";
+
+const defaultNotificationPreferences = {
+    emailNotifications: true,
+    whatsappNotifications: false,
+    deadlineReminders: true,
+};
+
+const normalizeValue = (value) => (value ? String(value).trim().toLowerCase() : "");
+
+const resolveNotificationPreferences = async ({ userId, email }) => {
+    let user = null;
+    if (userId) {
+        user = await User.findById(userId).select("notificationPreferences");
+    } else if (email) {
+        const normalized = normalizeValue(email);
+        if (normalized) {
+            user = await User.findOne({ email: normalized }).select("notificationPreferences");
+        }
+    }
+    return { ...defaultNotificationPreferences, ...(user?.notificationPreferences || {}) };
+};
 
 const formatDeadline = (date) => {
     return new Date(date).toLocaleDateString("en-US", {
@@ -27,6 +49,14 @@ export const checkAndSendReminders = async () => {
             const remainingMs = new Date(task.deadline).getTime() - now.getTime();
             const remainingHours = Math.round(remainingMs / (1000 * 60 * 60));
 
+            const prefs = await resolveNotificationPreferences({
+                userId: task.requesterId,
+                email: task.requesterEmail,
+            });
+            if (!prefs.deadlineReminders || !prefs.whatsappNotifications) {
+                continue;
+            }
+
             const recipients = [
                 task.requesterPhone,
                 ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
@@ -34,7 +64,7 @@ export const checkAndSendReminders = async () => {
 
             if (recipients.length === 0) continue;
 
-            const body = `Reminder: Your DesignDesk task "${task.title}" is due in ${remainingHours} hours (${formatDeadline(task.deadline)}).`;
+            const body = `Reminder: Your DesignDesk-Official task "${task.title}" is due in ${remainingHours} hours (${formatDeadline(task.deadline)}).`;
 
             console.log(`Sending reminder for task: ${task.title} to ${recipients.join(", ")}`);
 
@@ -55,3 +85,4 @@ export const startReminderService = (intervalMs = 3600000) => { // Default 1 hou
     console.log("Starting reminder service...");
     setInterval(checkAndSendReminders, intervalMs);
 };
+

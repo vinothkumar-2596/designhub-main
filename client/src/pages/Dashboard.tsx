@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
+import { filterTasksForUser } from '@/lib/taskVisibility';
 
 import { API_URL, authFetch } from '@/lib/api';
 
@@ -173,19 +174,17 @@ export default function Dashboard() {
 
   const stats = calculateStats(dateFilteredTasks, user.id, user.role);
 
-  // Filter tasks based on role
-  const getRelevantTasks = () => {
-    switch (user.role) {
-      case 'staff':
-        return dateFilteredTasks.filter((t) => t.requesterId === user.id);
-      case 'treasurer':
-        return dateFilteredTasks.filter((t) => t.approvalStatus === 'pending');
-      default:
-        return dateFilteredTasks;
-    }
-  };
+  const visibleTasks = useMemo(
+    () => filterTasksForUser(dateFilteredTasks, user),
+    [dateFilteredTasks, user]
+  );
 
-  const relevantTasks = getRelevantTasks();
+  const relevantTasks = useMemo(() => {
+    if (user.role === 'treasurer') {
+      return visibleTasks.filter((t) => t.approvalStatus === 'pending');
+    }
+    return visibleTasks;
+  }, [user.role, visibleTasks]);
   const searchFilteredTasks = useMemo(
     () =>
       relevantTasks.filter((task) =>
@@ -794,3 +793,5 @@ export default function Dashboard() {
     </DashboardLayout >
   );
 }
+
+

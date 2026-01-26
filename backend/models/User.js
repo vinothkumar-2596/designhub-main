@@ -25,6 +25,11 @@ const UserSchema = new mongoose.Schema(
     avatar: { type: String },
     passwordResetTokenHash: { type: String },
     passwordResetExpiresAt: { type: Date },
+    notificationPreferences: {
+      emailNotifications: { type: Boolean, default: true },
+      whatsappNotifications: { type: Boolean, default: false },
+      deadlineReminders: { type: Boolean, default: true },
+    },
   },
   { timestamps: true }
 );

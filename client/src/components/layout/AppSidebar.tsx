@@ -25,6 +25,7 @@ import {
   Clock,
   PenLine,
   X,
+  PhoneCall,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -63,7 +64,7 @@ const navItems: NavItem[] = [
     title: 'Designer Availability',
     href: '/designer-availability',
     icon: Calendar,
-    roles: ['staff', 'treasurer'],
+    roles: ['designer', 'staff', 'treasurer', 'admin'],
   },
   {
     title: 'My Requests',
@@ -98,12 +99,26 @@ export function AppSidebar() {
     };
   }, [collapsed, user]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!user) return;
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setCollapsed(true);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [user]);
+
   if (!user) return null;
 
   const quickAccessItems = [
     { label: 'Submission Guidelines', icon: FileText, action: 'open-guidelines' as const },
     { label: 'Edit Profile', icon: UserPen, href: '/settings#profile' },
     { label: 'Search', icon: Search, action: 'open-search' as const },
+    { label: 'Contact Design Coordinate Executive', icon: PhoneCall, href: 'tel:+919003776002' },
   ];
 
   const filteredNavItems = navItems.filter((item) =>
@@ -261,16 +276,27 @@ export function AppSidebar() {
                 );
 
                 if (item.href) {
+                  const isExternal = item.href.startsWith('tel:') || item.href.startsWith('http');
                   return (
                     <div key={item.label} className="relative group">
                       {tooltip}
-                      <Link
-                        to={item.href}
-                        aria-label={item.label}
-                        className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
-                      >
-                        <item.icon className="h-4 w-4" />
-                      </Link>
+                      {isExternal ? (
+                        <a
+                          href={item.href}
+                          aria-label={item.label}
+                          className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                        >
+                          <item.icon className="h-4 w-4" />
+                        </a>
+                      ) : (
+                        <Link
+                          to={item.href}
+                          aria-label={item.label}
+                          className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] transition hover:border-[#C8D7FF] hover:text-[#1E2A5A]"
+                        >
+                          <item.icon className="h-4 w-4" />
+                        </Link>
+                      )}
                     </div>
                   );
                 }
@@ -360,16 +386,27 @@ export function AppSidebar() {
               );
 
               if (item.href) {
+                const isExternal = item.href.startsWith('tel:') || item.href.startsWith('http');
                 return (
                   <div key={`quick-collapsed-${item.label}`} className="relative group">
                     {tooltip}
-                    <Link
-                      to={item.href}
-                      aria-label={item.label}
-                      className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
-                    >
-                      <item.icon className="h-4 w-4" />
-                    </Link>
+                    {isExternal ? (
+                      <a
+                        href={item.href}
+                        aria-label={item.label}
+                        className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </a>
+                    ) : (
+                      <Link
+                        to={item.href}
+                        aria-label={item.label}
+                        className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99]"
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </Link>
+                    )}
                   </div>
                 );
               }
@@ -490,3 +527,4 @@ export function AppSidebar() {
     </aside>
   );
 }
+

@@ -185,7 +185,7 @@ export default function MyRequests() {
         ) : filteredTasks.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {filteredTasks.map((task, index) => (
-              <div key={task.id} style={{ animationDelay: `${index * 50}ms` }}>
+              <div key={task.id} className="h-full" style={{ animationDelay: `${index * 50}ms` }}>
                 <TaskCard task={task} showRequester={false} />
               </div>
             ))}

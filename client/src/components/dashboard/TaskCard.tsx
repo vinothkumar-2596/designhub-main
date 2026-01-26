@@ -1,6 +1,6 @@
 import { Task, TaskStatus } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag } from 'lucide-react';
+import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag, Share2, MessageCircle, Mail, Copy } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
@@ -34,6 +34,12 @@ const categoryLabels: Record<string, string> = {
 export function TaskCard({ task, showRequester = true, showAssignee = false }: TaskCardProps) {
   const { user } = useAuth();
   const taskId = task.id || (task as unknown as { _id?: string })._id || '';
+  const taskUrl =
+    typeof window !== 'undefined' && taskId
+      ? `${window.location.origin}/task/${taskId}`
+      : '';
+  const taskShareText = `DesignDesk task: ${task.title}${taskId ? ` (ID: ${taskId})` : ''}`;
+  const displayTaskId = taskId || 'N/A';
   const status = statusConfig[task.status];
   const chipBase =
     'inline-flex items-center gap-2 rounded-full border border-[#C9D7FF] bg-[#F5F8FF] px-3 py-1 text-xs font-medium text-[#2F3A56] min-w-0 max-w-full';
@@ -92,10 +98,61 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
       : false;
   const isHighlighted = Boolean(user) && !hasViewed;
 
+  const copyToClipboard = async (value: string) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      if (typeof document === 'undefined') return;
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    }
+  };
+
+  const handleNativeShare = async () => {
+    if (!taskUrl) return;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: task.title,
+          text: taskShareText,
+          url: taskUrl
+        });
+        return;
+      } catch {
+        // Ignore user-cancelled share.
+      }
+    }
+    await copyToClipboard(taskUrl);
+  };
+
+  const handleWhatsAppShare = () => {
+    if (!taskUrl) return;
+    const shareUrl = `https://wa.me/?text=${encodeURIComponent(`${taskShareText} ${taskUrl}`)}`;
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleEmailShare = () => {
+    if (!taskUrl) return;
+    const subject = encodeURIComponent(`DesignDesk Task: ${task.title}`);
+    const body = encodeURIComponent(`${taskShareText}\n${taskUrl}`);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
+
   return (
     <div
       className={cn(
-        'group relative rounded-3xl border p-6 bg-white transition-all duration-300 isolate',
+        'group relative rounded-3xl border p-6 bg-white transition-all duration-300 isolate h-full flex flex-col',
         'hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5',
         isHighlighted
           ? 'border-[#C9D7FF] bg-[#F6F8FF]/95 ring-1 ring-[#D9E6FF]'
@@ -127,6 +184,56 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
         <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">
           {task.description}
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span className="uppercase tracking-[0.2em] text-[10px] text-slate-400">Task ID</span>
+          <span
+            className="font-mono text-[12px] font-semibold text-slate-700 max-w-[180px] truncate"
+            title={displayTaskId}
+          >
+            {displayTaskId}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleNativeShare}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5"
+            title="Share"
+            aria-label="Share task"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleWhatsAppShare}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5"
+            title="Share via WhatsApp"
+            aria-label="Share via WhatsApp"
+          >
+            <MessageCircle className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleEmailShare}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5"
+            title="Share via Email"
+            aria-label="Share via Email"
+          >
+            <Mail className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => copyToClipboard(taskUrl)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5"
+            title="Copy link"
+            aria-label="Copy task link"
+          >
+            <Copy className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mb-6 text-xs text-slate-500 font-medium">
@@ -192,3 +299,5 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
     </div>
   );
 }
+
+

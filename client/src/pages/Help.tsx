@@ -182,7 +182,7 @@ const helpItems: HelpItem[] = [
         <div className="mt-3 space-y-2 text-sm">
           <div className="rounded-lg border border-[#D9E6FF] bg-white/80 px-3 py-2">
             <p className="font-semibold text-[#1E2A5A]">Email Support</p>
-            <p>support@designdesk.yourdomain.com</p>
+            <p>support@DesignDesk.yourdomain.com</p>
             <p className="text-xs text-[#7B8CAD]">
               Response time: up to 24 hours on business days.
             </p>
@@ -265,7 +265,7 @@ export default function Help() {
                 as soon as possible.
               </p>
               <Button asChild className="mt-4 rounded-full px-6">
-                <a href="mailto:support@designdesk.yourdomain.com">
+                <a href="mailto:support@DesignDesk.yourdomain.com">
                   Send email
                 </a>
               </Button>
@@ -277,7 +277,7 @@ export default function Help() {
                 Support Email
               </div>
               <p className="mt-2 text-sm text-[#5B6B8A]">
-                support@designdesk.yourdomain.com
+                support@DesignDesk.yourdomain.com
               </p>
               <p className="text-xs text-[#7B8CAD]">
                 Response time: up to 24 hours on business days.
@@ -315,3 +315,5 @@ export default function Help() {
     </DashboardLayout>
   );
 }
+
+

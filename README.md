@@ -1,6 +1,6 @@
-# DesignHub Monorepo
+# DesignDesk-Official Monorepo
 
-Welcome to the DesignHub project. This project is structured as a professional monorepo to separate concerns between the frontend and backend.
+Welcome to the DesignDesk-Official project. This project is structured as a professional monorepo to separate concerns between the frontend and backend.
 
 ## Project Structure
 

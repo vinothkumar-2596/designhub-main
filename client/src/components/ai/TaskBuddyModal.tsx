@@ -31,6 +31,8 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
     const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const shouldAutoScrollRef = useRef(true);
+    const hasInitializedScrollRef = useRef(false);
     const [voiceState, setVoiceState] = useState<'idle' | 'wake' | 'capture'>('idle');
     const wakeRecognizerRef = useRef<any>(null);
     const captureRecognizerRef = useRef<any>(null);
@@ -40,6 +42,9 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
     const [quotaBlocked, setQuotaBlocked] = useState(false);
 
     const [showWelcome, setShowWelcome] = useState(true);
+
+    const getScrollViewport = () =>
+        scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
 
     useEffect(() => {
         if (isOpen && initialMessage) {
@@ -53,6 +58,8 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             setShowWelcome(true);
             autoDraftTriggeredRef.current = false;
             setQuotaBlocked(false);
+            shouldAutoScrollRef.current = true;
+            hasInitializedScrollRef.current = false;
         }
     }, [isOpen, initialMessage]);
 
@@ -60,10 +67,32 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         if (messages.length > 0) {
             setShowWelcome(false);
         }
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        if (!isOpen) return;
+        const viewport = getScrollViewport();
+        if (!viewport) return;
+        const shouldScroll = !hasInitializedScrollRef.current || shouldAutoScrollRef.current;
+        if (shouldScroll) {
+            window.requestAnimationFrame(() => {
+                viewport.scrollTop = viewport.scrollHeight;
+            });
         }
-    }, [messages]);
+        hasInitializedScrollRef.current = true;
+    }, [messages, isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const viewport = getScrollViewport();
+        if (!viewport) return;
+        const handleScroll = () => {
+            const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+            shouldAutoScrollRef.current = distance < 80;
+        };
+        handleScroll();
+        viewport.addEventListener('scroll', handleScroll, { passive: true });
+        return () => {
+            viewport.removeEventListener('scroll', handleScroll);
+        };
+    }, [isOpen]);
 
     useEffect(() => {
         if (!isOpen) return;

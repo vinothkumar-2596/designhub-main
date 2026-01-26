@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import http from 'http';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import connectDB from './lib/db.js';
 import { initSocket } from './socket.js';
 import { attachClientMeta } from './middleware/clientMeta.js';
@@ -9,8 +11,9 @@ import { globalLimiter } from './middleware/rateLimit.js';
 import { requireAuth } from './middleware/auth.js';
 import { auditWriteActions } from './middleware/audit.js';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables (always resolve to backend/.env)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 // Mandatory Database Connection
 connectDB();
@@ -55,6 +58,7 @@ import fileRoutes from './routes/files.js';
 import aiRoutes from './routes/ai.js';
 import activityRoutes from './routes/activity.js';
 import driveAuthRoutes from './routes/drive-auth.js';
+import notificationRoutes from './routes/notifications.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
@@ -62,6 +66,7 @@ app.use('/api/files', fileRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/drive', driveAuthRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.get('/', (req, res) => {
   res.send('Antigravity API is running!');

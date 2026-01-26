@@ -38,6 +38,21 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
+  const [resetPhone, setResetPhone] = useState('');
+  const [otpSessionId, setOtpSessionId] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [isOtpSending, setIsOtpSending] = useState(false);
+  const [isOtpVerifying, setIsOtpVerifying] = useState(false);
+  const rotatingWords = ['simple', 'efficient', 'reliable'];
+  const [wordIndex, setWordIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setWordIndex((prev) => (prev + 1) % rotatingWords.length);
+    }, 1800);
+    return () => window.clearInterval(interval);
+  }, []);
   const [isResetLoading, setIsResetLoading] = useState(false);
   const [isSignupOpen, setIsSignupOpen] = useState(false);
   const [signupEmail, setSignupEmail] = useState('');
@@ -88,12 +103,85 @@ export default function Login() {
 
   const handleOpenReset = () => {
     setResetEmail(email);
+    setResetPhone('');
+    setOtpSessionId('');
+    setOtpCode('');
+    setOtpVerified(false);
     setIsResetOpen(true);
+  };
+
+  const handleSendResetOtp = async () => {
+    if (!resetPhone) {
+      toast.error('Enter your phone number');
+      return;
+    }
+    setIsOtpSending(true);
+    setOtpVerified(false);
+    try {
+      if (!API_URL) {
+        throw new Error('API URL is not configured');
+      }
+      const response = await fetch(`${API_URL}/api/auth/password/otp/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: resetPhone }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to send OTP');
+      }
+      setOtpSessionId(data.sessionId || '');
+      toast.success('OTP sent', { description: 'Check your phone for the code.' });
+    } catch (error) {
+      toast.error('Failed to send OTP');
+    } finally {
+      setIsOtpSending(false);
+    }
+  };
+
+  const handleVerifyResetOtp = async () => {
+    if (!otpSessionId || !otpCode) {
+      toast.error('Enter the OTP');
+      return;
+    }
+    setIsOtpVerifying(true);
+    try {
+      if (!API_URL) {
+        throw new Error('API URL is not configured');
+      }
+      const response = await fetch(`${API_URL}/api/auth/password/otp/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: otpSessionId, otp: otpCode }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'OTP verification failed');
+      }
+      setOtpVerified(true);
+      toast.success('Phone verified');
+    } catch (error) {
+      toast.error('OTP verification failed');
+    } finally {
+      setIsOtpVerifying(false);
+    }
   };
 
   const handleSendResetEmail = async () => {
     if (!resetEmail) {
       toast.error('Enter your email first');
+      return;
+    }
+    if (!resetPhone) {
+      toast.error('Enter your phone number first');
+      return;
+    }
+    if (!otpSessionId || !otpCode) {
+      toast.error('Enter the OTP');
+      return;
+    }
+    if (!otpVerified) {
+      toast.error('Verify OTP to continue');
       return;
     }
 
@@ -105,7 +193,12 @@ export default function Login() {
       const response = await authFetch(`${API_URL}/api/auth/password/forgot`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: resetEmail }),
+        body: JSON.stringify({
+          email: resetEmail,
+          phone: resetPhone,
+          sessionId: otpSessionId,
+          otp: otpCode,
+        }),
       });
       if (!response.ok) {
         throw new Error('Failed to send reset email');
@@ -177,11 +270,24 @@ export default function Login() {
                 </div>
               </div>
 
-              <h2 className="text-4xl font-bold text-sidebar-primary-foreground mb-4 leading-tight">
-                Streamline Your<br />Design Workflow
+              <h2 className="text-4xl font-bold mb-4 leading-tight">
+                <span className="block text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-300 to-slate-100">
+                  Design workflows.
+                </span>
+                <span className="block">
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-300 to-slate-100">
+                    made{' '}
+                  </span>
+                  <span
+                    key={wordIndex}
+                    className="inline-block min-w-[9ch] text-left text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-300 to-slate-100 animate-word-swap"
+                  >
+                    {rotatingWords[wordIndex]}.
+                  </span>
+                </span>
               </h2>
               <p className="text-lg text-sidebar-foreground/80 mb-8 max-w-md">
-                Submit requests, track progress, and collaborate seamlessly with your design team.
+                A single platform to request,<br />track, and collaborate.
               </p>
 
             </div>
@@ -193,7 +299,7 @@ export default function Login() {
         </div>
 
         {/* Right Panel - Login Form */}
-        <div className="relative flex-1 flex items-center justify-center p-8 overflow-hidden bg-[#F6F8FF]/60">
+        <div className="relative flex-1 flex items-center justify-center p-8 overflow-hidden bg-transparent md:bg-[#F6F8FF]/60">
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -top-24 left-10 h-64 w-64 rounded-full bg-[#E6ECFF]/60 blur-3xl" />
             <div className="absolute bottom-10 right-16 h-72 w-72 rounded-full bg-[#DCE9FF]/60 blur-3xl" />
@@ -362,7 +468,7 @@ export default function Login() {
           <DialogHeader>
             <DialogTitle>Reset password</DialogTitle>
             <DialogDescription>
-              We'll send a password reset link to your email.
+              Verify your phone with OTP, then we'll send a reset link to your email.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -377,12 +483,61 @@ export default function Login() {
                 className={glassInputClass}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="reset-phone">Phone number (OTP)</Label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input
+                  id="reset-phone"
+                  type="tel"
+                  value={resetPhone}
+                  onChange={(e) => {
+                    setResetPhone(e.target.value);
+                    setOtpVerified(false);
+                  }}
+                  placeholder="9003776002"
+                  className={glassInputClass}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={glassButtonClass}
+                  onClick={handleSendResetOtp}
+                  disabled={isOtpSending}
+                >
+                  {isOtpSending ? 'Sending...' : 'Send OTP'}
+                </Button>
+              </div>
+            </div>
+            {otpSessionId ? (
+              <div className="space-y-2">
+                <Label htmlFor="reset-otp">OTP</Label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    id="reset-otp"
+                    type="text"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value)}
+                    placeholder="Enter OTP"
+                    className={glassInputClass}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={glassButtonClass}
+                    onClick={handleVerifyResetOtp}
+                    disabled={isOtpVerifying}
+                  >
+                    {isOtpVerifying ? 'Verifying...' : otpVerified ? 'Verified' : 'Verify OTP'}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             <Button
               type="button"
               variant="outline"
               className={glassButtonClass}
               onClick={handleSendResetEmail}
-              disabled={isResetLoading}
+              disabled={isResetLoading || !otpVerified}
             >
               {isResetLoading ? 'Sending...' : 'Send reset link'}
             </Button>
@@ -480,3 +635,5 @@ export default function Login() {
     </>
   );
 }
+
+

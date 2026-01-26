@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate, useNavigate } from 'react-router-dom';
@@ -33,12 +33,26 @@ import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 
 import { API_URL, authFetch } from '@/lib/api';
+import { createSocket } from '@/lib/socket';
+import { cn } from '@/lib/utils';
 
 interface DashboardLayoutProps {
   children: ReactNode;
   headerActions?: ReactNode;
   background?: ReactNode;
 }
+
+type NotificationItem = {
+  id: string;
+  userId?: string;
+  title: string;
+  message: string;
+  type: string;
+  link?: string;
+  linkState?: unknown;
+  createdAt: Date;
+  readAt?: Date | null;
+};
 
 export function DashboardLayout({ children, headerActions, background }: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
@@ -47,13 +61,137 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
   const [storageTick, setStorageTick] = useState(0);
   const [useLocalData, setUseLocalData] = useState(!apiUrl);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [serverNotifications, setServerNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const autoPreviewShownRef = useRef(false);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
+  const lastFetchedAtRef = useRef<string | null>(null);
+  const notificationsSocketRef = useRef<ReturnType<typeof createSocket> | null>(null);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const userId = user?.id || (user as { _id?: string } | null)?._id || '';
+  const useServerNotifications = Boolean(apiUrl);
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const normalizeNotification = useCallback((entry: any): NotificationItem => {
+    const createdAt = entry?.createdAt ? new Date(entry.createdAt) : new Date();
+    const readAt = entry?.readAt ? new Date(entry.readAt) : null;
+    return {
+      id: entry?.id || entry?._id || `${entry?.userId || 'note'}-${createdAt.getTime()}`,
+      userId: entry?.userId,
+      title: entry?.title || 'Notification',
+      message: entry?.message || '',
+      type: entry?.type || 'system',
+      link: entry?.link || '',
+      createdAt,
+      readAt,
+    };
+  }, []);
+
+  const updateLastFetchedAt = useCallback((items: NotificationItem[]) => {
+    if (!items || items.length === 0) return;
+    const latest = items.reduce((max, item) => {
+      const time = new Date(item.createdAt).getTime();
+      return time > max ? time : max;
+    }, lastFetchedAtRef.current ? new Date(lastFetchedAtRef.current).getTime() : 0);
+    if (Number.isFinite(latest) && latest > 0) {
+      lastFetchedAtRef.current = new Date(latest).toISOString();
+    }
+  }, []);
+
+  const mergeNotifications = useCallback((incoming: NotificationItem[], limit = 20) => {
+    if (!incoming || incoming.length === 0) return;
+    setServerNotifications((prev) => {
+      const map = new Map(prev.map((item) => [item.id, item]));
+      incoming.forEach((item) => {
+        map.set(item.id, item);
+      });
+      const merged = Array.from(map.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      return merged.slice(0, limit);
+    });
+  }, []);
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (!apiUrl || !userId) return;
+    try {
+      const response = await authFetch(`${apiUrl}/api/notifications/unread-count`);
+      if (!response.ok) return;
+      const data = await response.json();
+      setUnreadCount(Number(data?.count || 0));
+    } catch (error) {
+      console.error('Notification unread count failed:', error);
+    }
+  }, [apiUrl, userId]);
+
+  const fetchNotifications = useCallback(
+    async (after?: string | null) => {
+      if (!apiUrl || !userId) return;
+      try {
+        const params = new URLSearchParams();
+        if (after) params.set('after', after);
+        params.set('limit', '20');
+        const response = await authFetch(`${apiUrl}/api/notifications?${params.toString()}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!Array.isArray(data)) return;
+        const normalized = data.map(normalizeNotification);
+        if (after) {
+          mergeNotifications(normalized);
+          const newUnread = normalized.filter((item) => !item.readAt).length;
+          if (newUnread > 0) {
+            setUnreadCount((prev) => prev + newUnread);
+          }
+        } else {
+          setServerNotifications(normalized);
+          setUnreadCount(normalized.filter((item) => !item.readAt).length);
+        }
+        updateLastFetchedAt(normalized);
+      } catch (error) {
+        console.error('Notification fetch failed:', error);
+      }
+    },
+    [apiUrl, userId, mergeNotifications, normalizeNotification, updateLastFetchedAt]
+  );
+
+  const markNotificationRead = useCallback(
+    async (note: NotificationItem) => {
+      if (!useServerNotifications || !apiUrl || !note.id || note.readAt) return;
+      const readAt = new Date();
+      setServerNotifications((prev) =>
+        prev.map((item) => (item.id === note.id ? { ...item, readAt } : item))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+      try {
+        await authFetch(`${apiUrl}/api/notifications/${note.id}/read`, {
+          method: 'PATCH',
+        });
+      } catch (error) {
+        console.error('Failed to mark notification read:', error);
+      }
+    },
+    [apiUrl, useServerNotifications]
+  );
+
+  const markAllNotificationsRead = useCallback(async () => {
+    if (!useServerNotifications || !apiUrl || unreadCount === 0) return;
+    const readAt = new Date();
+    setServerNotifications((prev) => prev.map((item) => ({ ...item, readAt })));
+    setUnreadCount(0);
+    try {
+      await authFetch(`${apiUrl}/api/notifications/mark-all-read`, {
+        method: 'PATCH',
+      });
+    } catch (error) {
+      console.error('Failed to mark all notifications read:', error);
+    }
+  }, [apiUrl, unreadCount, useServerNotifications]);
 
   useEffect(() => {
     if (!user) return;
@@ -76,6 +214,74 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [user]);
+
+  useEffect(() => {
+    if (!apiUrl || !userId) {
+      setServerNotifications([]);
+      setUnreadCount(0);
+      lastFetchedAtRef.current = null;
+      return;
+    }
+    lastFetchedAtRef.current = null;
+    fetchNotifications(null);
+    fetchUnreadCount();
+  }, [apiUrl, userId, fetchNotifications, fetchUnreadCount]);
+
+  useEffect(() => {
+    if (!apiUrl || !userId) return;
+    const socket = createSocket(apiUrl);
+    notificationsSocketRef.current = socket;
+
+    const handleConnect = () => {
+      setIsRealtimeConnected(true);
+      socket.emit('notifications:join', { userId });
+      fetchNotifications(lastFetchedAtRef.current);
+      fetchUnreadCount();
+    };
+
+    const handleDisconnect = () => {
+      setIsRealtimeConnected(false);
+    };
+
+    const handleNewNotification = (payload: any) => {
+      const normalized = normalizeNotification(payload);
+      mergeNotifications([normalized]);
+      if (!normalized.readAt) {
+        setUnreadCount((prev) => prev + 1);
+      }
+      updateLastFetchedAt([normalized]);
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('notification:new', handleNewNotification);
+
+    return () => {
+      socket.emit('notifications:leave', { userId });
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('notification:new', handleNewNotification);
+      socket.disconnect();
+      notificationsSocketRef.current = null;
+      setIsRealtimeConnected(false);
+    };
+  }, [apiUrl, userId, fetchNotifications, fetchUnreadCount, mergeNotifications, normalizeNotification, updateLastFetchedAt]);
+
+  useEffect(() => {
+    if (!apiUrl || !userId || isRealtimeConnected) return;
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+    pollingRef.current = setInterval(() => {
+      fetchNotifications(lastFetchedAtRef.current);
+    }, 30000);
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [apiUrl, userId, isRealtimeConnected, fetchNotifications]);
 
   useEffect(() => {
     if (!useLocalData) return;
@@ -128,6 +334,15 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     loadTasks();
   }, [apiUrl]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!contentScrollRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      contentScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, location.search]);
+
   const hydratedTasks = useMemo(() => {
     if (!useLocalData) return tasks;
     if (typeof window === 'undefined') return mockTasks;
@@ -144,7 +359,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
   };
 
   const staffNotifications = useMemo(() => {
-    if (!user || user.role !== 'staff') return [];
+    if (useServerNotifications || !user || user.role !== 'staff') return [];
     return hydratedTasks
       .filter((task) => task.requesterId === user.id)
       .flatMap((task) =>
@@ -173,7 +388,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
       )
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
-  }, [hydratedTasks, user]);
+  }, [hydratedTasks, user, useServerNotifications]);
 
   const buildCommentNotifications = (role: 'designer' | 'treasurer') =>
     hydratedTasks
@@ -211,7 +426,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const designerNotifications = useMemo(() => {
-    if (!user || user.role !== 'designer') return [];
+    if (useServerNotifications || !user || user.role !== 'designer') return [];
     const base = hydratedTasks
       .flatMap((task) => {
         const history = task.changeHistory || [];
@@ -246,10 +461,10 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     return [...base, ...comments]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
-  }, [hydratedTasks, user]);
+  }, [hydratedTasks, user, useServerNotifications]);
 
   const treasurerNotifications = useMemo(() => {
-    if (!user || user.role !== 'treasurer') return [];
+    if (useServerNotifications || !user || user.role !== 'treasurer') return [];
     const base = hydratedTasks
       .flatMap((task) => {
         const history = task.changeHistory || [];
@@ -269,9 +484,9 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     return [...base, ...comments]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
-  }, [hydratedTasks, user]);
+  }, [hydratedTasks, user, useServerNotifications]);
 
-  const activeNotifications =
+  const localNotifications =
     user?.role === 'staff'
       ? staffNotifications
       : user?.role === 'designer'
@@ -280,66 +495,14 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
           ? treasurerNotifications
           : [];
 
+  const activeNotifications = useServerNotifications ? serverNotifications : localNotifications;
   const hasNotifications = activeNotifications.length > 0;
+  const displayUnreadCount = useServerNotifications ? unreadCount : activeNotifications.length;
   const canShowNotifications =
-    user?.role === 'staff' || user?.role === 'designer' || user?.role === 'treasurer';
-
-  useEffect(() => {
-    if (!user || !hasNotifications) return;
-    if (user.role === 'staff') return;
-    if (autoPreviewShownRef.current) return;
-    if (typeof window === 'undefined') return;
-    const lastSeenKey = `designhub.notifications.lastSeen.${user.id}`;
-    const lastSeenValue = Number(window.localStorage.getItem(lastSeenKey) || 0);
-    const latestCreatedAt = Math.max(
-      ...activeNotifications.map((entry: any) =>
-        new Date(entry.createdAt ?? 0).getTime()
-      )
-    );
-    if (!Number.isFinite(latestCreatedAt) || latestCreatedAt <= lastSeenValue) {
-      return;
-    }
-    autoPreviewShownRef.current = true;
-    setNotificationsOpen(true);
-    window.localStorage.setItem(lastSeenKey, String(latestCreatedAt));
-    if (previewTimeoutRef.current) {
-      clearTimeout(previewTimeoutRef.current);
-    }
-    previewTimeoutRef.current = setTimeout(() => {
-      setNotificationsOpen(false);
-      previewTimeoutRef.current = null;
-    }, 10000);
-    return () => {
-      if (previewTimeoutRef.current) {
-        clearTimeout(previewTimeoutRef.current);
-        previewTimeoutRef.current = null;
-      }
-    };
-  }, [hasNotifications, user]);
-
-  useEffect(() => {
-    if (!notificationsOpen) return;
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      if (!notificationsRef.current) return;
-      if (notificationsRef.current.contains(event.target as Node)) return;
-      setNotificationsOpen(false);
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('touchstart', handlePointerDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('touchstart', handlePointerDown);
-    };
-  }, [notificationsOpen]);
-
-  useEffect(() => {
-    const onOpenGuidelines = () => {
-      setIsGuidelinesOpen(true);
-    };
-    window.addEventListener('designhub:open-guidelines', onOpenGuidelines as EventListener);
-    return () =>
-      window.removeEventListener('designhub:open-guidelines', onOpenGuidelines as EventListener);
-  }, []);
+    user?.role === 'staff' ||
+    user?.role === 'designer' ||
+    user?.role === 'treasurer' ||
+    user?.role === 'admin';
 
   const getNotificationTitle = (entry: any) => {
     if (entry.field === 'comment') {
@@ -391,6 +554,78 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     return entry.note || `${entry.userName} updated ${entry.field}`;
   };
 
+  const uiNotifications = useMemo(() => {
+    if (useServerNotifications) {
+      return activeNotifications.map((entry: any) => normalizeNotification(entry));
+    }
+    return activeNotifications.map((entry: any) => ({
+      id: entry.id || `${entry.taskId}-${entry.createdAt}`,
+      title: getNotificationTitle(entry),
+      message: getNotificationNote(entry),
+      type: entry.field || 'task',
+      link: entry.taskId ? `/task/${entry.taskId}` : '',
+      linkState: entry.taskId ? { task: entry.task, highlightChangeId: entry.id } : undefined,
+      createdAt: new Date(entry.createdAt),
+      readAt: null,
+    }));
+  }, [activeNotifications, getNotificationNote, getNotificationTitle, normalizeNotification, useServerNotifications]);
+
+  useEffect(() => {
+    if (!user || !hasNotifications) return;
+    if (user.role === 'staff') return;
+    if (useServerNotifications && displayUnreadCount === 0) return;
+    if (autoPreviewShownRef.current) return;
+    if (typeof window === 'undefined') return;
+    const lastSeenKey = `designhub.notifications.lastSeen.${user.id}`;
+    const lastSeenValue = Number(window.localStorage.getItem(lastSeenKey) || 0);
+    const latestCreatedAt = Math.max(
+      ...uiNotifications.map((entry) => new Date(entry.createdAt ?? 0).getTime())
+    );
+    if (!Number.isFinite(latestCreatedAt) || latestCreatedAt <= lastSeenValue) {
+      return;
+    }
+    autoPreviewShownRef.current = true;
+    setNotificationsOpen(true);
+    window.localStorage.setItem(lastSeenKey, String(latestCreatedAt));
+    if (previewTimeoutRef.current) {
+      clearTimeout(previewTimeoutRef.current);
+    }
+    previewTimeoutRef.current = setTimeout(() => {
+      setNotificationsOpen(false);
+      previewTimeoutRef.current = null;
+    }, 10000);
+    return () => {
+      if (previewTimeoutRef.current) {
+        clearTimeout(previewTimeoutRef.current);
+        previewTimeoutRef.current = null;
+      }
+    };
+  }, [displayUnreadCount, hasNotifications, uiNotifications, useServerNotifications, user]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!notificationsRef.current) return;
+      if (notificationsRef.current.contains(event.target as Node)) return;
+      setNotificationsOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [notificationsOpen]);
+
+  useEffect(() => {
+    const onOpenGuidelines = () => {
+      setIsGuidelinesOpen(true);
+    };
+    window.addEventListener('designhub:open-guidelines', onOpenGuidelines as EventListener);
+    return () =>
+      window.removeEventListener('designhub:open-guidelines', onOpenGuidelines as EventListener);
+  }, []);
+
   const notificationAction = canShowNotifications ? (
     <div className="relative" ref={notificationsRef}>
       <button
@@ -399,10 +634,14 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
         onClick={() => {
           const nextOpen = !notificationsOpen;
           setNotificationsOpen(nextOpen);
+          if (nextOpen && useServerNotifications) {
+            fetchNotifications(lastFetchedAtRef.current);
+            fetchUnreadCount();
+          }
           if (nextOpen && user && typeof window !== 'undefined') {
             const lastSeenKey = `designhub.notifications.lastSeen.${user.id}`;
             const latestCreatedAt = Math.max(
-              ...activeNotifications.map((entry: any) =>
+              ...uiNotifications.map((entry) =>
                 new Date(entry.createdAt ?? 0).getTime()
               )
             );
@@ -414,8 +653,10 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
         aria-label="Notifications"
       >
         <Bell className="h-4 w-4" />
-        {hasNotifications && (
-          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary" />
+        {displayUnreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+            {displayUnreadCount > 99 ? '99+' : displayUnreadCount}
+          </span>
         )}
       </button>
       {notificationsOpen && (
@@ -424,37 +665,58 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
               Notifications
             </span>
-            <button
-              className="text-primary/60 hover:text-primary"
-              onClick={() => setNotificationsOpen(false)}
-              type="button"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              {useServerNotifications && unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllNotificationsRead}
+                  className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/70 hover:text-primary"
+                >
+                  Mark all read
+                </button>
+              )}
+              <button
+                className="text-primary/60 hover:text-primary"
+                onClick={() => setNotificationsOpen(false)}
+                type="button"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-          <div className="mt-3 space-y-2">
-            {activeNotifications.length > 0 ? (
-              activeNotifications.map((entry: any, idx: number) => (
-                <Link
+          <div className="mt-3 space-y-2 max-h-[420px] overflow-y-auto pr-1 scrollbar-brand">
+            {uiNotifications.length > 0 ? (
+              uiNotifications.map((entry, idx) => (
+                <button
                   key={entry.id || `notif-${idx}`}
-                  to={`/task/${entry.taskId}`}
-                  state={{ task: entry.task, highlightChangeId: entry.id }}
-                  onClick={() => setNotificationsOpen(false)}
-                  className="block rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 transition hover:bg-primary/10"
+                  type="button"
+                  onClick={() => {
+                    markNotificationRead(entry);
+                    setNotificationsOpen(false);
+                    if (entry.link) {
+                      navigate(entry.link, entry.linkState ? { state: entry.linkState } : undefined);
+                    }
+                  }}
+                  className={cn(
+                    'block w-full rounded-lg border px-3 py-2 text-left transition',
+                    entry.readAt
+                      ? 'border-primary/10 bg-white/70 hover:bg-white'
+                      : 'border-primary/20 bg-primary/5 hover:bg-primary/10'
+                  )}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-semibold text-foreground">
-                      {getNotificationTitle(entry)}
+                      {entry.title}
                     </p>
                     <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {getNotificationNote(entry)}
+                    {entry.message}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
                   </p>
-                </Link>
+                </button>
               ))
             ) : (
               <div className="rounded-lg border border-dashed border-[#D9E6FF] bg-white/70 px-3 py-4 text-xs text-muted-foreground text-center">
@@ -475,6 +737,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     <DashboardShell
       userInitial={user?.name?.charAt(0) || 'U'}
       background={background}
+      contentScrollRef={contentScrollRef}
       onContentScroll={() => {
         if (previewTimeoutRef.current) {
           clearTimeout(previewTimeoutRef.current);
@@ -606,12 +869,14 @@ function DashboardShell({
   headerActions,
   onContentScroll,
   background,
+  contentScrollRef,
 }: {
   children: ReactNode;
   userInitial: string;
   headerActions?: ReactNode;
   onContentScroll?: () => void;
   background?: ReactNode;
+  contentScrollRef?: React.RefObject<HTMLDivElement>;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
   const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'people' | 'files' | 'categories' | 'more'>('all');
@@ -851,13 +1116,17 @@ function DashboardShell({
         </div>
         <main className="flex-1 min-w-0 flex justify-center">
           <div className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin relative" onScroll={handleContentScroll}>
+            <div
+              ref={contentScrollRef}
+              className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin relative"
+              onScroll={handleContentScroll}
+            >
               {background}
               <div className="relative z-10">
                 <div className="relative z-20">
                   <div className="shrink-0 border-b border-[#D9E6FF] bg-white/60 backdrop-blur-md px-4 md:px-6 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="relative w-full max-w-md" ref={searchContainerRef}>
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="relative w-full md:max-w-md" ref={searchContainerRef}>
                         <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-sm">
                           <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
                           <div className="relative flex-1">
@@ -945,7 +1214,7 @@ function DashboardShell({
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex w-full items-center justify-end gap-2 md:w-auto">
                         {headerActions}
                       </div>
                     </div>
