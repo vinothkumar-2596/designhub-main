@@ -9,10 +9,11 @@ import { requireRole } from "../middleware/auth.js";
 const router = express.Router();
 router.use(requireRole(["staff", "designer", "treasurer"]));
 
+const maxUploadBytes = Number(process.env.UPLOAD_MAX_BYTES || 50 * 1024 * 1024);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: Number(process.env.UPLOAD_MAX_BYTES || 25 * 1024 * 1024),
+    fileSize: maxUploadBytes,
   },
 });
 
@@ -77,6 +78,18 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     console.error("File upload failed:", error?.message || error);
     res.status(500).json({ error: error?.message || "Upload failed." });
   }
+});
+
+router.use((err, _req, res, next) => {
+  if (!err) return next();
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      const maxMb = Math.round(maxUploadBytes / (1024 * 1024));
+      return res.status(413).json({ error: `File too large. Max ${maxMb}MB.` });
+    }
+    return res.status(400).json({ error: err.message || "Upload failed." });
+  }
+  return next(err);
 });
 
 router.post("/ai-process", async (req, res) => {

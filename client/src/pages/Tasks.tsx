@@ -127,6 +127,25 @@ export default function Tasks() {
     loadTasks();
   }, [apiUrl]);
 
+  useEffect(() => {
+    if (!apiUrl) return;
+    const handleNewRequest = (event: Event) => {
+      const payload = (event as CustomEvent).detail;
+      if (!payload) return;
+      const id = payload.id || payload._id;
+      if (!id) return;
+      setTasks((prev) => {
+        if (prev.some((task) => (task.id || (task as any)._id) === id)) {
+          return prev;
+        }
+        const hydrated = hydrateTask({ ...payload, id });
+        return [hydrated, ...prev];
+      });
+    };
+    window.addEventListener('designhub:request:new', handleNewRequest);
+    return () => window.removeEventListener('designhub:request:new', handleNewRequest);
+  }, [apiUrl]);
+
   const hydratedTasks = useMemo(() => {
     if (!useLocalData) return tasks;
     if (typeof window === 'undefined') return mockTasks;

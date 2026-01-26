@@ -12,6 +12,9 @@ const isDesignerTask = (task: Task, user: User) => {
   if (assignedId && assignedId === user.id) return true;
 
   const assignedName = normalizeValue(task.assignedToName);
+  const isUnassigned = !assignedId && !assignedName;
+  if (isUnassigned) return true;
+
   const userName = normalizeValue(user.name);
   const userEmail = normalizeValue(user.email);
   const emailPrefix = userEmail.split('@')[0];

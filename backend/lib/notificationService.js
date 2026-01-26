@@ -5,12 +5,18 @@ const normalizeValue = (value) => (value ? String(value).trim() : "");
 const buildNotificationPayload = (payload) => {
   const userId = normalizeValue(payload.userId);
   if (!userId) return null;
+  const taskId = normalizeValue(payload.taskId);
+  const linkValue = normalizeValue(payload.link);
+  const link =
+    linkValue ||
+    (taskId ? `/task/${taskId}` : "");
   return {
     userId,
     title: normalizeValue(payload.title) || "Notification",
     message: normalizeValue(payload.message) || "",
     type: normalizeValue(payload.type) || "system",
-    link: normalizeValue(payload.link) || "",
+    link,
+    taskId,
     eventId: normalizeValue(payload.eventId) || undefined,
   };
 };

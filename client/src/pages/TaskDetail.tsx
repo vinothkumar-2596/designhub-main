@@ -13,6 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import Lottie from 'lottie-react';
 import {
   Select,
@@ -103,6 +105,14 @@ const normalizeUserRole = (role?: string) =>
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 type UploadStatus = 'uploading' | 'done' | 'error';
 type UploadItem = { id: string; name: string; status: UploadStatus };
+type TaskViewer = {
+  userId: string;
+  userName: string;
+  userRole?: UserRole;
+  userEmail?: string;
+  lastSeenAt?: string;
+  avatar?: string;
+};
 
 const glassPanelClass =
   'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
@@ -136,6 +146,7 @@ export default function TaskDetail() {
   const [typingUsers, setTypingUsers] = useState<Record<string, { name: string; role: UserRole }>>(
     {}
   );
+  const [activeViewers, setActiveViewers] = useState<TaskViewer[]>([]);
   const [newStatus, setNewStatus] = useState<TaskStatus | ''>('');
   const [changeCount, setChangeCount] = useState(initialTask?.changeCount ?? 0);
   const initialApprovalStatus: ApprovalStatus | undefined =
@@ -348,6 +359,13 @@ export default function TaskDetail() {
     const socket = createSocket(apiUrl);
     socketRef.current = socket;
     socket.emit('task:join', { taskId: roomId, userId: user.id });
+    socket.emit('presence:join', {
+      taskId: roomId,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      userEmail: user.email,
+    });
 
     socket.on('comment:typing', (payload: any) => {
       if (!payload || payload.taskId !== roomId) return;
@@ -413,16 +431,32 @@ export default function TaskDetail() {
       setApprovalStatus(hydrated?.approvalStatus);
     });
 
+    socket.on('presence:update', (payload: any) => {
+      if (!payload || payload.taskId !== roomId) return;
+      const viewers = Array.isArray(payload.viewers) ? payload.viewers : [];
+      setActiveViewers(
+        viewers.map((viewer: any) => ({
+          userId: viewer.userId,
+          userName: viewer.userName || 'Someone',
+          userRole: normalizeUserRole(viewer.userRole),
+          userEmail: viewer.userEmail,
+          lastSeenAt: viewer.lastSeenAt,
+        }))
+      );
+    });
+
     return () => {
       clearTyping();
+      socket.emit('presence:leave', { taskId: roomId });
       socket.emit('task:leave', { taskId: roomId, userId: user.id });
       socket.disconnect();
       socketRef.current = null;
       typingTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
       typingTimeoutsRef.current.clear();
       setTypingUsers({});
+      setActiveViewers([]);
     };
-  }, [apiUrl, taskState?.id, taskState?._id, id, user?.id]);
+  }, [apiUrl, taskState?.id, taskState?._id, id, user?.id, user?.name, user?.role]);
 
   const persistTask = (nextTask: typeof taskState, nextHistory?: TaskChange[]) => {
     if (!nextTask || !storageKey) return;
@@ -592,6 +626,14 @@ export default function TaskDetail() {
     });
   };
 
+  const getInitials = (name: string) => {
+    const safe = (name || '').trim();
+    if (!safe) return '?';
+    const parts = safe.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  };
+
   const { topLevelComments, repliesByParent } = useMemo(() => {
     if (!taskState) {
       return { topLevelComments: [], repliesByParent: new Map<string, TaskComment[]>() };
@@ -609,6 +651,14 @@ export default function TaskDetail() {
     const roots = sorted.filter((comment) => !comment.parentId);
     return { topLevelComments: roots, repliesByParent: replyMap };
   }, [taskState]);
+
+  const viewerSummary = useMemo(() => {
+    const visible = activeViewers.slice(0, 4);
+    return {
+      visible,
+      extraCount: Math.max(0, activeViewers.length - visible.length),
+    };
+  }, [activeViewers]);
 
   if (!taskState) {
     return (
@@ -903,6 +953,40 @@ export default function TaskDetail() {
       try {
         const response = await authFetch(`${apiUrl}/api/tasks/${id}`);
         if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Session expired. Please sign in again.');
+          }
+          if (response.status === 403 || response.status === 404) {
+            try {
+              const listResponse = await authFetch(`${apiUrl}/api/tasks`);
+              if (listResponse.ok) {
+                const listData = await listResponse.json();
+                const match = listData.find(
+                  (item: any) => (item?.id || item?._id) === id
+                );
+                if (match) {
+                  const hydrated = hydrateTask({
+                    ...match,
+                    id: match.id || match._id,
+                  });
+                  setTaskState(hydrated);
+                  setChangeHistory(hydrated?.changeHistory ?? []);
+                  setChangeCount(hydrated?.changeCount ?? 0);
+                  setApprovalStatus(hydrated?.approvalStatus);
+                  setEditedDescription(hydrated?.description ?? '');
+                  setEditedDeadline(hydrated ? format(hydrated.deadline, 'yyyy-MM-dd') : '');
+                  setDeadlineRequest(
+                    hydrated?.proposedDeadline
+                      ? format(hydrated.proposedDeadline, 'yyyy-MM-dd')
+                      : ''
+                  );
+                  return;
+                }
+              }
+            } catch {
+              // ignore fallback errors
+            }
+          }
           throw new Error('Task not found');
         }
         const data = await response.json();
@@ -920,6 +1004,10 @@ export default function TaskDetail() {
           hydrated?.proposedDeadline ? format(hydrated.proposedDeadline, 'yyyy-MM-dd') : ''
         );
       } catch (error) {
+        const message = error instanceof Error ? error.message : 'Task not found';
+        if (message.toLowerCase().includes('session expired')) {
+          toast.error(message);
+        }
         if (!initialTask) {
           setTaskState(undefined);
         }
@@ -1012,7 +1100,20 @@ export default function TaskDetail() {
           }),
         });
         if (!response.ok) {
-          throw new Error('Failed to add comment');
+          let errorMessage = 'Failed to add comment.';
+          if (response.status === 401) {
+            errorMessage = 'Session expired. Please sign in again.';
+          } else {
+            try {
+              const errData = await response.json();
+              if (errData?.error) {
+                errorMessage = errData.error;
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
+          throw new Error(errorMessage);
         }
         const updated = await response.json();
         const hydrated = hydrateTask(updated);
@@ -1021,8 +1122,9 @@ export default function TaskDetail() {
         clearTyping();
         toast.success('Comment added');
         return;
-      } catch {
-        toast.error('Failed to add comment');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to add comment.';
+        toast.error('Failed to add comment', { description: message });
         return;
       }
     }
@@ -1918,8 +2020,58 @@ export default function TaskDetail() {
     );
   };
 
+  const presenceHeader =
+    user?.role === 'designer' && viewerSummary.visible.length > 0 ? (
+      <div className="flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-1.5 shadow-sm">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Currently viewing
+        </span>
+        <div className="flex -space-x-2">
+          {viewerSummary.visible.map((viewer) => {
+            const isSelf = viewer.userId === user?.id;
+            const labelRole =
+              viewer.userRole && roleLabels[viewer.userRole]
+                ? roleLabels[viewer.userRole]
+                : viewer.userRole || 'User';
+            return (
+              <Tooltip key={viewer.userId}>
+                <TooltipTrigger asChild>
+                  <Avatar
+                    className={cn(
+                      'h-6 w-6 border-2 border-white shadow-sm bg-white/90',
+                      isSelf && 'ring-2 ring-primary/40'
+                    )}
+                  >
+                    <AvatarImage src={viewer.avatar} alt={viewer.userName} />
+                    <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-semibold">
+                      {getInitials(viewer.userName)}
+                    </AvatarFallback>
+                  </Avatar>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="end">
+                  <div className="text-xs font-semibold">
+                    {viewer.userName}
+                    {isSelf ? ' (you)' : ''}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">{labelRole}</div>
+                  {viewer.userEmail && (
+                    <div className="text-[11px] text-muted-foreground">{viewer.userEmail}</div>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+          {viewerSummary.extraCount > 0 && (
+            <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[#E6F1FF] text-[9px] font-semibold text-primary shadow-sm">
+              +{viewerSummary.extraCount}
+            </div>
+          )}
+        </div>
+      </div>
+    ) : null;
+
   return (
-    <DashboardLayout>
+    <DashboardLayout headerActions={presenceHeader}>
       <div className="space-y-6 max-w-4xl select-none">
         {/* Back Button */}
         <Button

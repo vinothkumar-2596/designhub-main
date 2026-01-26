@@ -7,6 +7,7 @@ const NotificationSchema = new mongoose.Schema(
     message: { type: String, required: true },
     type: { type: String, default: "system" },
     link: { type: String, default: "" },
+    taskId: { type: String, default: "" },
     readAt: { type: Date, default: null },
     deletedAt: { type: Date, default: null },
     eventId: { type: String, default: "" },

@@ -19,7 +19,7 @@ import { getSocket } from "../socket.js";
 import { requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
-const TASK_ROLES = ["staff", "designer", "treasurer"];
+const TASK_ROLES = ["staff", "designer", "treasurer", "admin"];
 router.use(requireRole(TASK_ROLES));
 
 const getUserId = (req) => (req.user?._id ? req.user._id.toString() : "");
@@ -38,7 +38,7 @@ const emitNotification = (notification) => {
   if (!io) return;
   const data = typeof notification.toJSON === "function" ? notification.toJSON() : notification;
   if (!data?.userId) return;
-  io.to(`user:${data.userId}`).emit("notification:new", data);
+  io.to(String(data.userId)).emit("notification:new", data);
 };
 
 const emitNotifications = (notifications) => {
@@ -123,6 +123,22 @@ const ensureTaskAccess = async (req, res, next) => {
     if (!task) {
       return res.status(404).json({ error: "Task not found." });
     }
+    const isReadOnly =
+      req.method === "GET" ||
+      req.method === "HEAD";
+    const isUnassigned =
+      (!task.assignedToId || task.assignedToId === "") &&
+      (!task.assignedToName || task.assignedToName === "");
+    const isCommentWrite =
+      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/comments");
+    if (req.user?.role === "designer" && isReadOnly && isUnassigned) {
+      req.task = task;
+      return next();
+    }
+    if (req.user?.role === "designer" && isUnassigned && isCommentWrite) {
+      req.task = task;
+      return next();
+    }
     if (!canAccessTask(task, req.user)) {
       return res.status(403).json({ error: "Forbidden." });
     }
@@ -171,6 +187,12 @@ router.get("/", async (req, res) => {
       if (emailPrefix) {
         orClauses.push({ assignedToName: new RegExp(escapeRegExp(emailPrefix), "i") });
       }
+      orClauses.push({
+        $and: [
+          { $or: [{ assignedToId: "" }, { assignedToId: null }, { assignedToId: { $exists: false } }] },
+          { $or: [{ assignedToName: "" }, { assignedToName: null }, { assignedToName: { $exists: false } }] },
+        ],
+      });
       query.$or = orClauses;
     } else if (userRole !== "treasurer" && userRole !== "admin") {
       return res.status(403).json({ error: "Forbidden." });
@@ -209,6 +231,27 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
       requesterEmail,
       changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
     };
+    const dedupeWindowMs = Number(process.env.TASK_DEDUPE_WINDOW_MS || 120000);
+    const dedupeSince = new Date(Date.now() - dedupeWindowMs);
+    const baseDedupeQuery = {
+      title: payload.title,
+      description: payload.description,
+      category: payload.category,
+      urgency: payload.urgency,
+      deadline: payload.deadline,
+      createdAt: { $gte: dedupeSince },
+    };
+    const dedupeQuery = requesterId
+      ? { ...baseDedupeQuery, requesterId }
+      : requesterEmail
+        ? { ...baseDedupeQuery, requesterEmail }
+        : null;
+    if (dedupeQuery) {
+      const existingTask = await Task.findOne(dedupeQuery).sort({ createdAt: -1 });
+      if (existingTask) {
+        return res.status(200).json(existingTask);
+      }
+    }
     const task = await Task.create(payload);
     req.auditTargetId = task.id || task._id?.toString?.() || "";
 
@@ -220,7 +263,9 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
       userName: requesterName || ""
     });
 
+    const io = getSocket();
     const taskId = task.id || task._id?.toString?.();
+    console.log("Request created:", taskId);
     const taskLink = buildTaskLink(taskId);
     const createdEventId = `task:${taskId}:created`;
     getUserIdsByRole(["treasurer"]).then((userIds) => {
@@ -230,6 +275,7 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
         message: `Submitted by ${requesterName || "Staff"}`,
         type: "task",
         link: taskLink,
+        taskId,
         eventId: createdEventId,
       }).then(emitNotifications);
     }).catch((error) => {
@@ -243,6 +289,7 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
         message: "Your request has been submitted.",
         type: "task",
         link: taskLink,
+        taskId,
         eventId: `requester:${taskId}:created`,
       })
         .then(emitNotification)
@@ -258,12 +305,36 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
         message: `${requesterName || "Staff"} assigned a task to you.`,
         type: "task",
         link: taskLink,
+        taskId,
         eventId: `assign:${taskId}:${task.assignedToId}:${now.toISOString()}`,
       })
         .then(emitNotification)
         .catch((error) => {
           console.error("Notification error (assign on create):", error?.message || error);
         });
+    }
+
+    if (io) {
+      const payloadTask = typeof task.toJSON === "function" ? task.toJSON() : task;
+      const targetRoom = task.assignedToId ? String(task.assignedToId) : "designers:queue";
+      io.to(targetRoom).emit("request:new", payloadTask);
+      console.log(`Emitted request:new to room: ${targetRoom}`);
+    }
+
+    if (!task.assignedToId) {
+      getUserIdsByRole(["designer"]).then((userIds) => {
+        if (userIds.length === 0) return;
+        return createNotificationsForUsers(userIds, {
+          title: `New request: ${task.title}`,
+          message: `Submitted by ${requesterName || "Staff"}`,
+          type: "task",
+          link: taskLink,
+          taskId,
+          eventId: `queue:${taskId}:created`,
+        }).then(emitNotifications);
+      }).catch((error) => {
+        console.error("Notification error (designer queue):", error?.message || error);
+      });
     }
 
     const baseUrl = process.env.FRONTEND_URL || "";
@@ -491,15 +562,16 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
         const commentEventId = createdComment._id
           ? `comment:${createdComment._id.toString()}`
           : undefined;
-        createNotificationsForUsers(finalRecipients, {
-          title: `New message on ${task.title}`,
-          message: `${userName || "Staff"}: ${snippet}`,
-          type: "comment",
-          link: buildTaskLink(task.id || task._id?.toString?.()),
-          eventId: commentEventId,
-        })
-          .then(emitNotifications)
-          .catch((error) => {
+          createNotificationsForUsers(finalRecipients, {
+            title: `New message on ${task.title}`,
+            message: `${userName || "Staff"}: ${snippet}`,
+            type: "comment",
+            link: buildTaskLink(task.id || task._id?.toString?.()),
+            taskId: task.id || task._id?.toString?.(),
+            eventId: commentEventId,
+          })
+            .then(emitNotifications)
+            .catch((error) => {
             console.error("Notification error (comment):", error?.message || error);
           });
       }
@@ -618,19 +690,20 @@ router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
     userName: req.user?.name || userName || ""
   });
 
-  if (assignedToId) {
-    const taskId = task.id || task._id?.toString?.();
-    const taskLink = buildTaskLink(taskId);
-    createNotification({
-      userId: assignedToId,
-      title: `Task assigned: ${task.title}`,
-      message: `${req.user?.name || userName || "Staff"} assigned this task to you.`,
-      type: "task",
-      link: taskLink,
-      eventId: `assign:${taskId}:${assignedToId}:${new Date().toISOString()}`,
-    })
-      .then(emitNotification)
-      .catch((error) => {
+    if (assignedToId) {
+      const taskId = task.id || task._id?.toString?.();
+      const taskLink = buildTaskLink(taskId);
+      createNotification({
+        userId: assignedToId,
+        title: `Task assigned: ${task.title}`,
+        message: `${req.user?.name || userName || "Staff"} assigned this task to you.`,
+        type: "task",
+        link: taskLink,
+        taskId,
+        eventId: `assign:${taskId}:${assignedToId}:${new Date().toISOString()}`,
+      })
+        .then(emitNotification)
+        .catch((error) => {
         console.error("Notification error (assign):", error?.message || error);
       });
   }
@@ -840,6 +913,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
         message: `${resolvedUserName || "Designer"} shared final deliverables.`,
         type: "file",
         link: taskLink,
+        taskId,
         eventId: `final:${taskId}:${changeStamp}`,
       });
     }
@@ -853,6 +927,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
           message: `${resolvedUserName || "Designer"} marked this task as completed.`,
           type: "task",
           link: taskLink,
+          taskId,
           eventId: `status:${taskId}:${nextStatus}:${changeStamp}`,
         });
       }
@@ -867,6 +942,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
           message: deadlineEntry.note || "Your deadline request was approved.",
           type: "task",
           link: taskLink,
+          taskId,
           eventId: `deadline:${taskId}:${decision}:${changeStamp}`,
         });
       } else if (decision.includes("rejected")) {
@@ -875,6 +951,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
           message: deadlineEntry.note || "Your deadline request was rejected.",
           type: "task",
           link: taskLink,
+          taskId,
           eventId: `deadline:${taskId}:${decision}:${changeStamp}`,
         });
       }
@@ -887,6 +964,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
         message: emergencyEntry.note || "Emergency request updated.",
         type: "task",
         link: taskLink,
+        taskId,
         eventId: `emergency:${taskId}:${changeStamp}`,
       });
     }
@@ -899,6 +977,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
         message: approvalEntry.note || `Treasurer ${decision} this request.`,
         type: "task",
         link: taskLink,
+        taskId,
         eventId: `approval:${taskId}:${decision}:${changeStamp}`,
       };
       if (requesterUserId) notifyUser(requesterUserId, payload);

@@ -3,6 +3,8 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Badge } from '@/components/ui/badge';
 import { mockTasks } from '@/data/mockTasks';
 import { mergeLocalTasks } from '@/lib/taskStorage';
+import { filterTasksForUser } from '@/lib/taskVisibility';
+import { useAuth } from '@/contexts/AuthContext';
 import { Search } from 'lucide-react';
 import {
   addDays,
@@ -32,7 +34,8 @@ const priorityClasses: Record<ScheduleTask['priority'], string> = {
 
 export default function DesignerAvailability() {
   const apiUrl = API_URL;
-  const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
+  const { user } = useAuth();
+  const [rawTasks, setRawTasks] = useState<any[]>([]);
   const [query, setQuery] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollTrackRef = useRef<HTMLDivElement | null>(null);
@@ -44,14 +47,29 @@ export default function DesignerAvailability() {
     clientWidth: 0,
     trackWidth: 0,
   });
-  const getLocalSchedule = () =>
-    buildScheduleFromTasks(
-      typeof window === 'undefined' ? mockTasks : mergeLocalTasks(mockTasks)
+  const normalizeDesignerAssignments = (tasks: any[]) => {
+    if (!user || user.role !== 'designer') return tasks;
+    return tasks.map((task) => {
+      const assignedId = task?.assignedToId || task?.assignedTo || '';
+      const assignedName = task?.assignedToName || '';
+      if (!assignedId && !assignedName) {
+        return { ...task, assignedToId: user.id };
+      }
+      return task;
+    });
+  };
+
+  const getLocalTasks = () =>
+    normalizeDesignerAssignments(
+      filterTasksForUser(
+        typeof window === 'undefined' ? mockTasks : mergeLocalTasks(mockTasks),
+        user
+      )
     );
 
   useEffect(() => {
     if (!apiUrl) {
-      setScheduleTasks(getLocalSchedule());
+      setRawTasks(getLocalTasks());
       return;
     }
     let isActive = true;
@@ -63,17 +81,41 @@ export default function DesignerAvailability() {
         }
         const data = await response.json();
         if (!isActive) return;
-        setScheduleTasks(buildScheduleFromTasks(data));
+        const visibleTasks = filterTasksForUser(data, user);
+        setRawTasks(normalizeDesignerAssignments(visibleTasks));
       } catch {
         if (!isActive) return;
-        setScheduleTasks(getLocalSchedule());
+        setRawTasks(getLocalTasks());
       }
     };
     loadSchedule();
     return () => {
       isActive = false;
     };
+  }, [apiUrl, user]);
+
+  useEffect(() => {
+    if (!apiUrl) return;
+    const handleNewRequest = (event: Event) => {
+      const payload = (event as CustomEvent).detail;
+      if (!payload) return;
+      const id = payload.id || payload._id;
+      if (!id) return;
+      setRawTasks((prev) => {
+        if (prev.some((task) => (task.id || task._id) === id)) {
+          return prev;
+        }
+        return [payload, ...prev];
+      });
+    };
+    window.addEventListener('designhub:request:new', handleNewRequest);
+    return () => window.removeEventListener('designhub:request:new', handleNewRequest);
   }, [apiUrl]);
+
+  const scheduleTasks = useMemo(
+    () => buildScheduleFromTasks(rawTasks),
+    [rawTasks]
+  );
 
   const designerId = useMemo(
     () => getDefaultDesignerId(scheduleTasks),

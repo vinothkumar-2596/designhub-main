@@ -50,6 +50,7 @@ type NotificationItem = {
   type: string;
   link?: string;
   linkState?: unknown;
+  taskId?: string;
   createdAt: Date;
   readAt?: Date | null;
 };
@@ -81,13 +82,31 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
   const normalizeNotification = useCallback((entry: any): NotificationItem => {
     const createdAt = entry?.createdAt ? new Date(entry.createdAt) : new Date();
     const readAt = entry?.readAt ? new Date(entry.readAt) : null;
+    const rawLink = entry?.link || '';
+    const rawTaskId = entry?.taskId || entry?.taskID || entry?.task_id || '';
+    let normalizedLink = rawLink;
+    if (normalizedLink && normalizedLink.startsWith('http')) {
+      try {
+        const url = new URL(normalizedLink);
+        normalizedLink = `${url.pathname}${url.search}${url.hash}`;
+      } catch {
+        // ignore invalid URL
+      }
+    }
+    const inferredTaskId =
+      rawTaskId ||
+      (normalizedLink.startsWith('/task/')
+        ? normalizedLink.replace('/task/', '').split(/[?#]/)[0]
+        : '');
+    const resolvedLink = normalizedLink || (inferredTaskId ? `/task/${inferredTaskId}` : '');
     return {
       id: entry?.id || entry?._id || `${entry?.userId || 'note'}-${createdAt.getTime()}`,
       userId: entry?.userId,
       title: entry?.title || 'Notification',
       message: entry?.message || '',
       type: entry?.type || 'system',
-      link: entry?.link || '',
+      link: resolvedLink,
+      taskId: inferredTaskId || undefined,
       createdAt,
       readAt,
     };
@@ -234,6 +253,13 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
 
     const handleConnect = () => {
       setIsRealtimeConnected(true);
+      console.log('Socket connected');
+      socket.emit('join', { userId });
+      console.log('Joined room', userId);
+      if (user?.role === 'designer') {
+        socket.emit('join', { userId: 'designers:queue' });
+        console.log('Joined room designers:queue');
+      }
       socket.emit('notifications:join', { userId });
       fetchNotifications(lastFetchedAtRef.current);
       fetchUnreadCount();
@@ -252,20 +278,29 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
       updateLastFetchedAt([normalized]);
     };
 
+    const handleNewRequest = (payload: any) => {
+      console.log('Received request:new');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('designhub:request:new', { detail: payload }));
+      }
+    };
+
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('notification:new', handleNewNotification);
+    socket.on('request:new', handleNewRequest);
 
     return () => {
       socket.emit('notifications:leave', { userId });
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('notification:new', handleNewNotification);
+      socket.off('request:new', handleNewRequest);
       socket.disconnect();
       notificationsSocketRef.current = null;
       setIsRealtimeConnected(false);
     };
-  }, [apiUrl, userId, fetchNotifications, fetchUnreadCount, mergeNotifications, normalizeNotification, updateLastFetchedAt]);
+  }, [apiUrl, userId, user?.role, fetchNotifications, fetchUnreadCount, mergeNotifications, normalizeNotification, updateLastFetchedAt]);
 
   useEffect(() => {
     if (!apiUrl || !userId || isRealtimeConnected) return;
@@ -348,6 +383,72 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     if (typeof window === 'undefined') return mockTasks;
     return mergeLocalTasks(mockTasks);
   }, [useLocalData, storageTick, tasks]);
+
+  const taskIndex = useMemo(() => {
+    const byId = new Map<string, any>();
+    const byTitle = new Map<string, any>();
+    hydratedTasks.forEach((task) => {
+      const id = String(task?.id || task?._id || '').trim();
+      if (id) {
+        byId.set(id, task);
+      }
+      const title = String(task?.title || '').trim();
+      if (title) {
+        const key = title.toLowerCase();
+        if (!byTitle.has(key)) {
+          byTitle.set(key, task);
+        }
+      }
+    });
+    return { byId, byTitle };
+  }, [hydratedTasks]);
+
+  const extractTitleFromNotification = useCallback((title: string) => {
+    if (!title) return '';
+    const colonIndex = title.indexOf(':');
+    if (colonIndex >= 0 && colonIndex < title.length - 1) {
+      return title.slice(colonIndex + 1).trim();
+    }
+    const onMatch = title.match(/message on\s(.+)$/i);
+    if (onMatch && onMatch[1]) {
+      return onMatch[1].trim();
+    }
+    return '';
+  }, []);
+
+  const resolveNotificationTarget = useCallback(
+    (entry: NotificationItem) => {
+      let link = entry.link || '';
+      let taskId = entry.taskId || '';
+      if (link && !link.startsWith('/') && !link.startsWith('http')) {
+        link = `/${link}`;
+      }
+      if (!taskId && link) {
+        const match = link.match(/\/task\/([^/?#]+)/);
+        if (match && match[1]) {
+          taskId = match[1];
+        }
+      }
+      let task = taskId ? taskIndex.byId.get(taskId) : undefined;
+      if (!task) {
+        const candidate = extractTitleFromNotification(entry.title || '');
+        if (candidate) {
+          task = taskIndex.byTitle.get(candidate.toLowerCase());
+          if (task) {
+            taskId = String(task?.id || task?._id || taskId);
+          }
+        }
+      }
+      if (!task && taskId) {
+        task = taskIndex.byId.get(taskId);
+      }
+      if (!link && taskId) {
+        link = `/task/${taskId}`;
+      }
+      return { link, taskId, task };
+    },
+    [extractTitleFromNotification, taskIndex]
+  );
 
   const getLatestEntry = (entries: any[]) => {
     if (entries.length === 0) return null;
@@ -555,20 +656,38 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
   };
 
   const uiNotifications = useMemo(() => {
-    if (useServerNotifications) {
-      return activeNotifications.map((entry: any) => normalizeNotification(entry));
-    }
-    return activeNotifications.map((entry: any) => ({
-      id: entry.id || `${entry.taskId}-${entry.createdAt}`,
-      title: getNotificationTitle(entry),
-      message: getNotificationNote(entry),
-      type: entry.field || 'task',
-      link: entry.taskId ? `/task/${entry.taskId}` : '',
-      linkState: entry.taskId ? { task: entry.task, highlightChangeId: entry.id } : undefined,
-      createdAt: new Date(entry.createdAt),
-      readAt: null,
-    }));
-  }, [activeNotifications, getNotificationNote, getNotificationTitle, normalizeNotification, useServerNotifications]);
+    const baseNotifications = useServerNotifications
+      ? activeNotifications.map((entry: any) => normalizeNotification(entry))
+      : activeNotifications.map((entry: any) => ({
+          id: entry.id || `${entry.taskId}-${entry.createdAt}`,
+          title: getNotificationTitle(entry),
+          message: getNotificationNote(entry),
+          type: entry.field || 'task',
+          link: entry.taskId ? `/task/${entry.taskId}` : '',
+          linkState: entry.taskId ? { task: entry.task, highlightChangeId: entry.id } : undefined,
+          createdAt: new Date(entry.createdAt),
+          readAt: null,
+        }));
+
+    return baseNotifications.map((entry) => {
+      const resolved = resolveNotificationTarget(entry);
+      const linkState =
+        entry.linkState ?? (resolved.task ? { task: resolved.task } : undefined);
+      return {
+        ...entry,
+        link: resolved.link || entry.link,
+        taskId: resolved.taskId || entry.taskId,
+        linkState,
+      };
+    });
+  }, [
+    activeNotifications,
+    getNotificationNote,
+    getNotificationTitle,
+    normalizeNotification,
+    resolveNotificationTarget,
+    useServerNotifications,
+  ]);
 
   useEffect(() => {
     if (!user || !hasNotifications) return;
