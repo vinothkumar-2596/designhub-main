@@ -68,11 +68,11 @@ const helpItems: HelpItem[] = [
           </li>
           <li>Review your information and click Submit.</li>
         </ol>
-        <div className="mt-3 rounded-xl border border-[#E3EBFF] bg-[#F6F9FF] p-3">
-          <p className="text-sm font-semibold text-[#1E2A5A]">
+        <div className="mt-3 rounded-xl border border-[#E3EBFF] bg-[#F6F9FF] p-3 dark:border-border dark:bg-slate-900/60">
+          <p className="text-sm font-semibold text-[#1E2A5A] dark:text-slate-100">
             Best practices for submission
           </p>
-          <ul className="mt-2 list-disc space-y-1 pl-5">
+          <ul className="mt-2 list-disc space-y-1 pl-5 dark:text-slate-300">
             <li>Provide complete details and upload all references.</li>
             <li>Give designers at least 3 working days.</li>
             <li>Avoid vague instructions; follow the notices for standards.</li>
@@ -104,31 +104,31 @@ const helpItems: HelpItem[] = [
     icon: AlarmClock,
     body: (
       <div className="space-y-2">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-          <p className="font-semibold text-amber-700">Pending</p>
-          <p className="text-xs text-amber-700/80">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-700/50 dark:bg-amber-900/30">
+          <p className="font-semibold text-amber-700 dark:text-amber-200">Pending</p>
+          <p className="text-xs text-amber-700/80 dark:text-amber-200/80">
             Task submitted and awaiting action. No designer assigned yet.
           </p>
         </div>
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
-          <p className="font-semibold text-blue-700">In Progress</p>
-          <p className="text-xs text-blue-700/80">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-700/50 dark:bg-blue-900/30">
+          <p className="font-semibold text-blue-700 dark:text-blue-200">In Progress</p>
+          <p className="text-xs text-blue-700/80 dark:text-blue-200/80">
             A designer has started working on your request.
           </p>
         </div>
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-          <p className="font-semibold text-emerald-700">Completed</p>
-          <p className="text-xs text-emerald-700/80">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-700/50 dark:bg-emerald-900/30">
+          <p className="font-semibold text-emerald-700 dark:text-emerald-200">Completed</p>
+          <p className="text-xs text-emerald-700/80 dark:text-emerald-200/80">
             Design work is finished and final files are uploaded.
           </p>
         </div>
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
-          <p className="font-semibold text-rose-700">Overdue</p>
-          <p className="text-xs text-rose-700/80">
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 dark:border-rose-700/50 dark:bg-rose-900/30">
+          <p className="font-semibold text-rose-700 dark:text-rose-200">Overdue</p>
+          <p className="text-xs text-rose-700/80 dark:text-rose-200/80">
             The expected deadline has passed without completion.
           </p>
         </div>
-        <p className="text-xs text-[#7B8CAD]">
+        <p className="text-xs text-[#7B8CAD] dark:text-slate-400">
           If a request seems stuck for too long, contact support or your department
           supervisor.
         </p>
@@ -155,7 +155,7 @@ const helpItems: HelpItem[] = [
           <li>Status change alerts (Approved / In Progress / Completed).</li>
           <li>Deadline reminders and overdue alerts.</li>
         </ul>
-        <p className="text-xs text-[#7B8CAD]">
+        <p className="text-xs text-[#7B8CAD] dark:text-slate-400">
           Update notification preferences in Settings.
         </p>
       </>
@@ -180,17 +180,17 @@ const helpItems: HelpItem[] = [
       <>
         <p>Contact DesignDesk Support for help or urgent issues.</p>
         <div className="mt-3 space-y-2 text-sm">
-          <div className="rounded-lg border border-[#D9E6FF] bg-white/80 px-3 py-2">
-            <p className="font-semibold text-[#1E2A5A]">Email Support</p>
+          <div className="rounded-lg border border-[#D9E6FF] bg-white/80 px-3 py-2 dark:border-border dark:bg-slate-900/60">
+            <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Email Support</p>
             <p>support@DesignDesk.yourdomain.com</p>
-            <p className="text-xs text-[#7B8CAD]">
+            <p className="text-xs text-[#7B8CAD] dark:text-slate-400">
               Response time: up to 24 hours on business days.
             </p>
           </div>
-          <div className="rounded-lg border border-[#D9E6FF] bg-white/80 px-3 py-2">
-            <p className="font-semibold text-[#1E2A5A]">Report Issues</p>
+          <div className="rounded-lg border border-[#D9E6FF] bg-white/80 px-3 py-2 dark:border-border dark:bg-slate-900/60">
+            <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Report Issues</p>
             <p>Use the Support Form in Settings.</p>
-            <p className="text-xs text-[#7B8CAD]">
+            <p className="text-xs text-[#7B8CAD] dark:text-slate-400">
               Include screenshots and steps to reproduce.
             </p>
           </div>
@@ -204,20 +204,20 @@ const helpItems: HelpItem[] = [
     body: (
       <div className="space-y-3">
         <div>
-          <p className="font-semibold text-[#1E2A5A]">
+          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">
             How many files can I upload per request?
           </p>
           <p>You can attach multiple files such as PDFs, images, and references.</p>
         </div>
         <div>
-          <p className="font-semibold text-[#1E2A5A]">What is the minimum lead time?</p>
+          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">What is the minimum lead time?</p>
           <p>
             Standard lead times are 3 working days. Videos or complex requests may
             take longer.
           </p>
         </div>
         <div>
-          <p className="font-semibold text-[#1E2A5A]">
+          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">
             Can I edit a request after submission?
           </p>
           <p>
@@ -226,7 +226,7 @@ const helpItems: HelpItem[] = [
           </p>
         </div>
         <div>
-          <p className="font-semibold text-[#1E2A5A]">Why is my task overdue?</p>
+          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Why is my task overdue?</p>
           <p>
             Overdue means the deadline has passed without completion. You can view
             reasons or updates in the request details.
@@ -240,27 +240,27 @@ const helpItems: HelpItem[] = [
 export default function Help() {
   return (
     <DashboardLayout>
-      <div className="rounded-[32px] border border-[#D9E6FF] bg-white/90 p-6 md:p-10 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]">
+      <div className="rounded-[32px] border border-[#D9E6FF] bg-white/90 p-6 md:p-10 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] dark:border-border dark:bg-card/90 dark:shadow-[0_24px_60px_-40px_rgba(0,0,0,0.6)]">
         <div className="grid gap-8 lg:grid-cols-[1.05fr_1fr]">
           <div className="space-y-6">
             <div className="space-y-3">
-              <Badge className="rounded-full border border-[#DDE6FF] bg-white/80 text-[#5B6B8A]">
+              <Badge className="rounded-full border border-[#DDE6FF] bg-white/80 text-[#5B6B8A] dark:border-border dark:bg-muted/70 dark:text-slate-300">
                 Help & Support - DesignDesk Task Portal
               </Badge>
-              <h1 className="text-3xl md:text-4xl font-semibold text-[#1E2A5A]">
+              <h1 className="text-3xl md:text-4xl font-semibold text-[#1E2A5A] dark:text-slate-100">
                 Frequently asked questions
               </h1>
-              <p className="text-base text-[#5B6B8A]">
+              <p className="text-base text-[#5B6B8A] dark:text-slate-400">
                 Welcome to the Help Center. Find answers about submitting requests,
                 tracking progress, and managing your tasks in the DesignDesk portal.
               </p>
             </div>
 
-            <div className="rounded-2xl border border-[#E3EBFF] bg-[#F5F7FF] p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.3)]">
-              <h2 className="text-lg font-semibold text-[#1E2A5A]">
+            <div className="rounded-2xl border border-[#E3EBFF] bg-[#F5F7FF] p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.3)] dark:border-border dark:bg-slate-900/60 dark:shadow-none">
+              <h2 className="text-lg font-semibold text-[#1E2A5A] dark:text-slate-100">
                 Still have questions?
               </h2>
-              <p className="mt-2 text-sm text-[#5B6B8A]">
+              <p className="mt-2 text-sm text-[#5B6B8A] dark:text-slate-400">
                 Cannot find the answer? Send us an email and we will get back to you
                 as soon as possible.
               </p>
@@ -271,15 +271,15 @@ export default function Help() {
               </Button>
             </div>
 
-            <div className="rounded-2xl border border-[#E3EBFF] bg-[#F9FBFF] p-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-[#1E2A5A]">
+            <div className="rounded-2xl border border-[#E3EBFF] bg-[#F9FBFF] p-4 dark:border-border dark:bg-slate-900/50">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#1E2A5A] dark:text-slate-100">
                 <Mail className="h-4 w-4" />
                 Support Email
               </div>
-              <p className="mt-2 text-sm text-[#5B6B8A]">
+              <p className="mt-2 text-sm text-[#5B6B8A] dark:text-slate-400">
                 support@DesignDesk.yourdomain.com
               </p>
-              <p className="text-xs text-[#7B8CAD]">
+              <p className="text-xs text-[#7B8CAD] dark:text-slate-500">
                 Response time: up to 24 hours on business days.
               </p>
             </div>
@@ -292,18 +292,18 @@ export default function Help() {
                 <details
                   key={item.title}
                   open={index === 0}
-                  className="group rounded-2xl border border-[#E3EBFF] bg-[#F7F9FF] p-4 shadow-sm"
+                  className="group rounded-2xl border border-[#E3EBFF] bg-[#F7F9FF] p-4 shadow-sm dark:border-border dark:bg-slate-900/50"
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-[#1E2A5A]">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-[#1E2A5A] dark:text-slate-100">
                     <span className="flex items-center gap-2">
-                      <Icon className="h-4 w-4 text-[#4F6EF7]" />
+                      <Icon className="h-4 w-4 text-[#4F6EF7] dark:text-primary" />
                       {item.title}
                     </span>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#D6E2FF] bg-white text-[#4F6EF7] transition group-open:rotate-180">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#D6E2FF] bg-white text-[#4F6EF7] transition group-open:rotate-180 dark:border-border dark:bg-slate-900/70 dark:text-primary">
                       <ChevronDown className="h-4 w-4" />
                     </span>
                   </summary>
-                  <div className="mt-3 space-y-2 text-sm text-[#5B6B8A]">
+                  <div className="mt-3 space-y-2 text-sm text-[#5B6B8A] dark:text-slate-300">
                     {item.body}
                   </div>
                 </details>

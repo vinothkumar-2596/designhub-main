@@ -8,6 +8,7 @@ const TaskFileSchema = new mongoose.Schema(
     uploadedAt: { type: Date },
     uploadedBy: { type: String, default: "" },
     size: { type: Number },
+    mime: { type: String, default: "" },
     thumbnailUrl: { type: String, default: "" }
   },
   { _id: false }
@@ -43,6 +44,30 @@ const DesignVersionSchema = new mongoose.Schema(
     version: { type: Number, required: true },
     uploadedAt: { type: Date, default: Date.now },
     uploadedBy: { type: String, default: "" }
+  },
+  { _id: true }
+);
+
+const FinalDeliverableFileSchema = new mongoose.Schema(
+  {
+    name: { type: String, default: "" },
+    url: { type: String, default: "" },
+    size: { type: Number },
+    mime: { type: String, default: "" },
+    thumbnailUrl: { type: String, default: "" },
+    uploadedAt: { type: Date, default: Date.now },
+    uploadedBy: { type: String, default: "" }
+  },
+  { _id: true }
+);
+
+const FinalDeliverableVersionSchema = new mongoose.Schema(
+  {
+    version: { type: Number, required: true },
+    uploadedAt: { type: Date, default: Date.now },
+    uploadedBy: { type: String, default: "" },
+    note: { type: String, default: "" },
+    files: { type: [FinalDeliverableFileSchema], default: [] }
   },
   { _id: true }
 );
@@ -106,6 +131,7 @@ const TaskSchema = new mongoose.Schema(
     files: { type: [TaskFileSchema], default: [] },
     designVersions: { type: [DesignVersionSchema], default: [] },
     activeDesignVersionId: { type: String, default: "" },
+    finalDeliverableVersions: { type: [FinalDeliverableVersionSchema], default: [] },
     comments: { type: [TaskCommentSchema], default: [] }
   },
   { timestamps: true }

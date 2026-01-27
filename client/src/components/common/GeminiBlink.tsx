@@ -20,7 +20,7 @@ export function GeminiBlink({ onClick, className = '' }: GeminiBlinkProps) {
                     <Button
                         onClick={onClick}
                         variant="ghost"
-                        className={`relative h-9 rounded-full px-3 bg-primary/10 hover:bg-primary/20 transition-colors ${className}`}
+                        className={`relative h-9 rounded-full px-3 bg-primary/10 hover:bg-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 transition-colors ${className}`}
                     >
                         <div className="relative flex items-center justify-center mr-2">
                             <span className="relative flex h-5 w-5">

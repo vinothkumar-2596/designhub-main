@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ScrollToTop } from "@/components/common/ScrollToTop";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { GlobalSearchProvider } from "@/contexts/GlobalSearchContext";
 import Index from "./pages/Index";
@@ -27,35 +28,37 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <GlobalSearchProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <ScrollToTop />
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/new-request" element={<NewRequest />} />
-              <Route path="/tasks" element={<Tasks />} />
-              <Route path="/designer-availability" element={<DesignerAvailability />} />
-              <Route path="/my-requests" element={<MyRequests />} />
-              <Route path="/approvals" element={<Approvals />} />
-              <Route path="/task/:id" element={<TaskDetail />} />
-              <Route path="/activity" element={<Activity />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/ai-mode" element={<AIMode />} />
-              <Route path="/help" element={<Help />} />
-              <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </GlobalSearchProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <GlobalSearchProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <ScrollToTop />
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/new-request" element={<NewRequest />} />
+                <Route path="/tasks" element={<Tasks />} />
+                <Route path="/designer-availability" element={<DesignerAvailability />} />
+                <Route path="/my-requests" element={<MyRequests />} />
+                <Route path="/approvals" element={<Approvals />} />
+                <Route path="/task/:id" element={<TaskDetail />} />
+                <Route path="/activity" element={<Activity />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/ai-mode" element={<AIMode />} />
+                <Route path="/help" element={<Help />} />
+                <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </GlobalSearchProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

@@ -42,10 +42,10 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   const displayTaskId = taskId || 'N/A';
   const status = statusConfig[task.status];
   const chipBase =
-    'inline-flex items-center gap-2 rounded-full border border-[#C9D7FF] bg-[#F5F8FF] px-3 py-1 text-xs font-medium text-[#2F3A56] min-w-0 max-w-full';
+    'inline-flex items-center gap-2 rounded-full border border-[#C9D7FF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-3 py-1 text-xs font-medium text-[#2F3A56] dark:text-foreground min-w-0 max-w-full';
   const chipLabel = 'min-w-0 truncate';
   const chipCount =
-    'ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-[#C9D7FF] bg-white px-1 text-[11px] font-semibold text-[#2F3A56] shrink-0';
+    'ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-[#C9D7FF] bg-white dark:bg-card dark:border-border px-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground shrink-0';
   const chipIcon = 'h-3.5 w-3.5 shrink-0';
   const renderChip = (Icon: typeof CheckCircle2, label: string, count = 0) => (
     <span className={chipBase}>
@@ -152,11 +152,11 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   return (
     <div
       className={cn(
-        'group relative rounded-3xl border p-6 bg-white transition-all duration-300 isolate h-full flex flex-col',
+        'group relative rounded-3xl border p-6 bg-white dark:bg-card/90 dark:border-border transition-all duration-300 isolate h-full flex flex-col',
         'hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5',
         isHighlighted
-          ? 'border-[#C9D7FF] bg-[#F6F8FF]/95 ring-1 ring-[#D9E6FF]'
-          : 'border-slate-100 hover:border-slate-200'
+          ? 'border-[#C9D7FF] bg-[#F6F8FF]/95 ring-1 ring-[#D9E6FF] dark:bg-card/80 dark:border-border dark:ring-border'
+          : 'border-slate-100 hover:border-slate-200 dark:border-border'
       )}
     >
         <div className="flex items-start justify-between gap-4 mb-4">
@@ -178,19 +178,19 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
       </div>
 
       <div className="space-y-3 mb-6">
-        <h3 className="text-lg font-bold text-slate-900 group-hover:text-primary transition-colors tracking-tight line-clamp-2">
+        <h3 className="text-lg font-bold text-slate-900 dark:text-foreground group-hover:text-primary transition-colors tracking-tight line-clamp-2">
           {task.title}
         </h3>
-        <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">
+        <p className="text-sm text-slate-500 dark:text-muted-foreground line-clamp-2 leading-relaxed">
           {task.description}
         </p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="uppercase tracking-[0.2em] text-[10px] text-slate-400">Task ID</span>
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-muted-foreground">
+          <span className="uppercase tracking-[0.2em] text-[10px] text-slate-400 dark:text-muted-foreground">Task ID</span>
           <span
-            className="font-mono text-[12px] font-semibold text-slate-700 max-w-[180px] truncate"
+            className="font-mono text-[12px] font-semibold text-slate-700 dark:text-foreground max-w-[180px] truncate"
             title={displayTaskId}
           >
             {displayTaskId}
@@ -200,7 +200,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={handleNativeShare}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground"
             title="Share"
             aria-label="Share task"
           >
@@ -209,7 +209,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={handleWhatsAppShare}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground"
             title="Share via WhatsApp"
             aria-label="Share via WhatsApp"
           >
@@ -218,7 +218,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={handleEmailShare}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground"
             title="Share via Email"
             aria-label="Share via Email"
           >
@@ -227,7 +227,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={() => copyToClipboard(taskUrl)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground"
             title="Copy link"
             aria-label="Copy task link"
           >
@@ -236,10 +236,10 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mb-6 text-xs text-slate-500 font-medium">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mb-6 text-xs text-slate-500 dark:text-muted-foreground font-medium">
         {showRequester && (
           <div className="flex items-center gap-2 group/item">
-            <div className="p-1 rounded-full bg-slate-50 text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors">
+            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors">
               <User className="h-3.5 w-3.5" />
             </div>
             <span>{task.requesterName}</span>
@@ -247,7 +247,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
         )}
         {showAssignee && (
           <div className="flex items-center gap-2 group/item">
-            <div className="p-1 rounded-full bg-slate-50 text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors">
+            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors">
               <UserCheck className="h-3.5 w-3.5" />
             </div>
             <span>
@@ -256,29 +256,29 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           </div>
         )}
         <div className={cn('flex items-center gap-2 group/item', isOverdue && 'text-red-500')}>
-          <div className={cn("p-1 rounded-full bg-slate-50 text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors", isOverdue && "bg-red-50 text-red-500")}>
+          <div className={cn("p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors", isOverdue && "bg-red-50 text-red-500 dark:bg-red-500/20 dark:text-red-300")}>
             <Calendar className="h-3.5 w-3.5" />
           </div>
           <span>{deadlineText}</span>
         </div>
       </div>
 
-      <div className="mt-auto flex items-center justify-between pt-4 border-t border-slate-50">
+      <div className="mt-auto flex items-center justify-between pt-4 border-t border-slate-50 dark:border-border">
         <div className="flex items-center gap-3">
           {task.files.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
               <Paperclip className="h-3.5 w-3.5" />
               <span>{task.files.length}</span>
             </div>
           )}
           {task.comments.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
               <MessageSquare className="h-3.5 w-3.5" />
               <span>{task.comments.length}</span>
             </div>
           )}
-          <div className="w-px h-3 bg-slate-200 mx-1" />
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+          <div className="w-px h-3 bg-slate-200 dark:bg-slate-700 mx-1" />
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400">
             <Clock className="h-3.5 w-3.5" />
             <span>{format(task.createdAt, 'MMM d')}</span>
           </div>

@@ -663,10 +663,10 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white p-5 shadow-card min-h-[242px] lg:min-h-[264px]">
-            <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] blur-2xl" />
+          <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white dark:bg-card dark:border-border p-5 shadow-card min-h-[242px] lg:min-h-[264px]">
+            <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
             <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF3FF] text-primary ring-1 ring-[#D9E6FF]">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF3FF] dark:bg-muted text-primary ring-1 ring-[#D9E6FF] dark:ring-border">
                 <AlertTriangle className="h-4 w-4" />
               </div>
               <div className="space-y-1.5">
@@ -684,7 +684,7 @@ export default function Dashboard() {
               {summaryItems.map((item) => (
                 <div
                   key={item.label}
-                  className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-[#F9FBFF] px-4 py-3 opacity-0 pointer-events-none select-none"
+                  className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-[#F9FBFF] dark:bg-card/80 dark:border-border px-4 py-3 opacity-0 pointer-events-none select-none"
                 >
                   <span className="text-sm text-muted-foreground">{item.label}</span>
                   <span className="text-lg font-semibold text-foreground">{item.value}</span>

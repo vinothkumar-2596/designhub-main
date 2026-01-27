@@ -99,6 +99,62 @@ const normalizeAssignedName = (value) => {
   return raw.replace(/\(.*?\)/g, "").trim();
 };
 
+const mapOutputFileToFinal = (file) => ({
+  name: file?.name || "",
+  url: file?.url || "",
+  size: typeof file?.size === "number" ? file.size : undefined,
+  mime: file?.mime || "",
+  thumbnailUrl: file?.thumbnailUrl || "",
+  uploadedAt: file?.uploadedAt || new Date(),
+  uploadedBy: file?.uploadedBy || ""
+});
+
+const buildLegacyFinalVersion = (task) => {
+  const files = Array.isArray(task?.files)
+    ? task.files.filter((file) => file?.type === "output")
+    : [];
+  if (files.length === 0) return null;
+  const uploadedAt =
+    files.find((file) => file?.uploadedAt)?.uploadedAt ||
+    task.updatedAt ||
+    task.createdAt ||
+    new Date();
+  const uploadedBy =
+    files.find((file) => file?.uploadedBy)?.uploadedBy || task.assignedToId || "";
+  return {
+    version: 1,
+    uploadedAt,
+    uploadedBy,
+    note: "",
+    files: files.map(mapOutputFileToFinal)
+  };
+};
+
+const normalizeFinalDeliverableVersions = (task) => {
+  const versions = Array.isArray(task?.finalDeliverableVersions)
+    ? task.finalDeliverableVersions
+    : [];
+  if (versions.length > 0) {
+    return versions.slice().sort((a, b) => (b.version || 0) - (a.version || 0));
+  }
+  const legacy = buildLegacyFinalVersion(task);
+  return legacy ? [legacy] : [];
+};
+
+const ensureFinalDeliverableVersions = async (task) => {
+  if (!task) return task;
+  const existing = Array.isArray(task.finalDeliverableVersions)
+    ? task.finalDeliverableVersions
+    : [];
+  if (existing.length > 0) return task;
+  const legacy = buildLegacyFinalVersion(task);
+  if (!legacy) return task;
+  task.finalDeliverableVersions = [legacy];
+  task.markModified("finalDeliverableVersions");
+  await task.save();
+  return task;
+};
+
 const resolveAssignedUser = async ({
   assignedToId,
   assignedTo,
@@ -611,7 +667,9 @@ router.get("/:id", ensureTaskAccess, async (req, res) => {
   try {
     let task = req.task;
     task = await hydrateMissingFileMeta(task);
-    res.json(task);
+    const payload = typeof task.toJSON === "function" ? task.toJSON() : task;
+    payload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
+    res.json(payload);
   } catch (error) {
     res.status(400).json({ error: "Invalid task id." });
   }
@@ -623,6 +681,224 @@ router.get("/:id/changes", ensureTaskAccess, async (req, res) => {
     res.json(Array.isArray(task?.changeHistory) ? task.changeHistory : []);
   } catch (error) {
     res.status(400).json({ error: "Invalid task id." });
+  }
+});
+
+router.get("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
+  try {
+    const task = req.task;
+    const versions = normalizeFinalDeliverableVersions(task);
+    res.json(versions);
+  } catch (error) {
+    res.status(400).json({ error: "Invalid task id." });
+  }
+});
+
+router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
+  try {
+    const userRole = req.user?.role || "";
+    if (userRole !== "designer" && userRole !== "admin") {
+      return res.status(403).json({ error: "Only designers can upload final deliverables." });
+    }
+    const taskId = req.params.id;
+    const userId = getUserId(req);
+    const resolvedUserName = req.user?.name || "";
+    const files = Array.isArray(req.body?.files) ? req.body.files : [];
+    const note = req.body?.note ? String(req.body.note).trim() : "";
+    if (files.length === 0) {
+      return res.status(400).json({ error: "Final deliverable files are required." });
+    }
+
+    let task = req.task;
+    task = await ensureFinalDeliverableVersions(task);
+    const existingVersions = Array.isArray(task.finalDeliverableVersions)
+      ? task.finalDeliverableVersions
+      : [];
+    const maxVersion = existingVersions.reduce(
+      (max, version) => Math.max(max, Number(version?.version) || 0),
+      0
+    );
+    const nextVersion = maxVersion + 1;
+    const uploadedAt = new Date();
+    const versionFiles = files.map((file) => ({
+      name: file?.name || "",
+      url: file?.url || "",
+      size: typeof file?.size === "number" ? file.size : undefined,
+      mime: file?.mime || "",
+      thumbnailUrl: file?.thumbnailUrl || "",
+      uploadedAt,
+      uploadedBy: userId || ""
+    }));
+
+    const newVersion = {
+      version: nextVersion,
+      uploadedAt,
+      uploadedBy: userId || "",
+      note,
+      files: versionFiles
+    };
+
+    const outputFiles = versionFiles.map((file) => ({
+      name: file.name,
+      url: file.url,
+      type: "output",
+      uploadedAt: file.uploadedAt,
+      uploadedBy: file.uploadedBy,
+      size: file.size,
+      mime: file.mime,
+      thumbnailUrl: file.thumbnailUrl
+    }));
+
+    const changeEntries = versionFiles.map((file) => ({
+      type: "file_added",
+      field: "files",
+      oldValue: "",
+      newValue: file.name,
+      note: `Final files uploaded (v${nextVersion})`,
+      userId: userId || "",
+      userName: resolvedUserName || "",
+      userRole: userRole || "",
+      createdAt: uploadedAt
+    }));
+
+    const updateDoc = {
+      $push: {
+        finalDeliverableVersions: newVersion,
+        files: { $each: outputFiles },
+        changeHistory: { $each: changeEntries }
+      },
+      $set: { updatedAt: uploadedAt }
+    };
+
+    const updatedTask = await Task.findByIdAndUpdate(taskId, updateDoc, {
+      new: true,
+      runValidators: true
+    });
+
+    if (!updatedTask) {
+      return res.status(404).json({ error: "Task not found." });
+    }
+
+    req.auditTargetId = updatedTask.id || updatedTask._id?.toString?.() || "";
+
+    await Activity.create({
+      taskId: updatedTask._id,
+      taskTitle: updatedTask.title,
+      action: "updated",
+      userId: userId || "",
+      userName: resolvedUserName || ""
+    });
+
+    const baseUrl = process.env.FRONTEND_URL || "";
+    const taskUrl = baseUrl
+      ? `${baseUrl.replace(/\/$/, "")}/task/${updatedTask.id || updatedTask._id}`
+      : undefined;
+    const taskLink = buildTaskLink(updatedTask.id || updatedTask._id?.toString?.());
+
+    let requesterUserId =
+      updatedTask.requesterId ||
+      task.requesterId ||
+      (updatedTask.requesterEmail
+        ? await resolveUserIdByEmail(updatedTask.requesterEmail)
+        : "");
+    if (!requesterUserId) {
+      const history = Array.isArray(updatedTask.changeHistory)
+        ? updatedTask.changeHistory
+        : [];
+      const createdEntry = history.find((entry) => entry?.field === "created");
+      if (createdEntry?.userId) {
+        requesterUserId = createdEntry.userId;
+      } else if (createdEntry?.userName) {
+        const requesterUser = await User.findOne({
+          name: new RegExp(`^${escapeRegExp(createdEntry.userName)}$`, "i"),
+          isActive: { $ne: false }
+        });
+        requesterUserId = requesterUser?._id?.toString?.() || "";
+      }
+    }
+
+    let resolvedRequesterEmail =
+      updatedTask.requesterEmail || task.requesterEmail || "";
+    if (!resolvedRequesterEmail && updatedTask.requesterId) {
+      const requesterUser = await User.findById(updatedTask.requesterId);
+      resolvedRequesterEmail = requesterUser?.email || "";
+    }
+    if (!resolvedRequesterEmail && requesterUserId) {
+      const requesterUser = await User.findById(requesterUserId);
+      resolvedRequesterEmail = requesterUser?.email || "";
+    }
+
+    const requesterPrefs = await resolveNotificationPreferences({
+      userId: requesterUserId,
+      email: resolvedRequesterEmail
+    });
+
+    const filesForEmail = versionFiles.map((file) => ({
+      name: file.name,
+      url: file.url
+    }));
+
+    if (resolvedRequesterEmail && requesterPrefs.emailNotifications) {
+      const emailSent = await sendFinalFilesEmail({
+        to: resolvedRequesterEmail,
+        taskTitle: updatedTask.title,
+        files: filesForEmail,
+        designerName: resolvedUserName,
+        taskUrl,
+        submittedAt: uploadedAt,
+        taskDetails: {
+          id: updatedTask.id || updatedTask._id?.toString?.() || updatedTask._id,
+          status: updatedTask.status,
+          category: updatedTask.category,
+          deadline: updatedTask.deadline,
+          requesterName: updatedTask.requesterName,
+          requesterEmail: resolvedRequesterEmail,
+          requesterDepartment: updatedTask.requesterDepartment,
+        },
+      });
+      if (!emailSent) {
+        console.warn("Final files email failed to send. Check SMTP configuration.");
+      }
+    }
+
+    if (requesterUserId) {
+      createNotification({
+        userId: requesterUserId,
+        title: `Final files uploaded: ${updatedTask.title}`,
+        message: `${resolvedUserName || "Designer"} shared final deliverables.`,
+        type: "file",
+        link: taskLink,
+        taskId: updatedTask.id || updatedTask._id?.toString?.(),
+        eventId: `final:${taskId}:${uploadedAt.toISOString()}`
+      })
+        .then((note) => emitNotification(note))
+        .catch((error) => {
+          console.error("Notification error:", error?.message || error);
+        });
+    }
+
+    const io = getSocket();
+    if (io) {
+      const payloadTask = typeof updatedTask.toJSON === "function" ? updatedTask.toJSON() : updatedTask;
+      payloadTask.finalDeliverableVersions = normalizeFinalDeliverableVersions(updatedTask);
+      const updatedTaskId = payloadTask?.id || updatedTask.id || updatedTask._id?.toString?.();
+      const updatePayload = {
+        taskId: updatedTaskId,
+        task: payloadTask
+      };
+      io.to(updatedTaskId).emit("task:updated", updatePayload);
+      if (requesterUserId) {
+        io.to(String(requesterUserId)).emit("task:updated", updatePayload);
+      }
+    }
+
+    const responsePayload =
+      typeof updatedTask.toJSON === "function" ? updatedTask.toJSON() : updatedTask;
+    responsePayload.finalDeliverableVersions = normalizeFinalDeliverableVersions(updatedTask);
+    res.json(responsePayload);
+  } catch (error) {
+    console.error("Final deliverable upload error:", error?.message || error);
+    res.status(400).json({ error: "Failed to upload final deliverables." });
   }
 });
 

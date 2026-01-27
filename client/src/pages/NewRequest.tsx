@@ -418,9 +418,9 @@ export default function NewRequest() {
     }
   }, [location.state]);
   const glassPanelClass =
-    'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
+    'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)] dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:border-slate-700/60 dark:ring-white/5 dark:shadow-lg';
   const glassInputClass =
-    'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
+    'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
   const apiUrl = API_URL;
 
   // Minimum deadline is 3 days from now
@@ -866,9 +866,9 @@ export default function NewRequest() {
   return (
     <DashboardLayout
       background={
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-white overflow-hidden rounded-[32px]">
-          <div className="absolute left-1/2 top-[-22%] h-[680px] w-[780px] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(77,92,218,0.6),_rgba(120,190,255,0.4)_45%,_transparent_72%)] blur-[90px] opacity-90" />
-          <div className="absolute left-[10%] bottom-[-20%] h-[520px] w-[620px] rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(120,190,255,0.35),_transparent_70%)] blur-[110px] opacity-70" />
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-white dark:bg-slate-950 overflow-hidden rounded-[32px]">
+          <div className="absolute left-1/2 top-[-22%] h-[680px] w-[780px] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(77,92,218,0.6),_rgba(120,190,255,0.4)_45%,_transparent_72%)] blur-[90px] opacity-90 dark:opacity-0" />
+          <div className="absolute left-[10%] bottom-[-20%] h-[520px] w-[620px] rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(120,190,255,0.35),_transparent_70%)] blur-[110px] opacity-70 dark:opacity-0" />
         </div>
       }
     >
@@ -975,7 +975,7 @@ export default function NewRequest() {
                   <SelectTrigger className={`h-11 ${glassInputClass}`}>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
-                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
+                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:text-slate-100 dark:supports-[backdrop-filter]:bg-slate-900/70">
                     {categoryOptions.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         <div className="flex items-center gap-2">
@@ -994,7 +994,7 @@ export default function NewRequest() {
                   <SelectTrigger className={`h-11 ${glassInputClass}`}>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg">
+                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:text-slate-100 dark:supports-[backdrop-filter]:bg-slate-900/70">
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="normal">Normal</SelectItem>
                     <SelectItem value="intermediate">Intermediate</SelectItem>
@@ -1004,7 +1004,7 @@ export default function NewRequest() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-white/70 px-4 py-3">
+            <div className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-white/70 px-4 py-3 dark:border-slate-700/60 dark:bg-slate-900/60">
               <div>
                 <p className="text-sm font-semibold text-foreground">Emergency override</p>
                 <p className="text-xs text-muted-foreground">
@@ -1119,8 +1119,8 @@ export default function NewRequest() {
 
             <div
               className={`border-2 border-dashed rounded-lg p-8 pb-10 text-center transition-colors ${isDragging
-                ? 'border-primary/60 bg-white/80'
-                : 'border-border bg-white/70 hover:border-primary/50'
+                ? 'border-primary/60 bg-white/80 dark:border-primary/50 dark:bg-slate-900/70'
+                : 'border-border bg-white/70 hover:border-primary/50 dark:border-slate-700/60 dark:bg-slate-900/50 dark:hover:border-slate-500/50'
                 }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -1157,7 +1157,7 @@ export default function NewRequest() {
                 {files.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between rounded-lg border border-[#D7E3FF] bg-gradient-to-r from-[#F4F8FF]/90 via-[#EEF4FF]/70 to-[#E6F1FF]/80 px-4 py-3 supports-[backdrop-filter]:bg-[#EEF4FF]/60 backdrop-blur-xl"
+                    className="flex items-center justify-between rounded-lg border border-[#D7E3FF] bg-gradient-to-r from-[#F4F8FF]/90 via-[#EEF4FF]/70 to-[#E6F1FF]/80 px-4 py-3 supports-[backdrop-filter]:bg-[#EEF4FF]/60 backdrop-blur-xl dark:border-slate-700/60 dark:bg-none dark:bg-slate-900/60 dark:supports-[backdrop-filter]:bg-slate-900/60"
                   >
                     <div className="flex items-start gap-3 flex-1">
                       {getFileIcon(file.name, 'h-5 w-5 text-primary')}

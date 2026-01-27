@@ -33,6 +33,16 @@ const hydrateTask = (raw: Task): Task => ({
     ...version,
     uploadedAt: new Date(version.uploadedAt),
   })) ?? [],
+  finalDeliverableVersions:
+    raw.finalDeliverableVersions?.map((version) => ({
+      ...version,
+      uploadedAt: new Date(version.uploadedAt),
+      files:
+        version.files?.map((file) => ({
+          ...file,
+          uploadedAt: new Date(file.uploadedAt),
+        })) ?? [],
+    })) ?? [],
   comments: raw.comments?.map((comment) => ({
     ...comment,
     createdAt: new Date(comment.createdAt),

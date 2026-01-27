@@ -64,6 +64,7 @@ export interface TaskFile {
   uploadedAt: Date;
   uploadedBy: string;
   size?: number;
+  mime?: string;
   thumbnailUrl?: string;
 }
 
@@ -74,6 +75,26 @@ export interface DesignVersion {
   version: number;
   uploadedAt: Date;
   uploadedBy: string;
+}
+
+export interface FinalDeliverableFile {
+  id: string;
+  name: string;
+  url: string;
+  size?: number;
+  mime?: string;
+  thumbnailUrl?: string;
+  uploadedAt: Date;
+  uploadedBy: string;
+}
+
+export interface FinalDeliverableVersion {
+  id: string;
+  version: number;
+  uploadedAt: Date;
+  uploadedBy: string;
+  note?: string;
+  files: FinalDeliverableFile[];
 }
 
 export interface Task {
@@ -111,6 +132,7 @@ export interface Task {
   files: TaskFile[];
   designVersions?: DesignVersion[];
   activeDesignVersionId?: string;
+  finalDeliverableVersions?: FinalDeliverableVersion[];
   comments: TaskComment[];
   createdAt: Date;
   updatedAt: Date;

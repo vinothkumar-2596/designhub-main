@@ -48,7 +48,16 @@ import {
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ApprovalStatus, DesignVersion, TaskChange, TaskComment, TaskStatus, UserRole } from '@/types';
+import {
+  ApprovalStatus,
+  DesignVersion,
+  FinalDeliverableFile,
+  FinalDeliverableVersion,
+  TaskChange,
+  TaskComment,
+  TaskStatus,
+  UserRole,
+} from '@/types';
 import { cn } from '@/lib/utils';
 import { loadLocalTaskById } from '@/lib/taskStorage';
 import { createSocket } from '@/lib/socket';
@@ -162,6 +171,8 @@ export default function TaskDetail() {
   const [isEmergencyUpdating, setIsEmergencyUpdating] = useState(false);
   const [finalLinkName, setFinalLinkName] = useState('');
   const [finalLinkUrl, setFinalLinkUrl] = useState('');
+  const [finalVersionNote, setFinalVersionNote] = useState('');
+  const [selectedFinalVersionId, setSelectedFinalVersionId] = useState('');
   const [isAddingFinalLink, setIsAddingFinalLink] = useState(false);
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
@@ -286,6 +297,23 @@ export default function TaskDetail() {
           (version as { _id?: string })._id ||
           `version-${index}-${version.name || 'design'}`,
         uploadedAt: new Date(version.uploadedAt),
+      })) ?? [],
+      finalDeliverableVersions: raw.finalDeliverableVersions?.map((version, index) => ({
+        ...version,
+        id:
+          version.id ||
+          (version as { _id?: string })._id ||
+          `final-version-${version.version || index + 1}-${index}`,
+        uploadedAt: new Date(version.uploadedAt),
+        files:
+          version.files?.map((file, fileIndex) => ({
+            ...file,
+            id:
+              file.id ||
+              (file as { _id?: string })._id ||
+              `final-file-${index}-${fileIndex}-${file.name || 'file'}`,
+            uploadedAt: file.uploadedAt ? new Date(file.uploadedAt) : new Date(),
+          })) ?? [],
       })) ?? [],
       changeHistory: raw.changeHistory?.map((entry) => ({
         ...entry,
@@ -684,17 +712,71 @@ export default function TaskDetail() {
         : 'Emergency Pending';
   const inputFiles = taskState.files.filter((f) => f.type === 'input');
   const outputFiles = taskState.files.filter((f) => f.type === 'output');
-  const hasFinalDeliverables = outputFiles.length > 0;
+  const finalDeliverableVersions = useMemo<FinalDeliverableVersion[]>(() => {
+    const raw = taskState?.finalDeliverableVersions ?? [];
+    if (raw.length > 0) return raw;
+    if (outputFiles.length === 0) return [];
+    const fallbackUploadedAt = outputFiles[0]?.uploadedAt || taskState.updatedAt;
+    const fallbackUploadedBy =
+      outputFiles[0]?.uploadedBy || taskState.assignedToId || '';
+    return [
+      {
+        id: `final-v1-${taskState.id}`,
+        version: 1,
+        uploadedAt: fallbackUploadedAt || new Date(),
+        uploadedBy: fallbackUploadedBy,
+        note: '',
+        files: outputFiles.map((file, index) => ({
+          id: file.id || `final-file-${index}`,
+          name: file.name,
+          url: file.url,
+          size: file.size,
+          mime: file.mime,
+          thumbnailUrl: file.thumbnailUrl,
+          uploadedAt: file.uploadedAt || new Date(),
+          uploadedBy: file.uploadedBy || fallbackUploadedBy,
+        })),
+      },
+    ];
+  }, [outputFiles, taskState?.finalDeliverableVersions, taskState?.id, taskState?.assignedToId, taskState.updatedAt]);
+
+  const sortedFinalDeliverableVersions = useMemo(
+    () =>
+      [...finalDeliverableVersions].sort(
+        (a, b) => (b.version || 0) - (a.version || 0)
+      ),
+    [finalDeliverableVersions]
+  );
+
+  useEffect(() => {
+    if (sortedFinalDeliverableVersions.length === 0) {
+      setSelectedFinalVersionId('');
+      return;
+    }
+    const latestId = sortedFinalDeliverableVersions[0]?.id || '';
+    if (!selectedFinalVersionId) {
+      setSelectedFinalVersionId(latestId);
+      return;
+    }
+    if (!sortedFinalDeliverableVersions.some((version) => version.id === selectedFinalVersionId)) {
+      setSelectedFinalVersionId(latestId);
+    }
+  }, [sortedFinalDeliverableVersions, selectedFinalVersionId]);
+
+  const activeFinalVersion =
+    sortedFinalDeliverableVersions.find((version) => version.id === selectedFinalVersionId) ||
+    sortedFinalDeliverableVersions[0];
+  const finalDeliverableFiles = activeFinalVersion?.files ?? [];
+  const hasFinalDeliverables = sortedFinalDeliverableVersions.length > 0;
   const latestFinalUploadAt = useMemo(() => {
-    return outputFiles.reduce((latest, file) => {
-      const timeValue = file.uploadedAt ? new Date(file.uploadedAt).getTime() : 0;
-      return timeValue > latest ? timeValue : latest;
-    }, 0);
-  }, [outputFiles]);
+    if (sortedFinalDeliverableVersions.length === 0) return 0;
+    const latest = sortedFinalDeliverableVersions[0];
+    return latest?.uploadedAt ? new Date(latest.uploadedAt).getTime() : 0;
+  }, [sortedFinalDeliverableVersions]);
   const canHandover =
     isDesignerOrAdmin &&
     taskState.status !== 'completed' &&
-    outputFiles.length > 0 &&
+    hasFinalDeliverables &&
     !isUploadingFinal;
   const finalUploadTotals = finalUploadItems.reduce(
     (acc, item) => {
@@ -713,6 +795,8 @@ export default function TaskDetail() {
         : `${finalUploadTotals.done || finalUploadItems.length} upload${(finalUploadTotals.done || finalUploadItems.length) === 1 ? '' : 's'} complete`;
 
   const getVersionLabel = (version: DesignVersion) => `V${version.version}`;
+  const getFinalVersionLabel = (version: FinalDeliverableVersion) =>
+    `V${version.version}`;
   const isImageVersion = (version?: DesignVersion) => {
     if (!version?.name) return false;
     const ext = version.name.split('.').pop()?.toLowerCase() ?? '';
@@ -796,6 +880,17 @@ export default function TaskDetail() {
     if (isDriveFile(file)) return true;
     return !isDownloadableExtension(file.name);
   };
+  const toOutputFile = (file: FinalDeliverableFile, index: number) => ({
+    id: file.id || `final-file-${index}`,
+    name: file.name,
+    url: file.url,
+    type: 'output' as const,
+    uploadedAt: file.uploadedAt,
+    uploadedBy: file.uploadedBy,
+    size: file.size,
+    mime: file.mime,
+    thumbnailUrl: file.thumbnailUrl,
+  });
   const renderFilePreview = (file: (typeof taskState)['files'][number]) => {
     const extLabel = getFileExtension(file.name);
     const previewUrl = getPreviewUrl(file);
@@ -1158,7 +1253,7 @@ export default function TaskDetail() {
 
   const handleHandoverTask = async () => {
     if (!taskState || taskState.status === 'completed') return;
-    if (outputFiles.length === 0) {
+    if (!hasFinalDeliverables) {
       toast.message('Upload final files before handing over the task.');
       return;
     }
@@ -1440,9 +1535,13 @@ export default function TaskDetail() {
     finalUploadAbortRef.current = controller;
 
     setIsUploadingFinal(true);
-    let updatedFiles = [...taskState.files];
-    let updatedVersions = [...designVersions];
-    let nextVersion = updatedVersions.length;
+    const uploadedFiles: Array<{
+      name: string;
+      url: string;
+      size?: number;
+      mime?: string;
+      thumbnailUrl?: string;
+    }> = [];
     let hasFailure = false;
     let needsDriveAuth = false;
     try {
@@ -1462,53 +1561,13 @@ export default function TaskDetail() {
           if (!response.ok) {
             throw new Error(data?.error || 'Upload failed');
           }
-          const newFile = {
-            id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          uploadedFiles.push({
             name: file.name,
             url: data.webViewLink || data.webContentLink || '',
-            type: 'output' as const,
             size: file.size,
+            mime: file.type || data.mimeType || '',
             thumbnailUrl: data.thumbnailLink,
-            uploadedAt: new Date(),
-            uploadedBy: user?.id || '',
-          };
-          const previousActive =
-            updatedVersions.find((version) => version.id === activeDesignVersionId) ??
-            updatedVersions[updatedVersions.length - 1];
-          nextVersion += 1;
-          const newVersion = {
-            id: `ver-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            name: file.name,
-            url: data.webViewLink || data.webContentLink || '',
-            version: nextVersion,
-            uploadedAt: new Date(),
-            uploadedBy: user?.id || '',
-          };
-          updatedFiles = [...updatedFiles, newFile];
-          updatedVersions = [...updatedVersions, newVersion];
-          recordChanges(
-            [
-              {
-                type: 'file_added',
-                field: 'files',
-                oldValue: '',
-                newValue: newFile.name,
-                note: 'Final file uploaded',
-              },
-              {
-                type: 'update',
-                field: 'design_version',
-                oldValue: previousActive ? `${getVersionLabel(previousActive)} - ${previousActive.name}` : '',
-                newValue: `${getVersionLabel(newVersion)} - ${newVersion.name}`,
-                note: 'Design version uploaded',
-              },
-            ],
-            {
-              files: updatedFiles,
-              designVersions: updatedVersions,
-              activeDesignVersionId: newVersion.id,
-            }
-          );
+          });
           if (uploadId) {
             setFinalUploadItems((prev) =>
               prev.map((item) => (item.id === uploadId ? { ...item, status: 'done' } : item))
@@ -1557,7 +1616,25 @@ export default function TaskDetail() {
           });
         } else if (hasFailure) {
           toast.error('File upload failed');
-        } else {
+        } else if (uploadedFiles.length > 0) {
+          const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/final-deliverables`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              files: uploadedFiles,
+              note: finalVersionNote.trim(),
+            }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data?.error || 'Failed to save final deliverables');
+          }
+          const hydrated = hydrateTask(data);
+          setTaskState(hydrated);
+          if (hydrated?.finalDeliverableVersions?.length) {
+            setSelectedFinalVersionId(hydrated.finalDeliverableVersions[0].id);
+          }
+          setFinalVersionNote('');
           toast.success('Final files uploaded.');
         }
       }
@@ -1565,29 +1642,29 @@ export default function TaskDetail() {
       if (error?.name === 'AbortError') {
         toast.message('Upload cancelled.');
       } else {
-        const errorMsg = error.message || "Upload failed";
-        if (errorMsg.includes("Drive OAuth not connected")) {
-        toast.error('Google Drive Disconnected', {
-          description: 'Please authorize App to access Drive.',
-          action: {
-            label: 'Connect',
-            onClick: async () => {
-              try {
-                const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
-                const data = await res.json();
-                if (data.url) {
-                  window.open(data.url, '_blank');
+        const errorMsg = error.message || 'Upload failed';
+        if (errorMsg.includes('Drive OAuth not connected')) {
+          toast.error('Google Drive Disconnected', {
+            description: 'Please authorize App to access Drive.',
+            action: {
+              label: 'Connect',
+              onClick: async () => {
+                try {
+                  const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
+                  const data = await res.json();
+                  if (data.url) {
+                    window.open(data.url, '_blank');
+                  }
+                } catch (e) {
+                  console.error(e);
                 }
-              } catch (e) {
-                console.error(e);
               }
-            }
-          },
-          duration: 10000,
-        });
-      } else {
-        toast.error('File upload failed');
-      }
+            },
+            duration: 10000,
+          });
+        } else {
+          toast.error('File upload failed');
+        }
       }
     } finally {
       setIsUploadingFinal(false);
@@ -1645,57 +1722,39 @@ export default function TaskDetail() {
     }
 
     setIsAddingFinalLink(true);
-    const now = new Date();
-    const newFile = {
-      id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      name: inferredName,
-      url: trimmedUrl,
-      type: 'output' as const,
-      uploadedAt: now,
-      uploadedBy: user?.id || '',
-    };
-    const previousActive =
-      designVersions.find((version) => version.id === activeDesignVersionId) ??
-      designVersions[designVersions.length - 1];
-    const nextVersionNumber =
-      (designVersions[designVersions.length - 1]?.version ?? designVersions.length) + 1;
-    const newVersion = {
-      id: `ver-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      name: inferredName,
-      url: trimmedUrl,
-      version: nextVersionNumber,
-      uploadedAt: now,
-      uploadedBy: user?.id || '',
-    };
-
-    await recordChanges(
-      [
-        {
-          type: 'file_added',
-          field: 'files',
-          oldValue: '',
-          newValue: newFile.name,
-          note: 'Final file link added',
-        },
-        {
-          type: 'update',
-          field: 'design_version',
-          oldValue: previousActive ? `${getVersionLabel(previousActive)} - ${previousActive.name}` : '',
-          newValue: `${getVersionLabel(newVersion)} - ${newVersion.name}`,
-          note: 'Design version link added',
-        },
-      ],
-      {
-        files: [...taskState.files, newFile],
-        designVersions: [...designVersions, newVersion],
-        activeDesignVersionId: newVersion.id,
-        updatedAt: now,
+    try {
+      const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/final-deliverables`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          files: [
+            {
+              name: inferredName,
+              url: trimmedUrl,
+              mime: 'link',
+            },
+          ],
+          note: finalVersionNote.trim(),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to save final deliverables');
       }
-    );
-
-    setFinalLinkName('');
-    setFinalLinkUrl('');
-    setIsAddingFinalLink(false);
+      const hydrated = hydrateTask(data);
+      setTaskState(hydrated);
+      if (hydrated?.finalDeliverableVersions?.length) {
+        setSelectedFinalVersionId(hydrated.finalDeliverableVersions[0].id);
+      }
+      setFinalVersionNote('');
+      setFinalLinkName('');
+      setFinalLinkUrl('');
+      toast.success('Final deliverable link added.');
+    } catch (error) {
+      toast.error('Failed to add final deliverable link.');
+    } finally {
+      setIsAddingFinalLink(false);
+    }
   };
 
   const handleRollbackVersion = (versionId: string) => {
@@ -2360,46 +2419,70 @@ export default function TaskDetail() {
               )}
 
               {/* Output Files */}
-              {outputFiles.length > 0 && (
+              {sortedFinalDeliverableVersions.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-status-completed" />
-                    Final Deliverables
-                  </h3>
-                  <div className="space-y-2">
-                    {outputFiles.map((file) => (
-                      <div
-                        key={file.id}
-                        className={fileRowClass}
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-status-completed" />
+                      Final Deliverables
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Version</span>
+                      <Select
+                        value={selectedFinalVersionId || activeFinalVersion?.id || ''}
+                        onValueChange={setSelectedFinalVersionId}
                       >
-                        <div className="flex min-w-0 items-center gap-3">
-                          {renderFilePreview(file)}
-                          <div className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">
-                              {toTitleCaseFileName(file.name)}
-                            </span>
-                            <span className="mt-0.5 block text-xs text-muted-foreground">
-                              {(() => {
-                                const sizeLabel = formatFileSize(file.size);
-                                return sizeLabel || '';
-                              })()}
-                            </span>
+                        <SelectTrigger className="h-8 w-[200px]">
+                          <SelectValue placeholder="Select version" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sortedFinalDeliverableVersions.map((version) => (
+                            <SelectItem key={version.id} value={version.id}>
+                              {getFinalVersionLabel(version)} · {format(version.uploadedAt, 'MMM d, yyyy')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {activeFinalVersion?.note && (
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      {activeFinalVersion.note}
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    {finalDeliverableFiles.map((file, index) => {
+                      const displayFile = toOutputFile(file, index);
+                      return (
+                        <div key={displayFile.id} className={fileRowClass}>
+                          <div className="flex min-w-0 items-center gap-3">
+                            {renderFilePreview(displayFile)}
+                            <div className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium">
+                                {toTitleCaseFileName(displayFile.name)}
+                              </span>
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                {(() => {
+                                  const sizeLabel = formatFileSize(displayFile.size);
+                                  return sizeLabel || '';
+                                })()}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          {canEditTask && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              disabled={approvalLockedForStaff || staffChangeLimitReached}
-                              className={fileActionButtonClass}
-                              onClick={() => handleRemoveFile(file.id, file.name)}
-                            >
-                              <Trash2 className="h-4 w-4 text-status-urgent" />
-                            </Button>
-                          )}
+                          <div className="flex shrink-0 items-center gap-2">
+                            {canEditTask && (
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                disabled={approvalLockedForStaff || staffChangeLimitReached}
+                                className={fileActionButtonClass}
+                                onClick={() => handleRemoveFile(displayFile.id, displayFile.name)}
+                              >
+                                <Trash2 className="h-4 w-4 text-status-urgent" />
+                              </Button>
+                            )}
                             {(() => {
-                              const fileLinkUrl = getFileLinkUrl(file);
+                              const fileLinkUrl = getFileLinkUrl(displayFile);
                               return (
                                 <Button
                                   variant="ghost"
@@ -2412,7 +2495,7 @@ export default function TaskDetail() {
                                     }
                                   }}
                                 >
-                                  {shouldUseLinkIcon(file) ? (
+                                  {shouldUseLinkIcon(displayFile) ? (
                                     <ExternalLink className="h-4 w-4" />
                                   ) : (
                                     <Download className="h-4 w-4" />
@@ -2420,9 +2503,10 @@ export default function TaskDetail() {
                                 </Button>
                               );
                             })()}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2474,11 +2558,24 @@ export default function TaskDetail() {
                 <>
                   <div className="mt-6 rounded-2xl border-2 border-dashed border-[#D9E6FF] bg-[#F8FAFF] p-6 text-center">
                     <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
-                    <p className="text-xs text-muted-foreground">
-                      Drag and drop or click to upload
-                    </p>
-                    <input
+                <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
+                <p className="text-xs text-muted-foreground">
+                  Drag and drop or click to upload
+                </p>
+                <div className="mt-3 text-left">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Version note (optional)
+                  </p>
+                  <Textarea
+                    value={finalVersionNote}
+                    onChange={(event) => setFinalVersionNote(event.target.value)}
+                    rows={2}
+                    className="mt-2 bg-white/90"
+                    placeholder="Summarize changes in this version..."
+                    disabled={isUploadingFinal}
+                  />
+                </div>
+                <input
                       type="file"
                       multiple
                       onChange={handleFinalUpload}

@@ -33,6 +33,7 @@ import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
 import { API_URL, authFetch } from '@/lib/api';
 import { createSocket } from '@/lib/socket';
@@ -873,7 +874,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
         })()
       : 'Currently viewing';
     return (
-      <div className="flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-1.5 shadow-sm">
+      <div className="flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-1.5 shadow-sm">
         <span
           className={
             (isTyping
@@ -903,7 +904,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
                 <TooltipTrigger asChild>
                   <Avatar
                     className={cn(
-                      'h-6 w-6 border-2 border-white shadow-sm bg-white/90',
+                      'h-6 w-6 border-2 border-white shadow-sm bg-white/90 dark:border-border dark:bg-card/90',
                       isSelf && 'ring-2 ring-primary/40'
                     )}
                   >
@@ -927,7 +928,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
             );
           })}
           {extraCount > 0 && (
-            <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[#E6F1FF] text-[9px] font-semibold text-primary shadow-sm">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white dark:border-border bg-[#E6F1FF] dark:bg-muted text-[9px] font-semibold text-primary shadow-sm">
               +{extraCount}
             </div>
           )}
@@ -949,7 +950,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     <div className="relative" ref={notificationsRef}>
       <button
         type="button"
-        className="relative h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/90 text-muted-foreground hover:text-foreground shadow-sm flex items-center justify-center"
+        className="relative h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/90 dark:bg-muted/80 dark:border-border text-muted-foreground hover:text-foreground dark:hover:text-foreground shadow-sm flex items-center justify-center"
         onClick={() => {
           const nextOpen = !notificationsOpen;
           setNotificationsOpen(nextOpen);
@@ -979,7 +980,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
         )}
       </button>
       {notificationsOpen && (
-        <div className="absolute right-0 mt-2 w-72 rounded-xl border border-[#C9D7FF] bg-[#F2F6FF]/95 backdrop-blur-xl p-3 shadow-lg z-50 animate-dropdown origin-top-right">
+        <div className="absolute right-0 mt-2 w-72 rounded-xl border border-[#C9D7FF] bg-[#F2F6FF]/95 dark:bg-card/95 dark:border-border backdrop-blur-xl p-3 shadow-lg z-50 animate-dropdown origin-top-right">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
               Notifications
@@ -1019,8 +1020,8 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
                   className={cn(
                     'block w-full rounded-lg border px-3 py-2 text-left transition',
                     entry.readAt
-                      ? 'border-primary/10 bg-white/70 hover:bg-white'
-                      : 'border-primary/20 bg-primary/5 hover:bg-primary/10'
+                      ? 'border-primary/10 bg-white/70 hover:bg-white dark:border-border dark:bg-slate-900/60 dark:hover:bg-slate-900/80'
+                      : 'border-primary/20 bg-primary/5 hover:bg-primary/10 dark:border-primary/30 dark:bg-primary/10 dark:hover:bg-primary/20'
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -1038,7 +1039,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
                 </button>
               ))
             ) : (
-              <div className="rounded-lg border border-dashed border-[#D9E6FF] bg-white/70 px-3 py-4 text-xs text-muted-foreground text-center">
+              <div className="rounded-lg border border-dashed border-[#D9E6FF] bg-white/70 dark:bg-card/80 dark:border-border px-3 py-4 text-xs text-muted-foreground text-center">
                 No notifications yet.
               </div>
             )}
@@ -1069,6 +1070,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
           {location.pathname !== '/new-request' && (
             <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} className="mr-2" />
           )}
+          <ThemeToggle className="mr-2" />
           {headerPresenceAction}
           {notificationAction}
           {headerActions}
@@ -1084,9 +1086,9 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
             onClick={() => setIsGuidelinesOpen(false)}
             className="absolute inset-0 bg-slate-900/25 backdrop-blur-sm"
           />
-          <div className="relative w-full max-w-3xl rounded-[28px] border border-[#D9E6FF] bg-white shadow-[0_22px_48px_-28px_rgba(15,23,42,0.25)]">
+          <div className="relative w-full max-w-3xl rounded-[28px] border border-[#D9E6FF] bg-white dark:bg-card dark:border-border shadow-[0_22px_48px_-28px_rgba(15,23,42,0.25)]">
             <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top_left,_rgba(214,227,255,0.6),_transparent_55%),radial-gradient(circle_at_bottom_right,_rgba(240,244,255,0.9),_transparent_60%)]" />
-            <div className="relative overflow-hidden rounded-[26px] border border-[#D9E6FF] bg-white/90 backdrop-blur-xl">
+            <div className="relative overflow-hidden rounded-[26px] border border-[#D9E6FF] bg-white/90 dark:bg-card/90 dark:border-border backdrop-blur-xl">
               <div className="flex items-start justify-between gap-4 px-8 py-8">
                 <div className="max-w-xl">
                   <h3 className="text-lg font-extrabold text-[#1E2A5A]">
@@ -1344,7 +1346,7 @@ function DashboardShell({
   const renderItem = (item: (typeof items)[number]) => {
     const content = (
       <div className="flex items-center gap-3">
-        <div className="h-8 w-8 rounded-full bg-[#EEF3FF] text-primary flex items-center justify-center">
+        <div className="h-8 w-8 rounded-full bg-[#EEF3FF] text-primary dark:bg-muted/70 dark:text-primary flex items-center justify-center">
           {item.kind === 'person' && <User className="h-4 w-4" />}
           {item.kind === 'file' && <FileText className="h-4 w-4" />}
           {item.kind === 'category' && <LayoutGrid className="h-4 w-4" />}
@@ -1369,7 +1371,7 @@ function DashboardShell({
       return (
         <div
           key={item.id}
-          className="px-3 py-2 border-t border-[#E4ECFF] hover:bg-[#EEF4FF]/80 transition"
+          className="px-3 py-2 border-t border-[#E4ECFF] dark:border-border hover:bg-[#EEF4FF]/80 dark:hover:bg-muted/60 transition"
         >
           {content}
         </div>
@@ -1380,7 +1382,7 @@ function DashboardShell({
       <Link
         key={item.id}
         to={item.href}
-        className="block px-3 py-2 border-t border-[#E4ECFF] hover:bg-[#EEF4FF]/80 transition"
+        className="block px-3 py-2 border-t border-[#E4ECFF] dark:border-border hover:bg-[#EEF4FF]/80 dark:hover:bg-muted/60 transition"
         onClick={() => setQuery('')}
       >
         {content}
@@ -1422,7 +1424,7 @@ function DashboardShell({
   ];
 
   return (
-    <div className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] p-4 md:p-6">
+    <div className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] dark:bg-background p-4 md:p-6">
       <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6">
         <div
           className="relative flex-shrink-0"
@@ -1435,7 +1437,7 @@ function DashboardShell({
           <AppSidebar />
         </div>
         <main className="flex-1 min-w-0 flex justify-center">
-          <div className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] flex flex-col overflow-hidden">
+          <div className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] dark:shadow-[0_24px_60px_-40px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden">
             <div
               ref={contentScrollRef}
               className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin relative"
@@ -1444,10 +1446,10 @@ function DashboardShell({
               {background}
               <div className="relative z-10">
                 <div className="relative z-20">
-                  <div className="shrink-0 border-b border-[#D9E6FF] bg-white/60 backdrop-blur-md px-4 md:px-6 py-3">
+                  <div className="shrink-0 border-b border-[#D9E6FF] bg-white/60 dark:bg-card/70 dark:border-border backdrop-blur-md px-4 md:px-6 py-3">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div className="relative w-full max-w-[220px] sm:max-w-[280px] md:max-w-md" ref={searchContainerRef}>
-                        <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-sm">
+                        <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-2 shadow-sm">
                           <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
                           <div className="relative flex-1">
                             {showPlaceholder && (
@@ -1480,14 +1482,14 @@ function DashboardShell({
                               className="search-elastic-input w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                             />
                           </div>
-                          <span className="hidden sm:flex items-center gap-1 rounded-full bg-[#EFF4FF] px-2 py-0.5 text-[11px] text-muted-foreground">
+                          <span className="hidden sm:flex items-center gap-1 rounded-full bg-[#EFF4FF] dark:bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
                             <kbd className="font-sans">Ctrl</kbd>
                             <kbd className="font-sans">F</kbd>
                           </span>
                         </div>
                         {showPanel && (
                           <div
-                            className="absolute left-0 right-0 mt-2 rounded-2xl border border-[#C9D7FF] bg-white/98 backdrop-blur-2xl shadow-xl animate-dropdown overflow-hidden z-50"
+                            className="absolute left-0 right-0 mt-2 rounded-2xl border border-[#C9D7FF] bg-white/98 dark:bg-card/95 dark:border-border backdrop-blur-2xl shadow-xl animate-dropdown overflow-hidden z-50"
                             onMouseDown={(event) => event.preventDefault()}
                           >
                             <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -1526,7 +1528,7 @@ function DashboardShell({
                                   );
                                 })
                               ) : (
-                                <div className="px-3 py-4 text-sm text-muted-foreground border-t border-[#E4ECFF]">
+                                <div className="px-3 py-4 text-sm text-muted-foreground border-t border-[#E4ECFF] dark:border-border">
                                   No matches. Try a different term.
                                 </div>
                               )}
