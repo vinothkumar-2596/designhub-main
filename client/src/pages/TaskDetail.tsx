@@ -63,6 +63,7 @@ import { loadLocalTaskById } from '@/lib/taskStorage';
 import { createSocket } from '@/lib/socket';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { pushScheduleNotification } from '@/lib/designerSchedule';
+import { GridBackground } from '@/components/ui/background';
 
 const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
   pending: { label: 'Pending', variant: 'pending' },
@@ -2069,7 +2070,8 @@ export default function TaskDetail() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-4xl select-none">
+      <GridBackground className="absolute inset-0 -z-10" />
+      <div className="space-y-6 max-w-4xl select-none relative z-10">
         {/* Back Button */}
         <Button
           variant="ghost"
@@ -2389,28 +2391,28 @@ export default function TaskDetail() {
                               <Trash2 className="h-4 w-4 text-status-urgent" />
                             </Button>
                           )}
-                            {(() => {
-                              const fileLinkUrl = getFileLinkUrl(file);
-                              return (
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  disabled={!fileLinkUrl || fileLinkUrl === '#'}
-                                  className={fileActionButtonClass}
-                                  onClick={() => {
-                                    if (fileLinkUrl && fileLinkUrl !== '#') {
-                                      window.open(fileLinkUrl, '_blank', 'noopener,noreferrer');
-                                    }
-                                  }}
-                                >
-                                  {shouldUseLinkIcon(file) ? (
-                                    <ExternalLink className="h-4 w-4" />
-                                  ) : (
-                                    <Download className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              );
-                            })()}
+                          {(() => {
+                            const fileLinkUrl = getFileLinkUrl(file);
+                            return (
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                disabled={!fileLinkUrl || fileLinkUrl === '#'}
+                                className={fileActionButtonClass}
+                                onClick={() => {
+                                  if (fileLinkUrl && fileLinkUrl !== '#') {
+                                    window.open(fileLinkUrl, '_blank', 'noopener,noreferrer');
+                                  }
+                                }}
+                              >
+                                {shouldUseLinkIcon(file) ? (
+                                  <ExternalLink className="h-4 w-4" />
+                                ) : (
+                                  <Download className="h-4 w-4" />
+                                )}
+                              </Button>
+                            );
+                          })()}
                         </div>
                       </div>
                     ))}
@@ -2511,71 +2513,71 @@ export default function TaskDetail() {
                 </div>
               )}
 
-                {canEditTask && (
-                  hasFinalDeliverables ? (
-                    <div className="rounded-lg border border-dashed border-border bg-secondary/30 p-4">
-                      <p className="text-sm font-medium text-foreground">Final deliverables shared</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {latestFinalUploadAt
-                          ? `Last updated ${format(new Date(latestFinalUploadAt), 'MMM d, yyyy')}.`
-                          : 'Designer has shared final files. Please review the files above.'}
-                      </p>
+              {canEditTask && (
+                hasFinalDeliverables ? (
+                  <div className="rounded-lg border border-dashed border-border bg-secondary/30 p-4">
+                    <p className="text-sm font-medium text-foreground">Final deliverables shared</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {latestFinalUploadAt
+                        ? `Last updated ${format(new Date(latestFinalUploadAt), 'MMM d, yyyy')}.`
+                        : 'Designer has shared final files. Please review the files above.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border p-4">
+                    <p className="text-sm font-medium text-foreground mb-3">Add Attachment</p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Input
+                        placeholder="file_name.pdf"
+                        value={newFileName}
+                        onChange={(event) => setNewFileName(event.target.value)}
+                        className="flex-1 min-w-[180px] select-text"
+                        disabled={approvalLockedForStaff || staffChangeLimitReached}
+                      />
+                      <Select
+                        value={newFileType}
+                        onValueChange={(v) => setNewFileType(v as 'input' | 'output')}
+                        disabled={approvalLockedForStaff || staffChangeLimitReached}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="input">Reference</SelectItem>
+                          <SelectItem value="output">Deliverable</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button onClick={handleAddFile} disabled={approvalLockedForStaff || staffChangeLimitReached}>
+                        Add File
+                      </Button>
                     </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-border p-4">
-                      <p className="text-sm font-medium text-foreground mb-3">Add Attachment</p>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <Input
-                          placeholder="file_name.pdf"
-                          value={newFileName}
-                          onChange={(event) => setNewFileName(event.target.value)}
-                          className="flex-1 min-w-[180px] select-text"
-                          disabled={approvalLockedForStaff || staffChangeLimitReached}
-                        />
-                        <Select
-                          value={newFileType}
-                          onValueChange={(v) => setNewFileType(v as 'input' | 'output')}
-                          disabled={approvalLockedForStaff || staffChangeLimitReached}
-                        >
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue placeholder="Type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="input">Reference</SelectItem>
-                            <SelectItem value="output">Deliverable</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button onClick={handleAddFile} disabled={approvalLockedForStaff || staffChangeLimitReached}>
-                          Add File
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                )}
+                  </div>
+                )
+              )}
 
               {/* Upload (Designer only) */}
               {isDesignerOrAdmin && (
                 <>
                   <div className="mt-6 rounded-2xl border-2 border-dashed border-[#D9E6FF] bg-[#F8FAFF] p-6 text-center">
                     <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
-                <p className="text-xs text-muted-foreground">
-                  Drag and drop or click to upload
-                </p>
-                <div className="mt-3 text-left">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Version note (optional)
-                  </p>
-                  <Textarea
-                    value={finalVersionNote}
-                    onChange={(event) => setFinalVersionNote(event.target.value)}
-                    rows={2}
-                    className="mt-2 bg-white/90"
-                    placeholder="Summarize changes in this version..."
-                    disabled={isUploadingFinal}
-                  />
-                </div>
-                <input
+                    <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
+                    <p className="text-xs text-muted-foreground">
+                      Drag and drop or click to upload
+                    </p>
+                    <div className="mt-3 text-left">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        Version note (optional)
+                      </p>
+                      <Textarea
+                        value={finalVersionNote}
+                        onChange={(event) => setFinalVersionNote(event.target.value)}
+                        rows={2}
+                        className="mt-2 bg-white/90"
+                        placeholder="Summarize changes in this version..."
+                        disabled={isUploadingFinal}
+                      />
+                    </div>
+                    <input
                       type="file"
                       multiple
                       onChange={handleFinalUpload}
@@ -2583,93 +2585,93 @@ export default function TaskDetail() {
                       id="final-file-upload"
                       disabled={isUploadingFinal}
                     />
-                      <label
-                        htmlFor="final-file-upload"
-                        className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full border border-[#D9E6FF] bg-white px-4 py-2 text-xs font-semibold text-foreground shadow-sm hover:bg-[#F4F7FF]"
-                      >
-                        {isUploadingFinal ? 'Uploading...' : 'Select files'}
-                      </label>
-                      {finalUploadItems.length > 0 && (
-                        <div className="mt-4 w-full rounded-2xl border border-[#D9E6FF] bg-white/80 p-3 text-left shadow-[0_12px_28px_-20px_rgba(15,23,42,0.4)]">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold text-foreground">
-                              {finalUploadLabel}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              {isUploadingFinal && (
-                                <button
-                                  type="button"
-                                  onClick={handleCancelFinalUpload}
-                                  className="rounded-full px-2 py-1 text-[11px] font-semibold text-primary/80 hover:text-primary"
-                                >
-                                  Cancel
-                                </button>
-                              )}
+                    <label
+                      htmlFor="final-file-upload"
+                      className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full border border-[#D9E6FF] bg-white px-4 py-2 text-xs font-semibold text-foreground shadow-sm hover:bg-[#F4F7FF]"
+                    >
+                      {isUploadingFinal ? 'Uploading...' : 'Select files'}
+                    </label>
+                    {finalUploadItems.length > 0 && (
+                      <div className="mt-4 w-full rounded-2xl border border-[#D9E6FF] bg-white/80 p-3 text-left shadow-[0_12px_28px_-20px_rgba(15,23,42,0.4)]">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-foreground">
+                            {finalUploadLabel}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {isUploadingFinal && (
                               <button
                                 type="button"
-                                onClick={() => setShowFinalUploadList((prev) => !prev)}
+                                onClick={handleCancelFinalUpload}
+                                className="rounded-full px-2 py-1 text-[11px] font-semibold text-primary/80 hover:text-primary"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setShowFinalUploadList((prev) => !prev)}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white"
+                            >
+                              <ChevronDown
+                                className={cn(
+                                  'h-4 w-4 transition-transform',
+                                  showFinalUploadList ? 'rotate-180' : ''
+                                )}
+                              />
+                            </button>
+                            {!isUploadingFinal && (
+                              <button
+                                type="button"
+                                onClick={clearFinalUploadItems}
                                 className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white"
                               >
-                                <ChevronDown
-                                  className={cn(
-                                    'h-4 w-4 transition-transform',
-                                    showFinalUploadList ? 'rotate-180' : ''
-                                  )}
-                                />
+                                <X className="h-4 w-4" />
                               </button>
-                              {!isUploadingFinal && (
-                                <button
-                                  type="button"
-                                  onClick={clearFinalUploadItems}
-                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
-                              )}
-                            </div>
+                            )}
                           </div>
-                          {showFinalUploadList && (
-                            <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3">
-                              {finalUploadItems.map((item) => {
-                                const extension = getFileExtension(item.name);
-                                return (
-                                  <div
-                                    key={item.id}
-                                    className="flex items-center justify-between rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2"
-                                  >
-                                    <div className="flex min-w-0 items-center gap-3">
-                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6]">
-                                        {extension.slice(0, 4)}
-                                      </div>
-                                      <span className="min-w-0 truncate text-xs font-medium text-foreground">
-                                        {item.name}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                      {item.status === 'uploading' && (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      )}
-                                      {item.status === 'done' && (
-                                        <Check className="h-4 w-4 text-emerald-500" />
-                                      )}
-                                      {item.status === 'error' && (
-                                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                              {finalUploadTotals.uploading > 0 && (
-                                <p className="text-xs text-muted-foreground">Starting upload...</p>
-                              )}
-                            </div>
-                          )}
                         </div>
-                      )}
-                      <div className="mt-5 rounded-xl border border-[#D9E6FF] bg-white/90 p-4 text-left shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                          Or add a Google Drive link
-                        </p>
+                        {showFinalUploadList && (
+                          <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3">
+                            {finalUploadItems.map((item) => {
+                              const extension = getFileExtension(item.name);
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="flex items-center justify-between rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2"
+                                >
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6]">
+                                      {extension.slice(0, 4)}
+                                    </div>
+                                    <span className="min-w-0 truncate text-xs font-medium text-foreground">
+                                      {item.name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                    {item.status === 'uploading' && (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    )}
+                                    {item.status === 'done' && (
+                                      <Check className="h-4 w-4 text-emerald-500" />
+                                    )}
+                                    {item.status === 'error' && (
+                                      <AlertTriangle className="h-4 w-4 text-red-500" />
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {finalUploadTotals.uploading > 0 && (
+                              <p className="text-xs text-muted-foreground">Starting upload...</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-5 rounded-xl border border-[#D9E6FF] bg-white/90 p-4 text-left shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                        Or add a Google Drive link
+                      </p>
                       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1.6fr_auto]">
                         <Input
                           placeholder="File name"
@@ -2730,32 +2732,32 @@ export default function TaskDetail() {
               )}
 
               <div className="flex gap-3">
-                  <Textarea
-                    placeholder={getMentionPlaceholder(user?.role)}
-                    value={newComment}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setNewComment(value);
+                <Textarea
+                  placeholder={getMentionPlaceholder(user?.role)}
+                  value={newComment}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNewComment(value);
                     if (!apiUrl) return;
                     emitTyping(true);
                     if (typingTimeoutRef.current) {
                       clearTimeout(typingTimeoutRef.current);
                     }
                     typingTimeoutRef.current = setTimeout(() => {
-                        emitTyping(false);
-                      }, 1200);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                        e.preventDefault();
-                        if (newComment.trim()) {
-                          handleAddComment();
-                        }
+                      emitTyping(false);
+                    }, 1200);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      if (newComment.trim()) {
+                        handleAddComment();
                       }
-                    }}
-                    rows={2}
-                    className="flex-1 select-text"
-                  />
+                    }
+                  }}
+                  rows={2}
+                  className="flex-1 select-text"
+                />
                 <Button
                   onClick={handleAddComment}
                   disabled={!newComment.trim()}
@@ -3138,33 +3140,33 @@ export default function TaskDetail() {
                 <h2 className="font-semibold text-foreground">Change History</h2>
                 <History className="h-4 w-4 text-muted-foreground" />
               </div>
-                {changeHistory.length > 0 ? (
-                  <div className="space-y-3 max-h-[420px] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin">
-                    {changeHistory.map((entry) => (
-                      <div
-                        key={entry.id}
-                        id={`change-${entry.id}`}
-                        className={cn(
-                          'rounded-lg border border-border/60 bg-secondary/40 p-2.5 transition-colors',
-                          entry.id === highlightChangeId && 'border-primary/40 bg-primary/10'
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-foreground leading-snug break-words">
-                              {entry.userName} updated {formatChangeField(entry.field)}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1 break-words">
-                              {entry.oldValue ? `From "${entry.oldValue}" to "${entry.newValue}"` : entry.newValue}
-                            </p>
-                            {entry.note && (
-                              <p className="text-xs text-muted-foreground mt-1 break-words">{entry.note}</p>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">
-                            {formatDistanceToNow(entry.createdAt, { addSuffix: true })}
-                          </span>
+              {changeHistory.length > 0 ? (
+                <div className="space-y-3 max-h-[420px] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin">
+                  {changeHistory.map((entry) => (
+                    <div
+                      key={entry.id}
+                      id={`change-${entry.id}`}
+                      className={cn(
+                        'rounded-lg border border-border/60 bg-secondary/40 p-2.5 transition-colors',
+                        entry.id === highlightChangeId && 'border-primary/40 bg-primary/10'
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground leading-snug break-words">
+                            {entry.userName} updated {formatChangeField(entry.field)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1 break-words">
+                            {entry.oldValue ? `From "${entry.oldValue}" to "${entry.newValue}"` : entry.newValue}
+                          </p>
+                          {entry.note && (
+                            <p className="text-xs text-muted-foreground mt-1 break-words">{entry.note}</p>
+                          )}
                         </div>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatDistanceToNow(entry.createdAt, { addSuffix: true })}
+                        </span>
+                      </div>
                       <div className="mt-2 flex items-center gap-2">
                         <Badge variant="secondary" className="text-xs">
                           {entry.userRole}

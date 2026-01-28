@@ -101,9 +101,14 @@ export default {
           from: { opacity: "0", transform: "translateY(10px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+
         "slide-in-left": {
           from: { opacity: "0", transform: "translateX(-10px)" },
           to: { opacity: "1", transform: "translateX(0)" },
+        },
+        "move": {
+          "0%": { transform: "translateX(-200px)" },
+          "100%": { transform: "translateX(200px)" },
         },
       },
       animation: {
@@ -112,6 +117,14 @@ export default {
         "fade-in": "fade-in 0.3s ease-out",
         "slide-up": "slide-up 0.3s ease-out",
         "slide-in-left": "slide-in-left 0.3s ease-out",
+        "move": "move 5s linear infinite",
+      },
+      backgroundImage: {
+        "dot-black": "radial-gradient(circle, #000000 1px, transparent 1px)",
+        "dot-white": "radial-gradient(circle, #ffffff 1px, transparent 1px)",
+      },
+      backgroundSize: {
+        "dot": "20px 20px",
       },
     },
   },

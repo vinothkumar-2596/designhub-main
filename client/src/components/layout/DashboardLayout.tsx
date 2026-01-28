@@ -38,6 +38,7 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { API_URL, authFetch } from '@/lib/api';
 import { createSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
+import { GridSmallBackground } from '@/components/ui/background';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -781,15 +782,15 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     const baseNotifications = useServerNotifications
       ? activeNotifications.map((entry: any) => normalizeNotification(entry))
       : activeNotifications.map((entry: any) => ({
-          id: entry.id || `${entry.taskId}-${entry.createdAt}`,
-          title: getNotificationTitle(entry),
-          message: getNotificationNote(entry),
-          type: entry.field || 'task',
-          link: entry.taskId ? `/task/${entry.taskId}` : '',
-          linkState: entry.taskId ? { task: entry.task, highlightChangeId: entry.id } : undefined,
-          createdAt: new Date(entry.createdAt),
-          readAt: null,
-        }));
+        id: entry.id || `${entry.taskId}-${entry.createdAt}`,
+        title: getNotificationTitle(entry),
+        message: getNotificationNote(entry),
+        type: entry.field || 'task',
+        link: entry.taskId ? `/task/${entry.taskId}` : '',
+        linkState: entry.taskId ? { task: entry.task, highlightChangeId: entry.id } : undefined,
+        createdAt: new Date(entry.createdAt),
+        readAt: null,
+      }));
 
     return baseNotifications.map((entry) => {
       const resolved = resolveNotificationTarget(entry);
@@ -866,12 +867,12 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     const extraCount = isTyping ? globalTypingSummary.extraCount : globalPresenceSummary.extraCount;
     const label = isTyping
       ? (() => {
-          const preferred =
-            globalTypingList.find((viewer) => viewer.userId !== userId) || globalTypingList[0];
-          const rawName = (preferred?.userName || 'Someone').trim();
-          const shortName = rawName ? rawName.slice(0, 5) : 'User';
-          return `${shortName} typing...`;
-        })()
+        const preferred =
+          globalTypingList.find((viewer) => viewer.userId !== userId) || globalTypingList[0];
+        const rawName = (preferred?.userName || 'Someone').trim();
+        const shortName = rawName ? rawName.slice(0, 5) : 'User';
+        return `${shortName} typing...`;
+      })()
       : 'Currently viewing';
     return (
       <div className="flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-1.5 shadow-sm">
@@ -1424,8 +1425,8 @@ function DashboardShell({
   ];
 
   return (
-    <div className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] dark:bg-background p-4 md:p-6">
-      <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6">
+    <GridSmallBackground className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] dark:bg-background p-4 md:p-6">
+      <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6 relative z-10">
         <div
           className="relative flex-shrink-0"
           style={{ width: 'var(--app-sidebar-width, 18rem)' }}
@@ -1456,10 +1457,10 @@ function DashboardShell({
                               <div className="search-placeholder">
                                 <span className="search-placeholder-static">Search for</span>
                                 <span className="search-placeholder-words">
-                                    <span className="search-placeholder-wordlist">
-                                      <span>tasks</span>
-                                      <span>files</span>
-                                    </span>
+                                  <span className="search-placeholder-wordlist">
+                                    <span>tasks</span>
+                                    <span>files</span>
+                                  </span>
                                 </span>
                               </div>
                             )}
@@ -1553,6 +1554,6 @@ function DashboardShell({
         </main>
       </div>
 
-    </div>
+    </GridSmallBackground>
   );
 }

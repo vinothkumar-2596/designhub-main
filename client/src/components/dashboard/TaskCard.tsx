@@ -5,6 +5,7 @@ import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { AnimatedCard } from '@/components/ui/animated-card';
 
 interface TaskCardProps {
   task: Task;
@@ -150,16 +151,15 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   };
 
   return (
-    <div
-      className={cn(
-        'group relative rounded-3xl border p-6 bg-white dark:bg-card/90 dark:border-border transition-all duration-300 isolate h-full flex flex-col',
-        'hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/5',
-        isHighlighted
-          ? 'border-[#C9D7FF] bg-[#F6F8FF]/95 ring-1 ring-[#D9E6FF] dark:bg-card/80 dark:border-border dark:ring-border'
-          : 'border-slate-100 hover:border-slate-200 dark:border-border'
+    <AnimatedCard
+      containerClassName={cn(
+        'h-full transition-all duration-300',
+        'hover:-translate-y-1',
+        isHighlighted && 'ring-1 ring-[#D9E6FF] dark:ring-border'
       )}
+      className="p-6 h-full flex flex-col"
     >
-        <div className="flex items-start justify-between gap-4 mb-4">
+      <div className="flex items-start justify-between gap-4 mb-4">
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {renderChip(CheckCircle2, status.label)}
           {task.urgency === 'urgent' && (
@@ -296,7 +296,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           </Link>
         </Button>
       </div>
-    </div>
+    </AnimatedCard>
   );
 }
 

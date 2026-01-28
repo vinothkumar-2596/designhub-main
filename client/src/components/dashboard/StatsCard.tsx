@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { ArrowDownRight, ArrowUpRight, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { FeatureCard } from '@/components/ui/animated-card';
 
 interface StatsCardProps {
   title: string;
@@ -34,9 +35,10 @@ const iconStyles = {
 
 export function StatsCard({ title, value, icon, trend, variant = 'default' }: StatsCardProps) {
   return (
-    <div
+    <FeatureCard
+      containerClassName="animate-slide-up"
       className={cn(
-        'relative overflow-hidden rounded-xl border p-4 shadow-[0_12px_24px_-16px_hsl(var(--foreground)_/_0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card-hover animate-slide-up',
+        'relative overflow-hidden rounded-xl p-4 shadow-[0_12px_24px_-16px_hsl(var(--foreground)_/_0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card-hover',
         variantStyles[variant]
       )}
     >
@@ -67,6 +69,6 @@ export function StatsCard({ title, value, icon, trend, variant = 'default' }: St
           )}
         </div>
       </div>
-    </div>
+    </FeatureCard>
   );
 }

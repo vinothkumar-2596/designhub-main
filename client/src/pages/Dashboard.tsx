@@ -33,6 +33,7 @@ import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
+import { DotBackground } from '@/components/ui/background';
 
 import { API_URL, authFetch } from '@/lib/api';
 
@@ -593,10 +594,12 @@ export default function Dashboard() {
   return (
     <DashboardLayout
       background={
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-white overflow-hidden rounded-[32px]">
-          <div className="absolute left-1/2 top-[-22%] h-[680px] w-[780px] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(77,92,218,0.6),_rgba(120,190,255,0.4)_45%,_transparent_72%)] blur-[90px] opacity-90" />
-          <div className="absolute left-[10%] bottom-[-20%] h-[520px] w-[620px] rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(120,190,255,0.35),_transparent_70%)] blur-[110px] opacity-70" />
-        </div>
+        <DotBackground className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[32px]">
+          <div className="pointer-events-none absolute inset-0 bg-white dark:bg-transparent overflow-hidden rounded-[32px]">
+            <div className="absolute left-1/2 top-[-22%] h-[680px] w-[780px] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(77,92,218,0.6),_rgba(120,190,255,0.4)_45%,_transparent_72%)] dark:bg-[radial-gradient(ellipse_at_center,_rgba(59,130,246,0.15),_rgba(37,99,235,0.1)_45%,_transparent_72%)] blur-[90px] opacity-90 dark:opacity-40" />
+            <div className="absolute left-[10%] bottom-[-20%] h-[520px] w-[620px] rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(120,190,255,0.35),_transparent_70%)] dark:bg-[radial-gradient(ellipse_at_center,_rgba(139,92,246,0.12),_transparent_70%)] blur-[110px] opacity-70 dark:opacity-30" />
+          </div>
+        </DotBackground>
       }
     >
       <div className="space-y-8 relative z-10 pt-8">
