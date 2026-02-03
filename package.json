@@ -12,5 +12,8 @@
     },
     "devDependencies": {
         "sass-embedded": "^1.97.3"
+    },
+    "dependencies": {
+        "react-glass-ui": "^1.2.2"
     }
 }

@@ -659,7 +659,10 @@ export default function Dashboard() {
                     </Link>
                   </Button>
                 )}
-                <Button asChild className="border border-white/35 bg-white/80 bg-gradient-to-r from-white/15 via-white/80 to-white/90 text-foreground shadow-[0_8px_16px_-8px_rgba(0,0,0,0.1)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-white/85 hover:shadow-[0_10px_20px_-8px_rgba(0,0,0,0.15)] transition-all duration-200">
+                <Button
+                  asChild
+                  className="border border-white/35 bg-white/85 text-foreground shadow-[0_8px_16px_-8px_rgba(0,0,0,0.1)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-white/90 hover:shadow-[0_10px_20px_-8px_rgba(0,0,0,0.15)] transition-all duration-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:ring-white/10 dark:hover:bg-slate-900/80"
+                >
                   <Link to="/tasks">Dashboard Overview</Link>
                 </Button>
               </div>

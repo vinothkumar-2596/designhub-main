@@ -39,6 +39,7 @@ import { API_URL, authFetch } from '@/lib/api';
 import { createSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 import { GridSmallBackground } from '@/components/ui/background';
+import { GlassCard } from 'react-glass-ui';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -812,6 +813,13 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
     useServerNotifications,
   ]);
 
+  const isNotificationNow = (createdAt: Date | string) => {
+    const createdTime = new Date(createdAt).getTime();
+    if (!Number.isFinite(createdTime)) return false;
+    const diffMs = Date.now() - createdTime;
+    return diffMs >= 0 && diffMs <= 2 * 60 * 1000;
+  };
+
   useEffect(() => {
     if (!user || !hasNotifications) return;
     if (user.role === 'staff') return;
@@ -1027,7 +1035,9 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-semibold text-foreground">
-                      {entry.title}
+                      {`${entry.title
+                        .replace(/\s*:\s*now$/i, '')
+                        .replace(/\s+now$/i, '')}${isNotificationNow(entry.createdAt) ? ': now' : ''}`}
                     </p>
                     <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
                   </div>
@@ -1323,14 +1333,24 @@ function DashboardShell({
       if (searchContainerRef.current.contains(event.target as Node)) return;
       setIsSearchOpen(false);
       setIsSearchDismissed(true);
+      setQuery('');
+      setActiveFilter('all');
+      searchInputRef.current?.blur();
     };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('mousedown', onPointerDown, true);
+    document.addEventListener('touchstart', onPointerDown, true);
     return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('mousedown', onPointerDown, true);
+      document.removeEventListener('touchstart', onPointerDown, true);
     };
   }, [showPanel]);
+
+  useEffect(() => {
+    setIsSearchOpen(false);
+    setIsSearchDismissed(true);
+    setQuery('');
+    setActiveFilter('all');
+  }, [location.pathname]);
 
   useEffect(() => {
     const onOpenSearch = () => {
@@ -1343,6 +1363,38 @@ function DashboardShell({
     return () =>
       window.removeEventListener('designhub:open-search', onOpenSearch as EventListener);
   }, []);
+
+  const highlightText = (text: string) => {
+    const rawQuery = query.trim();
+    if (!rawQuery) return text;
+    const lowerText = text.toLowerCase();
+    const lowerQuery = rawQuery.toLowerCase();
+    const parts: ReactNode[] = [];
+    let index = 0;
+
+    while (index < text.length) {
+      const matchIndex = lowerText.indexOf(lowerQuery, index);
+      if (matchIndex === -1) {
+        parts.push(text.slice(index));
+        break;
+      }
+      if (matchIndex > index) {
+        parts.push(text.slice(index, matchIndex));
+      }
+      const matchText = text.slice(matchIndex, matchIndex + rawQuery.length);
+      parts.push(
+        <mark
+          key={`${matchIndex}-${matchText}`}
+          className="rounded bg-amber-200/70 text-slate-900 dark:bg-amber-300/30 dark:text-amber-100 px-0.5"
+        >
+          {matchText}
+        </mark>
+      );
+      index = matchIndex + rawQuery.length;
+    }
+
+    return parts;
+  };
 
   const renderItem = (item: (typeof items)[number]) => {
     const content = (
@@ -1357,9 +1409,13 @@ function DashboardShell({
           )}
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground truncate">{item.label}</p>
+          <p className="text-sm font-semibold text-foreground truncate">
+            {highlightText(item.label)}
+          </p>
           {item.description && (
-            <p className="text-xs text-muted-foreground truncate">{item.description}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {highlightText(item.description)}
+            </p>
           )}
           {item.meta && (
             <p className="text-[11px] text-muted-foreground mt-0.5">{item.meta}</p>
@@ -1489,52 +1545,62 @@ function DashboardShell({
                           </span>
                         </div>
                         {showPanel && (
-                          <div
-                            className="absolute left-0 right-0 mt-2 rounded-2xl border border-[#C9D7FF] bg-white/98 dark:bg-card/95 dark:border-border backdrop-blur-2xl shadow-xl animate-dropdown overflow-hidden z-50"
-                            onMouseDown={(event) => event.preventDefault()}
+                          <GlassCard
+                            className="absolute left-0 right-0 mt-2 z-50"
+                            contentClassName="rounded-[32px] overflow-hidden border border-slate-100 bg-white dark:bg-card dark:border-border p-2 shadow-xl shadow-slate-200/50 dark:shadow-[0_22px_50px_-28px_rgba(0,0,0,0.6)] animate-dropdown"
+                            blur={0}
+                            saturation={100}
+                            backgroundColor="#ffffff"
+                            backgroundOpacity={0}
+                            borderColor="#ffffff"
+                            borderOpacity={0}
+                            borderSize={0}
+                            innerLightOpacity={0}
                           >
-                            <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              <span>{scopeLabel}</span>
-                              <span>{totalCount} results</span>
-                            </div>
-                            <div className="flex flex-wrap gap-2 px-3 pb-3">
-                              {filterOptions.map((option) => {
-                                const Icon = option.icon;
-                                return (
-                                  <button
-                                    key={option.key}
-                                    type="button"
-                                    onClick={() => setActiveFilter(option.key as typeof activeFilter)}
-                                    className="search-chip"
-                                    data-active={activeFilter === option.key}
-                                  >
-                                    <Icon className="h-4 w-4" />
-                                    <span>{option.label}</span>
-                                    <span className="search-chip-count">{option.count}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            <div className="max-h-72 overflow-auto scrollbar-none">
-                              {Object.entries(visibleGroups).some(([, list]) => list.length > 0) ? (
-                                Object.entries(visibleGroups).map(([title, list]) => {
-                                  if (list.length === 0) return null;
+                            <div onMouseDown={(event) => event.preventDefault()}>
+                              <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                <span>{scopeLabel}</span>
+                                <span>{totalCount} results</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2 px-3 pb-3">
+                                {filterOptions.map((option) => {
+                                  const Icon = option.icon;
                                   return (
-                                    <div key={title}>
-                                      <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                                        {title}
-                                      </div>
-                                      {list.slice(0, 6).map(renderItem)}
-                                    </div>
+                                    <button
+                                      key={option.key}
+                                      type="button"
+                                      onClick={() => setActiveFilter(option.key as typeof activeFilter)}
+                                      className="search-chip"
+                                      data-active={activeFilter === option.key}
+                                    >
+                                      <Icon className="h-4 w-4" />
+                                      <span>{option.label}</span>
+                                      <span className="search-chip-count">{option.count}</span>
+                                    </button>
                                   );
-                                })
-                              ) : (
-                                <div className="px-3 py-4 text-sm text-muted-foreground border-t border-[#E4ECFF] dark:border-border">
-                                  No matches. Try a different term.
-                                </div>
-                              )}
+                                })}
+                              </div>
+                              <div className="max-h-72 overflow-auto scrollbar-none">
+                                {Object.entries(visibleGroups).some(([, list]) => list.length > 0) ? (
+                                  Object.entries(visibleGroups).map(([title, list]) => {
+                                    if (list.length === 0) return null;
+                                    return (
+                                      <div key={title}>
+                                        <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                          {title}
+                                        </div>
+                                        {list.slice(0, 6).map(renderItem)}
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="px-3 py-4 text-sm text-muted-foreground border-t border-[#E4ECFF] dark:border-border">
+                                    No matches. Try a different term.
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
+                          </GlassCard>
                         )}
                       </div>
                       <div className="flex w-full items-center justify-end gap-2 md:w-auto">

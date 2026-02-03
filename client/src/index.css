@@ -235,6 +235,10 @@
     background: linear-gradient(120deg, rgba(74, 118, 255, 0.12), rgba(255, 255, 255, 0));
     opacity: 0;
     pointer-events: none;
+    padding: 2px;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
   }
 
   .search-elastic:focus-within {
@@ -245,6 +249,34 @@
 
   .search-elastic:focus-within::after {
     opacity: 0.5;
+  }
+
+  .dark .search-elastic::after {
+    background: linear-gradient(
+      120deg,
+      rgba(56, 189, 248, 0.95),
+      rgba(99, 102, 241, 0.95),
+      rgba(244, 114, 182, 0.95),
+      rgba(56, 189, 248, 0.95)
+    );
+    background-size: 200% 200%;
+  }
+
+  .dark .search-elastic:focus-within::after {
+    opacity: 1;
+    animation: searchBorderFlow 3.2s linear infinite;
+  }
+
+  @keyframes searchBorderFlow {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
   }
 
   .search-elastic-input::placeholder {
@@ -263,6 +295,20 @@
   .search-elastic:focus-within .search-elastic-icon {
     transform: translateX(2px) rotate(-6deg);
     color: hsl(var(--primary));
+  }
+
+  .dark .search-elastic:focus-within .search-elastic-icon {
+    animation: searchIconPulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes searchIconPulse {
+    0%,
+    100% {
+      transform: translateX(2px) rotate(-6deg) scale(1);
+    }
+    50% {
+      transform: translateX(2px) rotate(-6deg) scale(1.08);
+    }
   }
 
   .search-placeholder {
