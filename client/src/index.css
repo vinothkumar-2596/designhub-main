@@ -383,6 +383,18 @@
     }
   }
 
+  .gradient-border {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(#ffffff, #ffffff) padding-box,
+      linear-gradient(120deg, #38bdf8, #6366f1, #f472b6) border-box;
+  }
+
+  .dark .gradient-border {
+    background: hsl(var(--card));
+    border-color: hsl(var(--border));
+  }
+
   .search-placeholder {
     position: absolute;
     inset: 0;
@@ -949,7 +961,7 @@
   }
 
   .dark .MuiPickersOutlinedInput-root {
-    background-color: rgba(15, 23, 42, 0.65);
+    background-color: rgba(15, 23, 42, 0.65) !important;
     color: #e2e8f0;
   }
 
@@ -967,6 +979,109 @@
   }
 
   .dark .MuiPickersInputBase-input::placeholder {
+    color: rgba(148, 163, 184, 0.8);
+  }
+
+  :root.dark .MuiPickersPopper-root .MuiPaper-root,
+  html.dark .MuiPickersPopper-root .MuiPaper-root,
+  body.dark .MuiPickersPopper-root .MuiPaper-root,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPaper-root {
+    background-color: #0f172a !important;
+    color: #e2e8f0 !important;
+    border: 1px solid rgba(51, 65, 85, 0.8) !important;
+  }
+
+  :root.dark .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel,
+  html.dark .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel,
+  body.dark .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel {
+    color: #94a3b8 !important;
+  }
+
+  :root.dark .MuiPickersPopper-root .MuiPickersDay-root,
+  html.dark .MuiPickersPopper-root .MuiPickersDay-root,
+  body.dark .MuiPickersPopper-root .MuiPickersDay-root,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root {
+    color: #e2e8f0 !important;
+  }
+
+  :root.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled,
+  html.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled,
+  body.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled {
+    color: rgba(148, 163, 184, 0.5) !important;
+  }
+
+  :root.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected,
+  html.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected,
+  body.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected {
+    background-color: rgba(99, 102, 241, 0.6) !important;
+    color: #f8fafc !important;
+  }
+
+  :root.dark .MuiPickersPopper-root .MuiPickersDay-root:hover,
+  html.dark .MuiPickersPopper-root .MuiPickersDay-root:hover,
+  body.dark .MuiPickersPopper-root .MuiPickersDay-root:hover,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root:hover {
+    background-color: rgba(59, 130, 246, 0.18) !important;
+  }
+
+  :root.dark .MuiPickersPopper-root .MuiPickersArrowSwitcher-button,
+  :root.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-switchViewButton,
+  html.dark .MuiPickersPopper-root .MuiPickersArrowSwitcher-button,
+  html.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-switchViewButton,
+  body.dark .MuiPickersPopper-root .MuiPickersArrowSwitcher-button,
+  body.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-switchViewButton,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersArrowSwitcher-button,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersCalendarHeader-switchViewButton {
+    color: #cbd5f5 !important;
+  }
+
+  :root.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-label,
+  html.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-label,
+  body.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-label,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersCalendarHeader-label {
+    color: #e2e8f0 !important;
+  }
+
+  :root.dark .MuiPickersOutlinedInput-root,
+  html.dark .MuiPickersOutlinedInput-root,
+  body.dark .MuiPickersOutlinedInput-root,
+  [data-theme='dark'] .MuiPickersOutlinedInput-root {
+    background-color: rgba(15, 23, 42, 0.65) !important;
+    color: #e2e8f0;
+  }
+
+  :root.dark .MuiPickersOutlinedInput-notchedOutline,
+  html.dark .MuiPickersOutlinedInput-notchedOutline,
+  body.dark .MuiPickersOutlinedInput-notchedOutline,
+  [data-theme='dark'] .MuiPickersOutlinedInput-notchedOutline {
+    border-color: rgba(51, 65, 85, 0.8);
+  }
+
+  :root.dark .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline,
+  html.dark .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline,
+  body.dark .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline,
+  [data-theme='dark'] .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline {
+    border-color: rgba(99, 102, 241, 0.6);
+  }
+
+  :root.dark .MuiPickersInputBase-input,
+  :root.dark .MuiPickersInputBase-sectionContent,
+  html.dark .MuiPickersInputBase-input,
+  html.dark .MuiPickersInputBase-sectionContent,
+  body.dark .MuiPickersInputBase-input,
+  body.dark .MuiPickersInputBase-sectionContent,
+  [data-theme='dark'] .MuiPickersInputBase-input,
+  [data-theme='dark'] .MuiPickersInputBase-sectionContent {
+    color: #e2e8f0;
+  }
+
+  :root.dark .MuiPickersInputBase-input::placeholder,
+  html.dark .MuiPickersInputBase-input::placeholder,
+  body.dark .MuiPickersInputBase-input::placeholder,
+  [data-theme='dark'] .MuiPickersInputBase-input::placeholder {
     color: rgba(148, 163, 184, 0.8);
   }
 

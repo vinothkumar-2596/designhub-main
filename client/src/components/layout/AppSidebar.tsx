@@ -360,7 +360,7 @@ export function AppSidebar() {
               </span>
               <Link
                 to="/new-request"
-                className="mt-3 flex flex-col items-center gap-2 rounded-2xl border border-[#D9E6FF] bg-white/90 dark:bg-card/90 dark:border-border px-3 py-4 text-center shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] transition hover:shadow-[0_20px_44px_-28px_rgba(15,23,42,0.45)]"
+                className="mt-3 flex flex-col items-center gap-2 rounded-2xl border border-[#D9E6FF] bg-white/90 dark:bg-card/90 dark:border-border px-3 py-4 text-center shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] transition hover:shadow-[0_20px_44px_-28px_rgba(15,23,42,0.45)] dark:transition-none dark:hover:shadow-none"
               >
                 <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.7)]">
                   <Plus className="h-6 w-6" />

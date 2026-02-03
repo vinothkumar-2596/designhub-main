@@ -648,7 +648,7 @@ export default function Dashboard() {
 
         {/* Hero + Notice */}
         <div className="grid gap-5 lg:grid-cols-[1.6fr,1fr]">
-          <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white dark:bg-card dark:border-border p-5 min-h-[242px] lg:min-h-[264px]">
+          <div className="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-black/5 shadow-none dark:bg-card dark:border-border dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent p-5 min-h-[242px] lg:min-h-[264px]">
             <div className="relative z-10 flex h-full flex-col justify-between gap-4">
               <div className="space-y-2">
                 <span className="inline-flex w-fit items-center rounded-full border border-border/70 bg-secondary/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -685,7 +685,7 @@ export default function Dashboard() {
                 )}
                 <Button
                   asChild
-                  className="border border-white/35 bg-white/85 text-foreground shadow-[0_8px_16px_-8px_rgba(0,0,0,0.1)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-white/90 hover:shadow-[0_10px_20px_-8px_rgba(0,0,0,0.15)] transition-all duration-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:ring-white/10 dark:hover:bg-slate-900/80"
+                  className="border border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] shadow-none hover:shadow-none hover:bg-[#EEF4FF] transition-all duration-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:ring-white/10 dark:hover:bg-slate-900/80 dark:transition-none"
                 >
                   <Link to="/tasks">Dashboard Overview</Link>
                 </Button>

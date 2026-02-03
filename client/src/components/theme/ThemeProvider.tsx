@@ -8,6 +8,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       defaultTheme="light"
       enableSystem={false}
       storageKey="designhub-theme"
+      disableTransitionOnChange
     >
       {children}
     </NextThemeProvider>

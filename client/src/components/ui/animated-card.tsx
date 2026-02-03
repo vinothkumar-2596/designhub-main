@@ -99,7 +99,7 @@ export function FeatureCard({
         >
             {/* Card content */}
             <div className={cn(
-                "relative rounded-2xl bg-white dark:bg-card border border-[#D9E6FF] dark:border-border transition-all duration-300",
+                "relative rounded-2xl bg-white dark:bg-card border border-[#D9E6FF] dark:border-border transition-all duration-300 dark:transition-none",
                 onClick && "cursor-pointer",
                 className
             )}>

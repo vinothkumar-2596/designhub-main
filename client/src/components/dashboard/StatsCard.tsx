@@ -26,11 +26,11 @@ const iconBase =
   'relative flex h-10 w-10 items-center justify-center rounded-xl border border-white/95 bg-white/45 dark:bg-slate-800/80 dark:border-slate-700/60 shadow-[0_20px_40px_-18px_rgba(15,23,42,0.35)] backdrop-blur-2xl overflow-hidden before:absolute before:inset-0 before:rounded-xl before:bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(255,255,255,0.55)_42%,rgba(255,255,255,0.25)_68%)] before:opacity-85 after:absolute after:inset-0 after:rounded-xl after:bg-[radial-gradient(circle_at_18%_12%,_rgba(255,255,255,0.98),_transparent_55%)] after:opacity-80 dark:before:opacity-0 dark:after:opacity-0';
 
 const iconStyles = {
-  default: `${iconBase} text-[#7c3aed]`,
-  primary: `${iconBase} text-[#2563eb]`,
-  warning: `${iconBase} text-[#f97316]`,
-  success: `${iconBase} text-[#10b981]`,
-  urgent: `${iconBase} text-[#ef4444]`,
+  default: `${iconBase} text-[#3b82f6]`,
+  primary: `${iconBase} text-[#3b82f6]`,
+  warning: `${iconBase} text-[#3b82f6]`,
+  success: `${iconBase} text-[#3b82f6]`,
+  urgent: `${iconBase} text-[#3b82f6]`,
 };
 
 export function StatsCard({ title, value, icon, trend, variant = 'default' }: StatsCardProps) {
@@ -38,7 +38,7 @@ export function StatsCard({ title, value, icon, trend, variant = 'default' }: St
     <FeatureCard
       containerClassName="animate-slide-up"
       className={cn(
-        'relative overflow-hidden rounded-2xl border p-4 shadow-card',
+        'relative overflow-hidden rounded-2xl border p-4 shadow-card dark:shadow-none',
         variantStyles[variant]
       )}
     >

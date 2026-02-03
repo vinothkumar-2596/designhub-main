@@ -257,12 +257,12 @@ export default function Approvals() {
               return (
                 <div
                   key={task.id}
-                  className="bg-white border border-[#D9E6FF] rounded-2xl p-4 md:p-5 animate-slide-up shadow-card"
+                  className="bg-white border border-[#D9E6FF] rounded-2xl p-4 md:p-5 animate-slide-up shadow-card dark:bg-card dark:border-border dark:shadow-none"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <div className="flex flex-col gap-4 md:flex-row md:items-center">
-                    <div className="flex items-center gap-3 md:w-44 md:shrink-0 md:border-r md:border-[#E4ECFF] md:pr-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary font-semibold">
+                    <div className="flex items-center gap-3 md:w-44 md:shrink-0 md:border-r md:border-[#E4ECFF] md:pr-4 dark:border-border">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary font-semibold dark:bg-primary/20">
                         AP
                       </div>
                       <div>
@@ -283,7 +283,7 @@ export default function Approvals() {
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           <Badge
                             variant="pending"
-                            className="border border-primary/20 bg-primary/10 text-primary"
+                            className="border border-primary/20 bg-primary/10 text-primary dark:border-primary/40 dark:bg-primary/20 dark:text-primary"
                           >
                             Awaiting Approval
                           </Badge>
@@ -296,7 +296,7 @@ export default function Approvals() {
                           {task.description}
                         </p>
                         {staffPreview && (
-                          <div className="mt-3 rounded-lg border border-primary/10 bg-primary/5 px-3 py-2">
+                          <div className="mt-3 rounded-lg border border-primary/10 bg-primary/5 px-3 py-2 dark:border-primary/30 dark:bg-primary/10">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/70">
                               Staff update
                             </p>

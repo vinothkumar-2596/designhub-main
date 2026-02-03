@@ -49,7 +49,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
     'ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-[#C9D7FF] bg-white dark:bg-card dark:border-border px-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground shrink-0';
   const chipIcon = 'h-3.5 w-3.5 shrink-0';
   const renderChip = (Icon: typeof CheckCircle2, label: string, count = 0) => (
-    <span className={chipBase}>
+    <span className={chipBase} title={label}>
       <Icon className={chipIcon} />
       <span className={chipLabel}>{label}</span>
       <span className={chipCount}>{count}</span>
@@ -153,8 +153,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   return (
     <AnimatedCard
       containerClassName={cn(
-        'h-full transition-all duration-300',
-        'hover:-translate-y-1',
+        'h-full transition-all duration-300 dark:transition-none',
         isHighlighted && 'ring-1 ring-[#D9E6FF] dark:ring-border'
       )}
       className="p-6 h-full flex flex-col"
@@ -178,7 +177,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
       </div>
 
       <div className="space-y-3 mb-6">
-        <h3 className="text-lg font-bold text-slate-900 dark:text-foreground group-hover:text-primary transition-colors tracking-tight line-clamp-2">
+        <h3 className="text-lg font-bold text-slate-900 dark:text-foreground dark:transition-none group-hover:text-primary transition-colors tracking-tight line-clamp-2">
           {task.title}
         </h3>
         <p className="text-sm text-slate-500 dark:text-muted-foreground line-clamp-2 leading-relaxed">
@@ -200,7 +199,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={handleNativeShare}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
             title="Share"
             aria-label="Share task"
           >
@@ -209,7 +208,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={handleWhatsAppShare}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
             title="Share via WhatsApp"
             aria-label="Share via WhatsApp"
           >
@@ -218,7 +217,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={handleEmailShare}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
             title="Share via Email"
             aria-label="Share via Email"
           >
@@ -227,7 +226,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={() => copyToClipboard(taskUrl)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
             title="Copy link"
             aria-label="Copy task link"
           >
@@ -239,7 +238,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mb-6 text-xs text-slate-500 dark:text-muted-foreground font-medium">
         {showRequester && (
           <div className="flex items-center gap-2 group/item">
-            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors">
+            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors dark:transition-none">
               <User className="h-3.5 w-3.5" />
             </div>
             <span>{task.requesterName}</span>
@@ -247,7 +246,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
         )}
         {showAssignee && (
           <div className="flex items-center gap-2 group/item">
-            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors">
+            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors dark:transition-none">
               <UserCheck className="h-3.5 w-3.5" />
             </div>
             <span>
@@ -256,7 +255,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           </div>
         )}
         <div className={cn('flex items-center gap-2 group/item', isOverdue && 'text-red-500')}>
-          <div className={cn("p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors", isOverdue && "bg-red-50 text-red-500 dark:bg-red-500/20 dark:text-red-300")}>
+          <div className={cn("p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors dark:transition-none", isOverdue && "bg-red-50 text-red-500 dark:bg-red-500/20 dark:text-red-300")}>
             <Calendar className="h-3.5 w-3.5" />
           </div>
           <span>{deadlineText}</span>
@@ -266,13 +265,13 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
       <div className="mt-auto flex items-center justify-between pt-4 border-t border-slate-50 dark:border-border">
         <div className="flex items-center gap-3">
           {task.files.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors dark:transition-none">
               <Paperclip className="h-3.5 w-3.5" />
               <span>{task.files.length}</span>
             </div>
           )}
           {task.comments.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors dark:transition-none">
               <MessageSquare className="h-3.5 w-3.5" />
               <span>{task.comments.length}</span>
             </div>
@@ -288,7 +287,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           variant="ghost"
           size="sm"
           asChild
-          className="h-8 gap-2 pl-3 pr-2 text-primary hover:text-primary hover:bg-primary/5 dark:text-slate-200 dark:hover:text-white dark:hover:bg-white/10 rounded-full font-semibold text-xs group/btn"
+          className="h-8 gap-2 pl-3 pr-2 text-primary hover:text-primary hover:bg-primary/5 dark:text-slate-200 dark:hover:text-white dark:hover:bg-white/10 rounded-full font-semibold text-xs group/btn dark:transition-none"
         >
           <Link to={`/task/${taskId}`} state={{ task }}>
             View Details
