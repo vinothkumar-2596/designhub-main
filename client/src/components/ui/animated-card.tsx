@@ -97,9 +97,6 @@ export function FeatureCard({
             )}
             onClick={onClick}
         >
-            {/* Animated border gradient - Dark mode only */}
-            <div className="absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500 dark:bg-gradient-to-r dark:from-primary dark:via-accent dark:to-primary dark:bg-[length:200%_100%] dark:group-hover:opacity-100 dark:group-hover:animate-move" />
-
             {/* Card content */}
             <div className={cn(
                 "relative rounded-2xl bg-white dark:bg-card border border-[#D9E6FF] dark:border-border transition-all duration-300",

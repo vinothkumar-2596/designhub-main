@@ -474,7 +474,7 @@ export function AppSidebar() {
       )}
 
       {/* Footer */}
-      <div className="p-3 border-t border-[#D9E6FF]/70 space-y-1">
+      <div className="p-3 border-t border-[#D9E6FF]/70 dark:border-transparent space-y-1">
         <div className="relative group">
           {renderCollapsedTooltip('Settings')}
           <Link

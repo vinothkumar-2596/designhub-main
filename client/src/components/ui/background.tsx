@@ -20,15 +20,24 @@ export function GridBackground({
 
 export function GridSmallBackground({
     children,
-    className
+    className,
+    hideGrid = false,
 }: {
     children?: ReactNode;
     className?: string;
+    hideGrid?: boolean;
 }) {
     return (
         <div className={cn("relative w-full", className)}>
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center dark:bg-black bg-white [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]">
-                <div className="absolute inset-0 bg-none dark:bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:20px_20px]" />
+                <div
+                  className={cn(
+                    "absolute inset-0 bg-none bg-[size:20px_20px]",
+                    hideGrid
+                      ? "dark:bg-none"
+                      : "dark:bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)]"
+                  )}
+                />
             </div>
             {children}
         </div>

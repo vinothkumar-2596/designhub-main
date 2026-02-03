@@ -15,11 +15,11 @@ interface StatsCardProps {
 }
 
 const variantStyles = {
-  default: 'bg-[#F3F7FF] border-[#D9E6FF] dark:bg-card/80 dark:border-border',
-  primary: 'bg-[#F3F7FF] border-[#D9E6FF] dark:bg-card/80 dark:border-border',
-  warning: 'bg-[#F3F7FF] border-[#D9E6FF] dark:bg-card/80 dark:border-border',
-  success: 'bg-[#F3F7FF] border-[#D9E6FF] dark:bg-card/80 dark:border-border',
-  urgent: 'bg-[#F3F7FF] border-[#D9E6FF] dark:bg-card/80 dark:border-border',
+  default: 'bg-card border-border',
+  primary: 'bg-card border-border',
+  warning: 'bg-card border-border',
+  success: 'bg-card border-border',
+  urgent: 'bg-card border-border',
 };
 
 const iconBase =
@@ -38,7 +38,7 @@ export function StatsCard({ title, value, icon, trend, variant = 'default' }: St
     <FeatureCard
       containerClassName="animate-slide-up"
       className={cn(
-        'relative overflow-hidden rounded-xl p-4 shadow-[0_12px_24px_-16px_hsl(var(--foreground)_/_0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card-hover',
+        'relative overflow-hidden rounded-2xl border p-4 shadow-card',
         variantStyles[variant]
       )}
     >

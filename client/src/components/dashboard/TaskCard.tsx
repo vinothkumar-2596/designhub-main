@@ -288,7 +288,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           variant="ghost"
           size="sm"
           asChild
-          className="h-8 gap-2 pl-3 pr-2 text-primary hover:text-primary hover:bg-primary/5 rounded-full font-semibold text-xs group/btn"
+          className="h-8 gap-2 pl-3 pr-2 text-primary hover:text-primary hover:bg-primary/5 dark:text-slate-200 dark:hover:text-white dark:hover:bg-white/10 rounded-full font-semibold text-xs group/btn"
         >
           <Link to={`/task/${taskId}`} state={{ task }}>
             View Details

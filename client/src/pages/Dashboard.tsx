@@ -34,6 +34,7 @@ import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
 import { DotBackground } from '@/components/ui/background';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 import { API_URL, authFetch } from '@/lib/api';
 
@@ -45,12 +46,18 @@ const roleLabels: Record<string, string> = {
 };
 
 const EmptyState = () => (
-  <div className="text-center py-10 bg-white rounded-[32px] border border-slate-100 shadow-sm h-full flex flex-col items-center justify-center">
-    <div className="bg-slate-50 p-4 rounded-full mb-3">
-      <ListTodo className="h-8 w-8 text-slate-300" />
+  <div className="text-center py-10 bg-white rounded-[32px] border border-slate-100 shadow-sm h-full flex flex-col items-center justify-center dark:bg-card dark:border-border dark:shadow-card">
+    <DotLottieReact
+      src="https://lottie.host/0e85a89f-d869-4f1e-a9c0-6b12a6d53c58/H4LEyOPsA3.lottie"
+      loop
+      autoplay
+      className="h-40 w-40 mb-3 dark:hidden"
+    />
+    <div className="hidden dark:flex items-center justify-center h-20 w-20 mb-3">
+      <ListTodo className="h-12 w-12 text-slate-500" />
     </div>
-    <h3 className="font-semibold text-slate-900">No recent activity</h3>
-    <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
+    <h3 className="font-semibold text-slate-900 dark:text-slate-100">No recent activity</h3>
+    <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto dark:text-slate-400">
       New requests and tasks will appear here once you get started.
     </p>
   </div>
@@ -253,6 +260,21 @@ export default function Dashboard() {
       )
       .slice(0, 4);
   }, [dateFilteredTasks, query, user.role]);
+  const showViewAll = useMemo(() => {
+    if (user.role === 'treasurer') {
+      const total = [...dateFilteredTasks].filter((task) =>
+        matchesSearch(query, [
+          task.title,
+          task.description,
+          task.requesterName,
+          task.category,
+          task.status,
+        ])
+      ).length;
+      return total > 4;
+    }
+    return searchFilteredTasks.length > 4;
+  }, [dateFilteredTasks, query, searchFilteredTasks.length, user.role]);
   const pendingApprovals = useMemo(() => {
     return hydratedTasks.filter((task) => task.approvalStatus === 'pending');
   }, [hydratedTasks]);
@@ -626,8 +648,7 @@ export default function Dashboard() {
 
         {/* Hero + Notice */}
         <div className="grid gap-5 lg:grid-cols-[1.6fr,1fr]">
-          <div className="relative overflow-hidden rounded-2xl border bg-card pt-5 pl-5 pr-4 pb-4 shadow-card min-h-[242px] lg:min-h-[264px]">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_hsl(var(--primary)_/_0.12),_transparent_55%)]" />
+          <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white dark:bg-card dark:border-border p-5 min-h-[242px] lg:min-h-[264px]">
             <div className="relative z-10 flex h-full flex-col justify-between gap-4">
               <div className="space-y-2">
                 <span className="inline-flex w-fit items-center rounded-full border border-border/70 bg-secondary/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -635,7 +656,10 @@ export default function Dashboard() {
                 </span>
                 <div>
                   <h1 className="text-3xl font-semibold text-foreground">
-                    Welcome back, {user.name.split(' ')[0]}!
+                    Welcome back,{' '}
+                    <span className="gradient-name bg-gradient-to-r from-sky-300 via-indigo-400 to-pink-300 dark:from-sky-200 dark:via-indigo-400 dark:to-pink-300 bg-clip-text text-transparent">
+                      {user.name.split(' ')[0]}!
+                    </span>
                   </h1>
                   <p className="mt-1.5 max-w-xl text-sm text-muted-foreground">{getWelcomeMessage()}</p>
                 </div>
@@ -645,7 +669,7 @@ export default function Dashboard() {
                   <Button
                     asChild
                     size="default"
-                    className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200"
+                    className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200 dark:border-transparent dark:ring-0"
                   >
                     <Link to="/new-request">
                       <PlusCircle className="h-4 w-4 mr-2" />
@@ -669,7 +693,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white dark:bg-card dark:border-border p-5 shadow-card min-h-[242px] lg:min-h-[264px]">
+          <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white dark:bg-card dark:border-border p-5 min-h-[242px] lg:min-h-[264px]">
             <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
             <div className="relative flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF3FF] dark:bg-muted text-primary ring-1 ring-[#D9E6FF] dark:ring-border">
@@ -789,11 +813,18 @@ export default function Dashboard() {
                       {user.role === 'staff' ? 'Your Requests' : 'Recent Tasks'}
                     </p>
                   </div>
-                  <Button variant="ghost" size="sm" asChild className="rounded-full hover:bg-slate-100">
-                    <Link to={user.role === 'staff' ? '/my-requests' : '/tasks'}>
-                      View All <ArrowRight className="ml-1 h-3 w-3" />
-                    </Link>
-                  </Button>
+                  {showViewAll && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      asChild
+                      className="rounded-full hover:bg-slate-100"
+                    >
+                      <Link to={user.role === 'staff' ? '/my-requests' : '/tasks'}>
+                        View All <ArrowRight className="ml-1 h-3 w-3" />
+                      </Link>
+                    </Button>
+                  )}
                 </div>
 
                 {user.role === 'treasurer' ? (

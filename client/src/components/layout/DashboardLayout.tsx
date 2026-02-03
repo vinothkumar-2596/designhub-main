@@ -45,6 +45,7 @@ interface DashboardLayoutProps {
   children: ReactNode;
   headerActions?: ReactNode;
   background?: ReactNode;
+  hideGrid?: boolean;
 }
 
 type NotificationItem = {
@@ -69,7 +70,12 @@ type GlobalViewer = {
   avatar?: string;
 };
 
-export function DashboardLayout({ children, headerActions, background }: DashboardLayoutProps) {
+export function DashboardLayout({
+  children,
+  headerActions,
+  background,
+  hideGrid = false,
+}: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
   const apiUrl = API_URL;
   const [tasks, setTasks] = useState(mockTasks);
@@ -883,7 +889,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
       })()
       : 'Currently viewing';
     return (
-      <div className="flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-1.5 shadow-sm">
+      <div className="flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-slate-900/70 dark:border-white/10 dark:text-white px-3 py-1.5 shadow-sm">
         <span
           className={
             (isTyping
@@ -895,10 +901,10 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
           {label}
         </span>
         {isTyping && (
-          <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse" />
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:150ms]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:300ms]" />
+          <span className="flex items-center gap-1 typing-dots">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
           </span>
         )}
         <div className="flex -space-x-2">
@@ -911,17 +917,21 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
             return (
               <Tooltip key={viewer.userId}>
                 <TooltipTrigger asChild>
-                  <Avatar
-                    className={cn(
-                      'h-6 w-6 border-2 border-white shadow-sm bg-white/90 dark:border-border dark:bg-card/90',
-                      isSelf && 'ring-2 ring-primary/40'
-                    )}
+                  <span
+                    className={cn('inline-flex rounded-full', isSelf ? '' : 'presence-highlight')}
                   >
-                    <AvatarImage src={viewer.avatar} alt={viewer.userName} />
-                    <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-semibold">
-                      {getInitials(viewer.userName)}
-                    </AvatarFallback>
-                  </Avatar>
+                    <Avatar
+                      className={cn(
+                        'h-6 w-6 border-2 border-white shadow-sm bg-white/90 dark:border-white/10 dark:bg-slate-900/80',
+                        isSelf && 'ring-2 ring-primary/40'
+                      )}
+                    >
+                      <AvatarImage src={viewer.avatar} alt={viewer.userName} />
+                      <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-semibold">
+                        {getInitials(viewer.userName)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="end">
                   <div className="text-xs font-semibold">
@@ -937,7 +947,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
             );
           })}
           {extraCount > 0 && (
-            <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white dark:border-border bg-[#E6F1FF] dark:bg-muted text-[9px] font-semibold text-primary shadow-sm">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white dark:border-white/10 bg-[#E6F1FF] dark:bg-slate-900/70 text-[9px] font-semibold text-primary shadow-sm">
               +{extraCount}
             </div>
           )}
@@ -1069,6 +1079,7 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
       userInitial={user?.name?.charAt(0) || 'U'}
       background={background}
       contentScrollRef={contentScrollRef}
+      hideGrid={hideGrid}
       onContentScroll={() => {
         if (previewTimeoutRef.current) {
           clearTimeout(previewTimeoutRef.current);
@@ -1098,20 +1109,20 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
             className="absolute inset-0 bg-slate-900/25 backdrop-blur-sm"
           />
           <div className="relative w-full max-w-3xl rounded-[28px] border border-[#D9E6FF] bg-white dark:bg-card dark:border-border shadow-[0_22px_48px_-28px_rgba(15,23,42,0.25)]">
-            <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top_left,_rgba(214,227,255,0.6),_transparent_55%),radial-gradient(circle_at_bottom_right,_rgba(240,244,255,0.9),_transparent_60%)]" />
-            <div className="relative overflow-hidden rounded-[26px] border border-[#D9E6FF] bg-white/90 dark:bg-card/90 dark:border-border backdrop-blur-xl">
+            <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top_left,_rgba(214,227,255,0.6),_transparent_55%),radial-gradient(circle_at_bottom_right,_rgba(240,244,255,0.9),_transparent_60%)] dark:hidden" />
+            <div className="relative overflow-hidden rounded-[26px] border border-[#D9E6FF] bg-white/90 dark:bg-card dark:border-border backdrop-blur-xl">
               <div className="flex items-start justify-between gap-4 px-8 py-8">
                 <div className="max-w-xl">
-                  <h3 className="text-lg font-extrabold text-[#1E2A5A]">
+                  <h3 className="text-lg font-extrabold text-[#1E2A5A] dark:text-foreground">
                     Submission Guidelines
                   </h3>
-                  <p className="mt-1 text-xs text-[#6B7A99]">
+                  <p className="mt-1 text-xs text-[#6B7A99] dark:text-muted-foreground">
                     Please follow these before submitting.
                   </p>
                 </div>
                 <button
                   type="button"
-                  className="text-[#6B7A99] hover:text-[#1E2A5A] rounded-full p-2 bg-[#EEF4FF] hover:bg-[#E5ECFF]"
+                  className="text-[#6B7A99] hover:text-[#1E2A5A] rounded-full p-2 bg-[#EEF4FF] hover:bg-[#E5ECFF] dark:text-muted-foreground dark:bg-slate-800 dark:hover:bg-slate-700"
                   onClick={() => setIsGuidelinesOpen(false)}
                 >
                   <X className="h-4 w-4" />
@@ -1119,56 +1130,56 @@ export function DashboardLayout({ children, headerActions, background }: Dashboa
               </div>
               <div className="px-8 pb-10">
                 <div className="grid gap-4 md:grid-cols-[1.2fr,0.8fr] items-center">
-                  <div className="rounded-2xl border border-[#D9E6FF] bg-white/70 text-sm text-[#4B5A78] divide-y divide-[#D9E6FF]">
+                  <div className="rounded-2xl border border-[#D9E6FF] bg-white/70 text-sm text-[#4B5A78] divide-y divide-[#D9E6FF] dark:border-border dark:bg-slate-900/70 dark:text-muted-foreground dark:divide-border">
                     <div className="flex items-start gap-3 px-5 py-5">
                       <Database className="mt-0.5 h-7 w-7 text-primary" />
                       <span>
-                        <span className="font-semibold text-[#2F3A56]">Data Requirements:</span>{' '}
+                        <span className="font-semibold text-[#2F3A56] dark:text-foreground">Data Requirements:</span>{' '}
                         Include all text content, images, logos, and reference files.
                       </span>
                     </div>
                     <div className="flex items-start gap-3 px-5 py-5">
                       <Clock className="mt-0.5 h-7 w-7 text-primary" />
                       <span>
-                        <span className="font-semibold text-[#2F3A56]">Timeline:</span>{' '}
+                        <span className="font-semibold text-[#2F3A56] dark:text-foreground">Timeline:</span>{' '}
                         Minimum 3 working days for standard requests. Urgent requests require justification.
                       </span>
                     </div>
                     <div className="flex items-start gap-3 px-5 py-5">
                       <PenLine className="mt-0.5 h-7 w-7 text-primary" />
                       <span>
-                        <span className="font-semibold text-[#2F3A56]">Modifications:</span>{' '}
+                        <span className="font-semibold text-[#2F3A56] dark:text-foreground">Modifications:</span>{' '}
                         Changes to approved designs require Treasurer approval first.
                       </span>
                     </div>
                   </div>
                   <div className="relative hidden md:block">
-                    <div className="absolute -right-6 top-8 h-32 w-56 rounded-[28px] border border-white/70 bg-white/70" />
-                    <div className="relative rounded-[32px] bg-white p-6">
+                    <div className="absolute -right-6 top-8 h-32 w-56 rounded-[28px] border border-white/70 bg-white/70 dark:border-white/10 dark:bg-slate-900/60" />
+                    <div className="relative rounded-[32px] bg-white p-6 dark:bg-slate-900/70">
                       <div className="flex items-center gap-3">
-                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56]">
+                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56] dark:bg-slate-800 dark:text-slate-200">
                           <Sparkles className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
-                          <div className="h-3 w-24 rounded-full bg-[#EEF4FF]" />
-                          <div className="mt-2 h-2 w-32 rounded-full bg-[#EEF4FF]" />
+                          <div className="h-3 w-24 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
+                          <div className="mt-2 h-2 w-32 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
                         </div>
-                        <span className="ml-auto h-7 w-10 rounded-full bg-[#EAF1FF]" />
+                        <span className="ml-auto h-7 w-10 rounded-full bg-[#EAF1FF] dark:bg-slate-800" />
                       </div>
-                      <div className="mt-4 h-2 w-28 rounded-full bg-[#EEF4FF]" />
+                      <div className="mt-4 h-2 w-28 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
                     </div>
-                    <div className="relative mt-3 ml-6 rounded-[32px] bg-white p-6">
+                    <div className="relative mt-3 ml-6 rounded-[32px] bg-white p-6 dark:bg-slate-900/70">
                       <div className="flex items-center gap-3">
-                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56]">
+                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56] dark:bg-slate-800 dark:text-slate-200">
                           <Clock className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
-                          <div className="h-3 w-24 rounded-full bg-[#EEF4FF]" />
-                          <div className="mt-2 h-2 w-32 rounded-full bg-[#EEF4FF]" />
+                          <div className="h-3 w-24 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
+                          <div className="mt-2 h-2 w-32 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
                         </div>
-                        <span className="ml-auto h-7 w-10 rounded-full bg-[#EAF1FF]" />
+                        <span className="ml-auto h-7 w-10 rounded-full bg-[#EAF1FF] dark:bg-slate-800" />
                       </div>
-                      <div className="mt-4 h-2 w-24 rounded-full bg-[#EEF4FF]" />
+                      <div className="mt-4 h-2 w-24 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
                     </div>
                   </div>
                 </div>
@@ -1203,6 +1214,7 @@ function DashboardShell({
   onContentScroll,
   background,
   contentScrollRef,
+  hideGrid = false,
 }: {
   children: ReactNode;
   userInitial: string;
@@ -1210,6 +1222,7 @@ function DashboardShell({
   onContentScroll?: () => void;
   background?: ReactNode;
   contentScrollRef?: React.RefObject<HTMLDivElement>;
+  hideGrid?: boolean;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
   const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'people' | 'files' | 'categories' | 'more'>('all');
@@ -1481,7 +1494,10 @@ function DashboardShell({
   ];
 
   return (
-    <GridSmallBackground className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] dark:bg-background p-4 md:p-6">
+    <GridSmallBackground
+      hideGrid={hideGrid}
+      className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] dark:bg-background p-4 md:p-6"
+    >
       <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6 relative z-10">
         <div
           className="relative flex-shrink-0"

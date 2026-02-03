@@ -115,7 +115,7 @@ type UploadStatus = 'uploading' | 'done' | 'error';
 type UploadItem = { id: string; name: string; status: UploadStatus };
 
 const glassPanelClass =
-  'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)]';
+  'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)] dark:bg-card dark:border-border dark:shadow-card dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
 const fileRowClass =
   'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-4 py-1.5 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl';
 const fileActionButtonClass =
@@ -2069,8 +2069,7 @@ export default function TaskDetail() {
   };
 
   return (
-    <DashboardLayout>
-      <GridBackground className="absolute inset-0 -z-10" />
+    <DashboardLayout hideGrid>
       <div className="space-y-6 max-w-4xl select-none relative z-10">
         {/* Back Button */}
         <Button
@@ -2907,7 +2906,7 @@ export default function TaskDetail() {
                               />
                             )}
                           </div>
-                          <div className="w-full min-w-0 flex-1 rounded-2xl border border-[#D9E6FF] bg-gradient-to-br from-white/90 via-[#F2F7FF]/85 to-[#E8F0FF]/75 px-3 py-2 sm:px-4 sm:py-3 shadow-[0_16px_36px_-26px_rgba(15,23,42,0.35)] backdrop-blur">
+                          <div className="w-full min-w-0 flex-1 rounded-2xl border border-[#D9E6FF] bg-gradient-to-br from-white/90 via-[#F2F7FF]/85 to-[#E8F0FF]/75 px-3 py-2 sm:px-4 sm:py-3 shadow-[0_16px_36px_-26px_rgba(15,23,42,0.35)] backdrop-blur dark:bg-card dark:border-border dark:shadow-card dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent">
                             <div
                               className={cn(
                                 'min-w-0 text-xs sm:text-sm font-semibold',

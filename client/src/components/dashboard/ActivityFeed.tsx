@@ -101,7 +101,9 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
                     className="bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-muted dark:text-foreground border-none rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider mb-3"
                 >
                     <Sparkles className="h-3 w-3 mr-1.5" />
-                    Real-Time Activity
+                    <span className="gradient-name bg-gradient-to-r from-sky-300 via-indigo-400 to-pink-300 dark:from-sky-200 dark:via-indigo-400 dark:to-pink-300 bg-clip-text text-transparent">
+                        Real-Time Activity
+                    </span>
                 </Badge>
 
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-foreground mb-2 tracking-tight">
