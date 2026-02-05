@@ -34,8 +34,9 @@ import { GeminiBlink } from '@/components/common/GeminiBlink';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { useTheme } from 'next-themes';
 
-import { API_URL, authFetch } from '@/lib/api';
+import { API_URL, authFetch, getAuthToken } from '@/lib/api';
 import { createSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 import { GridSmallBackground } from '@/components/ui/background';

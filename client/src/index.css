@@ -761,14 +761,14 @@
     padding: 0;
     overflow: hidden;
     backdrop-filter: blur(18px);
-    box-shadow: 0 24px 50px -34px rgba(15, 23, 42, 0.35);
+    box-shadow: none;
     position: relative;
   }
 
   .dark .availability-calendar__scroll {
     border-color: rgba(51, 65, 85, 0.8);
     background: rgba(15, 23, 42, 0.88);
-    box-shadow: 0 24px 50px -36px rgba(2, 6, 23, 0.7);
+    box-shadow: none;
   }
 
   .availability-calendar__scroll::before,

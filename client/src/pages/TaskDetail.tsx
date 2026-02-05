@@ -1556,6 +1556,11 @@ export default function TaskDetail() {
     const selectedFiles = e.target.files;
     if (!selectedFiles || selectedFiles.length === 0) return;
     if (!taskState) return;
+    const taskId = (taskState as { id?: string; _id?: string })?.id || (taskState as { _id?: string })?._id;
+    if (!taskId) {
+      toast.error('Task id missing. Please refresh and try again.');
+      return;
+    }
     if (!apiUrl) {
       toast.error('File upload requires the backend.');
       return;
@@ -1587,6 +1592,8 @@ export default function TaskDetail() {
     }> = [];
     let hasFailure = false;
     let needsDriveAuth = false;
+    let saveFailure = false;
+    let saveFailureMessage = '';
     try {
       for (let index = 0; index < uploads.length; index += 1) {
         const file = uploads[index];
@@ -1600,7 +1607,7 @@ export default function TaskDetail() {
             body: formData,
             signal: controller.signal,
           });
-          const data = await response.json();
+          const data = await response.json().catch(() => ({}));
           if (!response.ok) {
             throw new Error(data?.error || 'Upload failed');
           }
@@ -1660,7 +1667,7 @@ export default function TaskDetail() {
         } else if (hasFailure) {
           toast.error('File upload failed');
         } else if (uploadedFiles.length > 0) {
-          const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/final-deliverables`, {
+          const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/final-deliverables`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1668,9 +1675,11 @@ export default function TaskDetail() {
               note: finalVersionNote.trim(),
             }),
           });
-          const data = await response.json();
+          const data = await response.json().catch(() => ({}));
           if (!response.ok) {
-            throw new Error(data?.error || 'Failed to save final deliverables');
+            saveFailure = true;
+            saveFailureMessage = data?.error || 'Failed to save final deliverables';
+            throw new Error(saveFailureMessage);
           }
           const hydrated = hydrateTask(data);
           setTaskState(hydrated);
@@ -1684,6 +1693,10 @@ export default function TaskDetail() {
     } catch (error: any) {
       if (error?.name === 'AbortError') {
         toast.message('Upload cancelled.');
+      } else if (saveFailure) {
+        toast.error('Final files uploaded, but not linked to the task.', {
+          description: saveFailureMessage || 'Please retry or contact support.',
+        });
       } else {
         const errorMsg = error.message || 'Upload failed';
         if (errorMsg.includes('Drive OAuth not connected')) {
@@ -2711,7 +2724,7 @@ export default function TaskDetail() {
                           )}
                         </div>
                       )}
-                      <div className="mt-5 rounded-xl border border-[#D9E6FF] bg-white/90 p-4 text-left shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)] dark:border-border dark:bg-card/90 dark:shadow-none">
+                      <div className="mt-5 rounded-xl border border-[#D9E6FF] bg-white/90 p-4 text-left shadow-none dark:border-border dark:bg-card/90 dark:shadow-none">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                           Or add a Google Drive link
                         </p>

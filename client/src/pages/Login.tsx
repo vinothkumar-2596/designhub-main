@@ -86,7 +86,7 @@ export default function Login() {
   const glassInputClass =
     'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
   const glassButtonClass =
-    'bg-white text-foreground hover:bg-[#F8FBFF]/95';
+    'bg-white text-foreground hover:bg-[#EEF3FF] hover:text-foreground';
   const selectContentClass =
     'border border-[#C9D7FF] bg-white shadow-lg';
   const selectTriggerClass =
@@ -275,13 +275,13 @@ export default function Login() {
     <>
       <div className="min-h-screen flex bg-background">
         {/* Left Panel - Branding */}
-        <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden">
+        <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden items-center justify-center">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.22),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.18),_transparent_60%)]" />
           <div className="absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]">
             <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(148,163,184,0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.18)_1px,transparent_1px)] bg-[size:20px_20px] opacity-35" />
           </div>
-          <div className="relative z-10 flex flex-col justify-center px-16 ml-[150px] text-sidebar-foreground">
-            <div className="animate-slide-in-left">
+          <div className="relative z-10 w-full max-w-xl px-12 text-sidebar-foreground">
+            <div className="animate-slide-in-left text-left">
               <div className="flex items-center gap-3 mb-8">
                 <div
                   className="h-12 w-12 rounded-xl flex items-center justify-center p-1"
@@ -295,13 +295,13 @@ export default function Login() {
                 </div>
               </div>
 
-              <h2 className="text-4xl font-bold mb-4 leading-tight">
-                <span className="block text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-300 to-slate-100">
-                  Design workflows.
+              <h2 className="text-5xl font-bold mb-4 leading-tight">
+                <span className="block whitespace-nowrap text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-300 to-slate-100">
+                  Design workflows,
                 </span>
-                <span className="block">
+                <span className="inline-flex items-baseline gap-2">
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-300 to-slate-100">
-                    made{' '}
+                    made
                   </span>
                   <span
                     key={wordIndex}
@@ -431,7 +431,7 @@ export default function Login() {
                 <Button
                   type="button"
                   variant="outline"
-                  className={`w-full h-11 ${glassButtonClass} border-0 bg-transparent backdrop-blur-xl ring-1 ring-white/20 shadow-[0_10px_26px_-18px_rgba(59,130,246,0.45)] hover:bg-transparent`}
+                  className={`w-full h-11 ${glassButtonClass} border-0 bg-transparent backdrop-blur-xl ring-1 ring-white/20 shadow-[0_10px_26px_-18px_rgba(59,130,246,0.45)] hover:bg-[#EEF3FF]`}
                   disabled={isLoading}
                   onClick={handleOpenSignup}
                 >

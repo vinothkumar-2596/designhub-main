@@ -697,8 +697,8 @@ router.get("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
 router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
   try {
     const userRole = req.user?.role || "";
-    if (userRole !== "designer" && userRole !== "admin") {
-      return res.status(403).json({ error: "Only designers can upload final deliverables." });
+    if (userRole !== "designer" && userRole !== "admin" && userRole !== "staff") {
+      return res.status(403).json({ error: "Only designers or staff can upload final deliverables." });
     }
     const taskId = req.params.id;
     const userId = getUserId(req);
