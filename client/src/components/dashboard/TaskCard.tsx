@@ -1,11 +1,12 @@
 import { Task, TaskStatus } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag, Share2, MessageCircle, Mail, Copy } from 'lucide-react';
+import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag, Share2, MessageCircle, Mail, Copy, Check } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { AnimatedCard } from '@/components/ui/animated-card';
+import { useEffect, useRef, useState } from 'react';
 
 interface TaskCardProps {
   task: Task;
@@ -34,6 +35,8 @@ const categoryLabels: Record<string, string> = {
 
 export function TaskCard({ task, showRequester = true, showAssignee = false }: TaskCardProps) {
   const { user } = useAuth();
+  const [copied, setCopied] = useState(false);
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskId = task.id || (task as unknown as { _id?: string })._id || '';
   const taskUrl =
     typeof window !== 'undefined' && taskId
@@ -120,6 +123,14 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current) {
+        clearTimeout(copyResetTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleNativeShare = async () => {
     if (!taskUrl) return;
     if (navigator.share) {
@@ -199,7 +210,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={handleNativeShare}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+            className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
             title="Share"
             aria-label="Share task"
           >
@@ -208,7 +219,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={handleWhatsAppShare}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+            className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
             title="Share via WhatsApp"
             aria-label="Share via WhatsApp"
           >
@@ -217,7 +228,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <button
             type="button"
             onClick={handleEmailShare}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+            className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
             title="Share via Email"
             aria-label="Share via Email"
           >
@@ -225,12 +236,25 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           </button>
           <button
             type="button"
-            onClick={() => copyToClipboard(taskUrl)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
-            title="Copy link"
+            onClick={async () => {
+              await copyToClipboard(taskUrl);
+              setCopied(true);
+              if (copyResetTimerRef.current) {
+                clearTimeout(copyResetTimerRef.current);
+              }
+              copyResetTimerRef.current = setTimeout(() => {
+                setCopied(false);
+              }, 1200);
+            }}
+            data-success={copied}
+            className={cn(
+              "icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none",
+              copied && "border-primary/50 text-primary bg-primary/10 dark:border-primary/50 dark:bg-primary/20 dark:text-primary"
+            )}
+            title={copied ? "Copied" : "Copy link"}
             aria-label="Copy task link"
           >
-            <Copy className="h-4 w-4" />
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </button>
         </div>
       </div>
@@ -254,8 +278,8 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
             </span>
           </div>
         )}
-        <div className={cn('flex items-center gap-2 group/item', isOverdue && 'text-red-500')}>
-          <div className={cn("p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors dark:transition-none", isOverdue && "bg-red-50 text-red-500 dark:bg-red-500/20 dark:text-red-300")}>
+        <div className={cn('flex items-center gap-2 group/item', isOverdue && 'text-red-500 dark:text-rose-300')}>
+          <div className={cn("p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors dark:transition-none", isOverdue && "bg-red-50 text-red-500 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-1 dark:ring-rose-300/30")}>
             <Calendar className="h-3.5 w-3.5" />
           </div>
           <span>{deadlineText}</span>

@@ -175,8 +175,8 @@ export default function Activity() {
       <div className="space-y-6 max-w-3xl">
         {/* Header */}
         <div className="animate-fade-in">
-          <h1 className="text-2xl font-bold text-foreground">Activity Log</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold text-foreground premium-headline">Activity Log</h1>
+          <p className="text-muted-foreground mt-1 premium-body">
             Track all actions and updates across the system
           </p>
         </div>

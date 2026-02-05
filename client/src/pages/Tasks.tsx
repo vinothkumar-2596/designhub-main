@@ -2,63 +2,77 @@ import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { TaskCard } from '@/components/dashboard/TaskCard';
 import { mockTasks } from '@/data/mockTasks';
-import {
-  ListTodo,
-  CheckCircle2,
-  AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
+import { ListTodo, Search, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
-  addMonths,
-  eachDayOfInterval,
-  endOfMonth,
-  endOfWeek,
-  format,
-  isSameDay,
-  isSameMonth,
-  startOfMonth,
-  startOfWeek,
-} from 'date-fns';
-import type { Task as ScheduleTask } from '@/lib/designerSchedule';
-import type { TaskStatus } from '@/types';
-import {
-  buildScheduleFromTasks,
-  getDefaultDesignerId,
-} from '@/lib/designerSchedule';
-import { cn } from '@/lib/utils';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { TaskCategory, TaskStatus, TaskUrgency } from '@/types';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
 import { API_URL, authFetch } from '@/lib/api';
 
-const scheduleStatusStyles: Record<ScheduleTask['status'], string> = {
-  QUEUED: 'border border-border bg-secondary text-muted-foreground',
-  WORK_STARTED: 'bg-status-progress-bg text-status-progress',
-  COMPLETED: 'bg-status-completed-bg text-status-completed',
-  EMERGENCY_PENDING: 'bg-status-urgent-bg text-status-urgent',
-};
-
-const priorityStyles: Record<ScheduleTask['priority'], { bar: string; dot: string }> = {
-  VIP: { bar: 'bg-[#ef4444] text-white', dot: 'bg-[#ef4444]' },
-  HIGH: { bar: 'bg-[#f59e0b] text-slate-900', dot: 'bg-[#f59e0b]' },
-  NORMAL: { bar: 'bg-[#3b82f6] text-white', dot: 'bg-[#3b82f6]' },
-};
-
-const taskStatusLabels: Record<TaskStatus, string> = {
+const statusLabels: Record<TaskStatus, string> = {
   pending: 'Pending',
   in_progress: 'In Progress',
-  clarification_required: 'Clarification Required',
+  clarification_required: 'Clarification',
   under_review: 'Under Review',
   completed: 'Completed',
 };
 
-const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const categoryLabels: Record<TaskCategory, string> = {
+  banner: 'Banner',
+  campaign_or_others: 'Campaign or others',
+  social_media_creative: 'Social Media Creative',
+  website_assets: 'Website Assets',
+  ui_ux: 'UI/UX',
+  led_backdrop: 'LED Backdrop',
+  brochure: 'Brochure',
+  flyer: 'Flyer',
+};
+
+const urgencyLabels: Record<TaskUrgency, string> = {
+  low: 'Low',
+  normal: 'Normal',
+  intermediate: 'Intermediate',
+  urgent: 'Urgent',
+};
+
+const urgencyOrder: Record<TaskUrgency, number> = {
+  urgent: 4,
+  intermediate: 3,
+  normal: 2,
+  low: 1,
+};
+
+const normalizeText = (value?: string | null) => (value ? value.trim().toLowerCase() : '');
+
+const isRequestedByUser = (
+  task: {
+    requesterId?: string;
+    requesterEmail?: string;
+    requesterName?: string;
+  },
+  user?: { id?: string; email?: string; name?: string } | null
+) => {
+  if (!user) return false;
+  if (task.requesterId && user.id && task.requesterId === user.id) return true;
+  const requesterEmail = normalizeText(task.requesterEmail);
+  const userEmail = normalizeText(user.email);
+  if (requesterEmail && userEmail && requesterEmail === userEmail) return true;
+  const requesterName = normalizeText(task.requesterName);
+  const userName = normalizeText(user.name);
+  return Boolean(requesterName && userName && requesterName === userName);
+};
 
 export default function Tasks() {
   const { user } = useAuth();
@@ -67,8 +81,15 @@ export default function Tasks() {
   const [tasks, setTasks] = useState(mockTasks);
   const [storageTick, setStorageTick] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
   const [useLocalData, setUseLocalData] = useState(!apiUrl);
+  const [designerSearch, setDesignerSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<TaskCategory | 'all'>('all');
+  const [urgencyFilter, setUrgencyFilter] = useState<TaskUrgency | 'all'>('all');
+  const [requestScope, setRequestScope] = useState<'all' | 'mine'>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'deadline' | 'priority'>('newest');
+  const [page, setPage] = useState(1);
+  const isAdvancedFilterPortal = user?.role === 'designer' || user?.role === 'treasurer';
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -170,39 +191,18 @@ export default function Tasks() {
     return mergeLocalTasks(mockTasks);
   }, [useLocalData, storageTick, tasks]);
 
-  const scheduleSourceTasks = useMemo(() => {
-    if (!apiUrl || useLocalData) return [];
-    const visible = filterTasksForUser(tasks, user);
-    if (!user || user.role !== 'designer') return visible;
-    return visible.map((task) => {
-      const assignedId =
-        (task as { assignedTo?: string; assignedToId?: string }).assignedTo ||
-        (task as { assignedToId?: string }).assignedToId ||
-        '';
-      const assignedName = task.assignedToName || '';
-      if (!assignedId && !assignedName) {
-        return { ...task, assignedToId: user.id };
-      }
-      return task;
-    });
-  }, [apiUrl, tasks, useLocalData, user]);
-
-  const scheduleTasks = useMemo(
-    () => buildScheduleFromTasks(scheduleSourceTasks),
-    [scheduleSourceTasks]
-  );
-
-  const visibleTasks = useMemo(
-    () => filterTasksForUser(hydratedTasks, user),
-    [hydratedTasks, user]
-  );
+  const visibleTasks = useMemo(() => {
+    if (!user) return [];
+    if (user.role === 'designer') return hydratedTasks;
+    return filterTasksForUser(hydratedTasks, user);
+  }, [hydratedTasks, user]);
 
   useEffect(() => {
     setScopeLabel('Requests');
     setItems(buildSearchItemsFromTasks(visibleTasks));
   }, [visibleTasks, setItems, setScopeLabel]);
 
-  const filteredTasks = useMemo(
+  const searchMatchedTasks = useMemo(
     () =>
       visibleTasks.filter((task) =>
         matchesSearch(query, [
@@ -218,452 +218,283 @@ export default function Tasks() {
     [visibleTasks, query]
   );
 
-  const designerId = useMemo(
+  const scopedTasks = useMemo(
     () =>
-      user?.role === 'designer' && user.id
-        ? user.id
-        : getDefaultDesignerId(scheduleTasks),
-    [scheduleTasks, user?.id, user?.role]
+      requestScope === 'mine'
+        ? searchMatchedTasks.filter((task) => isRequestedByUser(task, user))
+        : searchMatchedTasks,
+    [requestScope, searchMatchedTasks, user]
   );
-  const designerScheduleTasks = useMemo(
-    () =>
-      scheduleTasks.filter((task) => task.designerId === designerId),
-    [designerId, scheduleTasks]
+
+  const myRequestsCount = useMemo(
+    () => searchMatchedTasks.filter((task) => isRequestedByUser(task, user)).length,
+    [searchMatchedTasks, user]
   );
-  const scheduledTasks = useMemo(
+
+  const statusCounts = useMemo(
     () =>
-      designerScheduleTasks
-        .filter(
-          (task) =>
-            task.status !== 'COMPLETED' && task.status !== 'EMERGENCY_PENDING'
-        )
-        .sort((a, b) =>
-          (a.actualStartDate?.getTime() ?? 0) - (b.actualStartDate?.getTime() ?? 0)
-        ),
-    [designerScheduleTasks]
-  );
-  const emergencyTasks = useMemo(
-    () =>
-      designerScheduleTasks.filter(
-        (task) => task.status === 'EMERGENCY_PENDING'
+      scopedTasks.reduce(
+        (acc, task) => {
+          acc[task.status] += 1;
+          return acc;
+        },
+        {
+          pending: 0,
+          in_progress: 0,
+          clarification_required: 0,
+          under_review: 0,
+          completed: 0,
+        } as Record<TaskStatus, number>
       ),
-    [designerScheduleTasks]
+    [scopedTasks]
   );
-  const calendarDays = useMemo(() => {
-    const start = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 0 });
-    const end = endOfWeek(endOfMonth(calendarMonth), { weekStartsOn: 0 });
-    return eachDayOfInterval({ start, end });
-  }, [calendarMonth]);
-  const weeks = useMemo(() => {
-    const rows: Date[][] = [];
-    for (let i = 0; i < calendarDays.length; i += 7) {
-      rows.push(calendarDays.slice(i, i + 7));
-    }
-    return rows;
-  }, [calendarDays]);
-  const scheduleMap = useMemo(() => {
-    const map = new Map<string, ScheduleTask>();
-    scheduledTasks.forEach((task) => {
-      if (!task.actualStartDate || !task.actualEndDate) return;
-      eachDayOfInterval({
-        start: task.actualStartDate,
-        end: task.actualEndDate,
-      }).forEach((day) => {
-        map.set(format(day, 'yyyy-MM-dd'), task);
-      });
+
+  const filteredTasks = useMemo(() => {
+    const base = scopedTasks;
+    const queryText = designerSearch.trim().toLowerCase();
+    const next = base.filter((task) => {
+      if (!isAdvancedFilterPortal) return true;
+      if (statusFilter !== 'all' && task.status !== statusFilter) return false;
+      if (categoryFilter !== 'all' && task.category !== categoryFilter) return false;
+      if (urgencyFilter !== 'all' && task.urgency !== urgencyFilter) return false;
+      if (queryText) {
+        const haystack = [
+          task.title,
+          task.description,
+          task.requesterName,
+          task.requesterDepartment,
+          task.assignedToName,
+          task.id,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(queryText);
+      }
+      return true;
     });
-    return map;
-  }, [scheduledTasks]);
 
-  const handleCompleteScheduleTask = (taskId: string) => {
-    if (!apiUrl) {
-      toast.error('API URL is not configured');
-      return;
-    }
-    const linkedTask = tasks.find((task) => task.id === taskId);
-    const now = new Date();
-    const oldLabel = linkedTask?.status ? taskStatusLabels[linkedTask.status] : 'Pending';
-    authFetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        updates: { status: 'completed', updatedAt: now },
-        changes: [
-          {
-            type: 'status',
-            field: 'status',
-            oldValue: oldLabel,
-            newValue: taskStatusLabels.completed,
-            note: `Completed by ${user?.name || 'Designer'}`,
-          },
-        ],
-        userId: user?.id || '',
-        userName: user?.name || '',
-        userRole: user?.role || '',
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('Failed to update task');
-        }
-        toast.success('Task marked as completed.');
-      })
-      .then(() => loadTasks())
-      .catch(() => {
-        toast.error('Failed to update task status.');
-      });
-  };
+    if (!isAdvancedFilterPortal) return next;
 
-  const handleApproveEmergency = (taskId: string) => {
-    if (!apiUrl) {
-      toast.error('API URL is not configured');
-      return;
+    const sorted = [...next];
+    if (sortBy === 'deadline') {
+      sorted.sort((a, b) => a.deadline.getTime() - b.deadline.getTime());
+    } else if (sortBy === 'priority') {
+      sorted.sort((a, b) => urgencyOrder[b.urgency] - urgencyOrder[a.urgency]);
+    } else {
+      sorted.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     }
-    const now = new Date();
-    authFetch(`${apiUrl}/api/tasks/${taskId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        isEmergency: true,
-        emergencyApprovalStatus: 'approved',
-        emergencyApprovedBy: user?.name || '',
-        emergencyApprovedAt: now,
-        updatedAt: now,
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('Failed to approve emergency');
-        }
-        toast.success('Emergency task approved.');
-      })
-      .then(() => loadTasks())
-      .catch(() => {
-        toast.error('Failed to approve emergency task.');
-      });
-  };
+    return sorted;
+  }, [
+    categoryFilter,
+    designerSearch,
+    isAdvancedFilterPortal,
+    scopedTasks,
+    sortBy,
+    statusFilter,
+    urgencyFilter,
+  ]);
 
-  const handleRejectEmergency = (taskId: string) => {
-    if (!apiUrl) {
-      toast.error('API URL is not configured');
-      return;
-    }
-    const now = new Date();
-    authFetch(`${apiUrl}/api/tasks/${taskId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        isEmergency: true,
-        emergencyApprovalStatus: 'rejected',
-        emergencyApprovedBy: user?.name || '',
-        emergencyApprovedAt: now,
-        updatedAt: now,
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('Failed to reject emergency');
-        }
-        toast.message('Emergency request rejected.');
-      })
-      .then(() => loadTasks())
-      .catch(() => {
-        toast.error('Failed to reject emergency task.');
-      });
-  };
+  const pageSize = isAdvancedFilterPortal ? 12 : filteredTasks.length || 1;
+  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedTasks = useMemo(
+    () =>
+      filteredTasks.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, filteredTasks, pageSize]
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [designerSearch, statusFilter, categoryFilter, urgencyFilter, requestScope, sortBy, query, isAdvancedFilterPortal]);
+
+  const hasPortalFilters =
+    designerSearch.trim().length > 0 ||
+    statusFilter !== 'all' ||
+    categoryFilter !== 'all' ||
+    urgencyFilter !== 'all' ||
+    requestScope !== 'all';
+  const visibleStart = filteredTasks.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const visibleEnd = Math.min(currentPage * pageSize, filteredTasks.length);
+  const statusFilterOptions: Array<{ value: TaskStatus | 'all'; label: string; count: number }> = [
+    { value: 'all', label: 'All', count: scopedTasks.length },
+    { value: 'pending', label: 'Pending', count: statusCounts.pending },
+    { value: 'in_progress', label: 'In Progress', count: statusCounts.in_progress },
+    { value: 'under_review', label: 'Under Review', count: statusCounts.under_review },
+    { value: 'clarification_required', label: 'Clarification', count: statusCounts.clarification_required },
+    { value: 'completed', label: 'Completed', count: statusCounts.completed },
+  ];
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
         {/* Header */}
         <div className="animate-fade-in">
-          <h1 className="text-2xl font-bold text-foreground">All Tasks</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold text-foreground premium-headline">All Tasks</h1>
+          <p className="text-muted-foreground mt-1 premium-body">
             View and manage all design requests
           </p>
         </div>
 
-        {user?.role === 'designer' && (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-[#D9E6FF] bg-white p-4 shadow-card">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Delivery schedule
-                  </p>
-                  <h2 className="text-lg font-semibold text-foreground">
-                    Designer availability calendar
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Requested deadlines are estimates. Actual starts follow availability.
-                  </p>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="h-fit text-[10px] uppercase tracking-[0.2em] text-muted-foreground"
-                >
-                  Delivery Mode
-                </Badge>
+        {isAdvancedFilterPortal && (
+          <div className="rounded-2xl border border-[#D9E6FF] bg-white/80 p-4 shadow-card dark:border-[#1E3A75]/55 dark:bg-[#0B1738]/85 dark:shadow-none">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground dark:text-slate-100">
+                <SlidersHorizontal className="h-4 w-4 text-primary/80 dark:text-indigo-200" />
+                Task filters
               </div>
-              <div className="mt-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setCalendarMonth(addMonths(calendarMonth, -1))}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCalendarMonth(startOfMonth(new Date()))}
-                    >
-                      Today
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="text-sm font-semibold text-foreground">
-                    {format(calendarMonth, 'MMMM yyyy')}
-                  </div>
-                </div>
-                <div className="mt-4 grid grid-cols-7 gap-2 text-xs text-muted-foreground font-semibold">
-                  {weekdayLabels.map((label) => (
-                    <div key={label} className="text-center">
+              <p className="text-xs text-muted-foreground dark:text-slate-300">
+                Showing {visibleStart}-{visibleEnd} of {filteredTasks.length} tasks
+              </p>
+            </div>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_180px_200px_180px]">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Filter within tasks..."
+                  value={designerSearch}
+                  onChange={(event) => setDesignerSearch(event.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest first</SelectItem>
+                  <SelectItem value="deadline">Deadline (soonest)</SelectItem>
+                  <SelectItem value="priority">Priority (urgent first)</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as TaskCategory | 'all')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {Object.entries(categoryLabels).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
                       {label}
-                    </div>
+                    </SelectItem>
                   ))}
-                </div>
-                <div className="mt-2 space-y-2">
-                  {weeks.map((week, rowIndex) => (
-                    <div key={`week-${rowIndex}`} className="grid grid-cols-7 gap-2">
-                      {week.map((day) => {
-                        const task = scheduleMap.get(format(day, 'yyyy-MM-dd'));
-                        const isStart =
-                          task?.actualStartDate &&
-                          isSameDay(day, task.actualStartDate);
-                        const isEnd =
-                          task?.actualEndDate && isSameDay(day, task.actualEndDate);
-                        const isToday = isSameDay(day, new Date());
-                        const isOutside = !isSameMonth(day, calendarMonth);
-                        return (
-                          <div
-                            key={day.toISOString()}
-                            className={cn(
-                              'relative min-h-[96px] rounded-xl border border-[#E4ECFF] bg-[#F9FBFF] p-2',
-                              isOutside && 'bg-white/70 text-muted-foreground',
-                              isToday && 'ring-1 ring-primary/40'
-                            )}
-                          >
-                            <div className="flex items-start justify-between">
-                              <span
-                                className={cn(
-                                  'text-xs font-semibold',
-                                  isToday && 'text-primary'
-                                )}
-                              >
-                                {format(day, 'd')}
-                              </span>
-                              {task && (
-                                <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                                  {task.priority}
-                                </span>
-                              )}
-                            </div>
-                            {task && (
-                              <div
-                                title={task.title}
-                                className={cn(
-                                  'mt-3 h-6 w-full overflow-hidden text-ellipsis whitespace-nowrap px-2 text-[11px] font-semibold',
-                                  priorityStyles[task.priority].bar,
-                                  isStart && isEnd && 'rounded-md',
-                                  isStart && !isEnd && 'rounded-l-md',
-                                  !isStart && isEnd && 'rounded-r-md',
-                                  !isStart && !isEnd && 'rounded-none'
-                                )}
-                              >
-                                {isStart ? task.title : ''}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                </SelectContent>
+              </Select>
+              <Select value={urgencyFilter} onValueChange={(value) => setUrgencyFilter(value as TaskUrgency | 'all')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Urgency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All urgency</SelectItem>
+                  {Object.entries(urgencyLabels).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
                   ))}
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                  {(['VIP', 'HIGH', 'NORMAL'] as ScheduleTask['priority'][]).map(
-                    (level) => (
-                      <div key={level} className="flex items-center gap-2">
-                        <span
-                          className={cn(
-                            'h-2.5 w-2.5 rounded-full',
-                            priorityStyles[level].dot
-                          )}
-                        />
-                        <span>{level} Priority</span>
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-              <div className="rounded-2xl border border-[#D9E6FF] bg-white p-4 shadow-card">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      Sequential queue
-                    </p>
-                    <h3 className="text-lg font-semibold text-foreground">
-                      Auto-shifting workload
-                    </h3>
-                  </div>
-                </div>
-                {scheduledTasks.length > 0 ? (
-                  <div className="mt-4 space-y-3">
-                    {scheduledTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        className="rounded-xl border border-[#E4ECFF] bg-[#F9FBFF] p-4"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="text-sm font-semibold text-foreground">
-                                {task.title}
-                              </h4>
-                              <Badge className={scheduleStatusStyles[task.status]}>
-                                {task.status.replace('_', ' ')}
-                              </Badge>
-                            </div>
-                            <p className="mt-2 text-xs text-muted-foreground">
-                              {task.actualStartDate && task.actualEndDate
-                                ? `${format(task.actualStartDate, 'MMM d')} - ${format(
-                                  task.actualEndDate,
-                                  'MMM d'
-                                )}`
-                                : 'Scheduling...'}{' '}
-                              | {task.estimatedDays} days
-                              {task.requestedDeadline
-                                ? ` | Requested ${format(
-                                  task.requestedDeadline,
-                                  'MMM d'
-                                )}`
-                                : ''}
-                            </p>
-                          </div>
-                          {task.status === 'WORK_STARTED' && (
-                            <Button
-                              size="sm"
-                              onClick={() => handleCompleteScheduleTask(task.id)}
-                            >
-                              <CheckCircle2 className="h-4 w-4 mr-1" />
-                              Complete today
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                    No scheduled tasks in the queue.
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-[#D9E6FF] bg-white p-4 shadow-card">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      Emergency approvals
-                    </p>
-                    <h3 className="text-lg font-semibold text-foreground">
-                      Awaiting decision
-                    </h3>
-                  </div>
-                  <AlertTriangle className="h-4 w-4 text-status-urgent" />
-                </div>
-                {emergencyTasks.length > 0 ? (
-                  <div className="mt-4 space-y-3">
-                    {emergencyTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        className="rounded-xl border border-[#F7D7D9] bg-[#FFF5F5] p-4"
-                      >
-                        <p className="text-sm font-semibold text-foreground">
-                          {task.title}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Requested{' '}
-                          {task.requestedDeadline
-                            ? format(task.requestedDeadline, 'MMM d')
-                            : 'ASAP'}
-                        </p>
-                        <div className="mt-3 flex gap-2">
-                          <Button
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => handleApproveEmergency(task.id)}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1"
-                            onClick={() => handleRejectEmergency(task.id)}
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                    No emergency requests right now.
-                  </div>
-                )}
-              </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setRequestScope((prev) => (prev === 'mine' ? 'all' : 'mine'))}
+                className="search-chip"
+                data-active={requestScope === 'mine'}
+              >
+                <span>My Requests</span>
+                <span className="search-chip-count">{myRequestsCount}</span>
+              </button>
+              {statusFilterOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setStatusFilter(option.value)}
+                  className="search-chip"
+                  data-active={statusFilter === option.value}
+                >
+                  <span>{option.label}</span>
+                  <span className="search-chip-count">{option.count}</span>
+                </button>
+              ))}
             </div>
+
+            {hasPortalFilters && (
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setDesignerSearch('');
+                    setStatusFilter('all');
+                    setCategoryFilter('all');
+                    setUrgencyFilter('all');
+                    setRequestScope('all');
+                  }}
+                >
+                  Clear filters
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
-        {user?.role !== 'designer' && (
+        {/* Task Grid */}
+        {isLoading ? (
+          <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
+            <p className="text-sm text-muted-foreground">Loading tasks...</p>
+          </div>
+        ) : filteredTasks.length > 0 ? (
           <>
-            {/* Task Grid */}
-            {isLoading ? (
-              <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
-                <p className="text-sm text-muted-foreground">Loading tasks...</p>
-              </div>
-            ) : filteredTasks.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {filteredTasks.map((task, index) => (
-                  <div key={task.id} className="h-full" style={{ animationDelay: `${index * 50}ms` }}>
-                    <TaskCard task={task} />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
-                <ListTodo className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <h3 className="font-medium text-foreground">No tasks found</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Try adjusting your filters or search terms
-                </p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {pagedTasks.map((task, index) => (
+                <div key={task.id} className="h-full" style={{ animationDelay: `${index * 50}ms` }}>
+                  <TaskCard task={task} />
+                </div>
+              ))}
+            </div>
+            {isAdvancedFilterPortal && totalPages > 1 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D9E6FF] bg-white/70 px-4 py-3 text-sm text-muted-foreground dark:border-[#1E3A75]/55 dark:bg-[#0B1738]/70 dark:text-slate-300">
+                <span>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    className="gap-1"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Prev
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                    className="gap-1"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
           </>
+        ) : (
+          <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
+            <ListTodo className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <h3 className="font-medium text-foreground">No tasks found</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Try adjusting your filters or search terms
+            </p>
+          </div>
         )}
       </div>
     </DashboardLayout>

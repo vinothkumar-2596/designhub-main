@@ -655,13 +655,13 @@ export default function Dashboard() {
                   {roleLabels[user.role] || 'Member'}
                 </span>
                 <div>
-                  <h1 className="text-3xl font-semibold text-foreground">
+                  <h1 className="text-3xl font-semibold text-foreground premium-headline">
                     Welcome back,{' '}
-                    <span className="gradient-name bg-gradient-to-r from-sky-300 via-indigo-400 to-pink-300 dark:from-sky-200 dark:via-indigo-400 dark:to-pink-300 bg-clip-text text-transparent">
+                    <span className="login-dynamic-word gradient-name bg-gradient-to-r from-sky-300 via-indigo-400 to-pink-300 dark:from-sky-200 dark:via-indigo-400 dark:to-pink-300 bg-clip-text text-transparent">
                       {user.name.split(' ')[0]}!
                     </span>
                   </h1>
-                  <p className="mt-1.5 max-w-xl text-sm text-muted-foreground">{getWelcomeMessage()}</p>
+                  <p className="mt-1.5 max-w-xl text-sm text-muted-foreground premium-body">{getWelcomeMessage()}</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -703,8 +703,8 @@ export default function Dashboard() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                   Important Notice
                 </p>
-                <h3 className="text-base font-semibold text-foreground">Submission standards</h3>
-                <p className="text-sm leading-6 text-muted-foreground">
+                <h3 className="text-base font-semibold text-foreground premium-heading">Submission standards</h3>
+                <p className="text-sm leading-6 text-muted-foreground premium-body">
                   All design requests must include complete data and reference files. Minimum deadline is 3 working days.
                   Modifications require Treasurer approval.
                 </p>

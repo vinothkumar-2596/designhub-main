@@ -15,9 +15,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { UserRole } from '@/types';
-import { User, Palette, Users, Briefcase } from 'lucide-react';
+import { User, Palette, Users, Briefcase, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEffect, useState } from 'react';
+import BoringAvatar from 'boring-avatars';
 import {
   Select,
   SelectContent,
@@ -25,7 +26,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { API_URL, authFetch } from '@/lib/api';
+import { UserAvatar } from '@/components/common/UserAvatar';
+import { avatarPresets, getDefaultAvatarValue, toAvatarPresetValue } from '@/lib/avatarPresets';
+import { cn } from '@/lib/utils';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[] = [
   { value: 'designer', label: 'Designer', icon: Palette },
@@ -35,10 +38,10 @@ const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[]
 
 export default function Settings() {
   const { user, switchRole, updateUser } = useAuth();
-  const apiUrl = API_URL;
   const [fullName, setFullName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState(user?.phone || '');
+  const [profileAvatar, setProfileAvatar] = useState(user?.avatar || getDefaultAvatarValue());
   const [defaultCategory, setDefaultCategory] = useState('');
   const [defaultUrgency, setDefaultUrgency] = useState('normal');
   const [deadlineBufferDays, setDeadlineBufferDays] = useState('3');
@@ -47,7 +50,12 @@ export default function Settings() {
     name: string;
     email: string;
     phone?: string;
+    avatar?: string;
   } | null>(null);
+  const defaultDepartment =
+    user?.department?.trim() ||
+    roleOptions.find((option) => option.value === user?.role)?.label ||
+    'General';
   const sanitizeName = (value: string) => value.replace(/\d+/g, '');
   const normalizeIndianPhone = (value: string) => {
     const raw = value.trim();
@@ -68,6 +76,7 @@ export default function Settings() {
     setFullName(user?.name || '');
     setEmail(user?.email || '');
     setPhone(user?.phone || '');
+    setProfileAvatar(user?.avatar || getDefaultAvatarValue());
   }, [user]);
 
   useEffect(() => {
@@ -90,7 +99,12 @@ export default function Settings() {
     toast.success(`Switched to ${roleOptions.find(r => r.value === role)?.label} view`);
   };
 
-  const applyProfileUpdate = (payload: { name: string; email: string; phone?: string }) => {
+  const applyProfileUpdate = (payload: {
+    name: string;
+    email: string;
+    phone?: string;
+    avatar?: string;
+  }) => {
     updateUser(payload);
     toast.success('Profile updated locally');
   };
@@ -106,6 +120,7 @@ export default function Settings() {
       name: sanitizedName || user?.name || '',
       email: email.trim() || user?.email || '',
       phone: normalizedPhone || undefined,
+      avatar: profileAvatar || undefined,
     };
     const currentEmail = (user?.email || '').trim();
     const nextEmail = (nextProfile.email || '').trim();
@@ -138,30 +153,72 @@ export default function Settings() {
       <div className="space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
         <div className="animate-fade-in">
-          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold text-foreground premium-headline">Settings</h1>
+          <p className="text-muted-foreground mt-1 premium-body">
             Manage your account and preferences
           </p>
         </div>
 
         {/* Profile Section */}
         <div id="profile" className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
-          <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-foreground premium-heading mb-4 flex items-center gap-2">
             <User className="h-5 w-5" />
             Profile
           </h2>
           <div className="space-y-4">
             <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-primary flex items-center justify-center text-2xl font-bold text-primary-foreground">
-                {user?.name.charAt(0)}
-              </div>
+              <UserAvatar
+                name={user?.name || 'User'}
+                avatar={profileAvatar}
+                className="h-16 w-16 border border-white/10"
+                fallbackClassName="text-2xl font-bold"
+              />
               <div>
                 <p className="font-semibold text-foreground">{user?.name}</p>
                 <p className="text-sm text-muted-foreground">{user?.email}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {user?.department} Department
+                  {defaultDepartment} Department
                 </p>
               </div>
+            </div>
+            <Separator />
+            <div className="space-y-2">
+              <Label htmlFor="avatar-options">Profile Avatar</Label>
+              <div id="avatar-options" className="flex flex-wrap gap-3">
+                {avatarPresets.map((preset) => {
+                  const presetValue = toAvatarPresetValue(preset.id);
+                  const isActive = profileAvatar === presetValue;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setProfileAvatar(presetValue)}
+                      className={cn(
+                        'relative h-12 w-12 overflow-hidden rounded-full border transition-all duration-200',
+                        isActive
+                          ? 'border-primary ring-2 ring-primary/30 shadow-[0_0_0_1px_hsl(var(--primary)/0.45)]'
+                          : 'border-border/80 hover:border-primary/45'
+                      )}
+                      aria-label={`Use ${preset.label} avatar`}
+                    >
+                      <BoringAvatar
+                        size="100%"
+                        name={`${fullName || user?.name || user?.email || 'user'}-${preset.id}`}
+                        variant={preset.variant}
+                        colors={preset.colors}
+                      />
+                      {isActive && (
+                        <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <Check className="h-3 w-3" />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Choose from 5 profile avatars.
+              </p>
             </div>
             <Separator />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -203,7 +260,7 @@ export default function Settings() {
         {/* Request Defaults (Designer only) */}
         {user?.role === 'designer' && (
           <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
-            <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-foreground premium-heading mb-4 flex items-center gap-2">
               <Briefcase className="h-5 w-5" />
               Request Defaults
             </h2>
@@ -261,7 +318,7 @@ export default function Settings() {
 
         {/* Role Switcher (Demo) */}
         <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
-          <h2 className="text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-foreground premium-heading mb-2 flex items-center gap-2">
             <Users className="h-5 w-5" />
             Demo: Switch Role
           </h2>
@@ -269,17 +326,25 @@ export default function Settings() {
             Switch between different roles to explore the portal features
           </p>
           <div className="grid grid-cols-2 gap-3">
-            {roleOptions.map((role) => (
-              <Button
-                key={role.value}
-                variant={user?.role === role.value ? 'default' : 'outline'}
-                onClick={() => handleRoleSwitch(role.value)}
-                className="justify-start gap-2 border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.35)]"
-              >
-                <role.icon className="h-4 w-4" />
-                {role.label}
-              </Button>
-            ))}
+            {roleOptions.map((role) => {
+              const isActive = user?.role === role.value;
+              return (
+                <Button
+                  key={role.value}
+                  variant="ghost"
+                  onClick={() => handleRoleSwitch(role.value)}
+                  className={cn(
+                    'justify-start gap-2 rounded-xl border h-11',
+                    isActive
+                      ? 'border-primary/45 bg-primary text-primary-foreground hover:bg-primary/95 hover:text-primary-foreground dark:border-primary/40 dark:bg-primary/85 dark:text-white dark:hover:bg-primary/80'
+                      : 'border-[#D9E6FF] bg-white text-[#1E2A5A] hover:border-[#C9D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-slate-700/70 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-600/80 dark:hover:bg-slate-800/75 dark:hover:text-slate-100'
+                  )}
+                >
+                  <role.icon className="h-4 w-4" />
+                  {role.label}
+                </Button>
+              );
+            })}
           </div>
         </div>
 

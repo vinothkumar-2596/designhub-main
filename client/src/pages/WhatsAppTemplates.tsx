@@ -115,8 +115,8 @@ export default function WhatsAppTemplates() {
         <DashboardLayout>
             <div className="space-y-6 max-w-5xl">
                 <div className="animate-fade-in">
-                    <h1 className="text-2xl font-bold text-foreground">WhatsApp Templates</h1>
-                    <p className="text-muted-foreground mt-1">
+                    <h1 className="text-2xl font-bold text-foreground premium-headline">WhatsApp Templates</h1>
+                    <p className="text-muted-foreground mt-1 premium-body">
                         Official messaging templates for the SMVEC DesignDesk workflow
                     </p>
                 </div>

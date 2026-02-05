@@ -121,7 +121,8 @@ const fileRowClass =
 const fileActionButtonClass =
   'border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.35)] dark:hover:border-slate-600/70 dark:hover:bg-slate-800/70 dark:hover:text-slate-100';
 const badgeGlassClass =
-  'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] shadow-[0_16px_30px_-22px_rgba(30,58,138,0.38)] backdrop-blur-xl';
+  'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] shadow-[0_16px_30px_-22px_rgba(30,58,138,0.38)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
+const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
 
 import { API_URL, authFetch } from '@/lib/api';
 
@@ -861,25 +862,32 @@ export default function TaskDetail() {
     }
     return '';
   };
-  const getFileLinkUrl = (file: (typeof taskState)['files'][number]) => {
-    if (!file.url) return '';
-    const driveId = getDriveFileId(file.url);
-    if (driveId) {
-      return `https://drive.google.com/file/d/${driveId}/view`;
-    }
-    return file.url;
-  };
-  const isDriveFile = (file: (typeof taskState)['files'][number]) =>
-    Boolean(file.url && getDriveFileId(file.url));
   const isDownloadableExtension = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (!ext) return false;
-    return ['png', 'svg', 'pdf', 'jpg', 'jpeg', 'jpef'].includes(ext);
+    return ['jpg', 'jpeg', 'png', 'pdf', 'psd'].includes(ext);
+  };
+  const isLinkOnlyFile = (file: (typeof taskState)['files'][number]) => {
+    return String(file.mime || '').toLowerCase() === 'link';
   };
   const shouldUseLinkIcon = (file: (typeof taskState)['files'][number]) => {
     if (!file.url) return false;
-    if (isDriveFile(file)) return true;
+    if (isLinkOnlyFile(file)) return true;
     return !isDownloadableExtension(file.name);
+  };
+  const getFileActionUrl = (file: (typeof taskState)['files'][number]) => {
+    if (!file.url) return '';
+    const driveId = getDriveFileId(file.url);
+    if (shouldUseLinkIcon(file)) {
+      if (driveId) {
+        return `https://drive.google.com/file/d/${driveId}/view`;
+      }
+      return file.url;
+    }
+    if (driveId) {
+      return `https://drive.google.com/uc?export=download&id=${driveId}`;
+    }
+    return file.url;
   };
   const toOutputFile = (file: FinalDeliverableFile, index: number) => ({
     id: file.id || `final-file-${index}`,
@@ -896,12 +904,12 @@ export default function TaskDetail() {
     const extLabel = getFileExtension(file.name);
     const previewUrl = getPreviewUrl(file);
     return (
-      <div className="relative h-9 w-12 overflow-hidden rounded-[6px] border border-transparent bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.6),_transparent_55%),linear-gradient(160deg,_rgba(236,244,255,0.85),_rgba(198,220,255,0.45))] shadow-[0_12px_26px_-18px_rgba(15,23,42,0.4)] backdrop-blur-xl">
+      <div className="relative h-9 w-12 overflow-hidden rounded-[6px] border border-transparent bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.6),_transparent_55%),linear-gradient(160deg,_rgba(236,244,255,0.85),_rgba(198,220,255,0.45))] shadow-[0_12px_26px_-18px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(100,116,139,0.35),_transparent_55%),linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.75))] dark:shadow-none">
         {!previewUrl && (
-          <div className="absolute inset-0 rounded-[6px] border border-transparent bg-gradient-to-br from-white/85 via-[#EEF4FF]/75 to-[#D5E5FF]/65 backdrop-blur-sm">
-            <div className="absolute left-2 top-2 h-1 w-6 rounded-full bg-[#D6E2FA]/70" />
-            <div className="absolute left-2 top-4 h-1 w-8 rounded-full bg-[#DDE8FB]/70" />
-            <div className="absolute left-2 top-6 h-1 w-5 rounded-full bg-[#DDE8FB]/70" />
+          <div className="absolute inset-0 rounded-[6px] border border-transparent bg-gradient-to-br from-white/85 via-[#EEF4FF]/75 to-[#D5E5FF]/65 backdrop-blur-sm dark:bg-gradient-to-br dark:from-slate-800/95 dark:via-slate-700/90 dark:to-slate-700/70 dark:border-slate-700/60">
+            <div className="absolute left-2 top-2 h-1 w-6 rounded-full bg-[#D6E2FA]/70 dark:bg-slate-400/55" />
+            <div className="absolute left-2 top-4 h-1 w-8 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
+            <div className="absolute left-2 top-6 h-1 w-5 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
           </div>
         )}
         {previewUrl && (
@@ -915,10 +923,10 @@ export default function TaskDetail() {
             }}
           />
         )}
-        <span className="absolute bottom-1 left-1 z-20 rounded-[4px] border border-white/70 bg-white/55 px-1.5 py-0.5 text-[9px] font-semibold text-[#2C4A83] shadow-[0_6px_14px_-10px_rgba(15,23,42,0.28)] backdrop-blur-md">
+        <span className="absolute bottom-1 left-1 z-20 rounded-[4px] border border-white/70 bg-white/55 px-1.5 py-0.5 text-[9px] font-semibold text-[#2C4A83] shadow-[0_6px_14px_-10px_rgba(15,23,42,0.28)] backdrop-blur-md dark:border-slate-600/70 dark:bg-slate-900/85 dark:text-slate-200 dark:shadow-none">
           {extLabel}
         </span>
-        <span className="absolute bottom-0 right-0 z-20 h-0 w-0 border-b-[12px] border-b-[#D8E4FF] border-l-[12px] border-l-transparent" />
+        <span className="absolute bottom-0 right-0 z-20 h-0 w-0 border-b-[12px] border-b-[#D8E4FF] border-l-[12px] border-l-transparent dark:border-b-slate-500/70" />
       </div>
     );
   };
@@ -2076,7 +2084,7 @@ export default function TaskDetail() {
           variant="ghost"
           size="sm"
           onClick={() => navigate(-1)}
-          className="gap-2 animate-fade-in"
+          className="gap-2 animate-fade-in text-foreground hover:text-foreground hover:bg-primary/10 dark:text-slate-100 dark:hover:text-white dark:hover:bg-slate-800/80"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
@@ -2133,7 +2141,7 @@ export default function TaskDetail() {
               {categoryLabels[taskState.category]}
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">{taskState.title}</h1>
+          <h1 className="text-2xl font-bold text-foreground premium-headline">{taskState.title}</h1>
         </div>
 
         {/* Main Content Grid */}
@@ -2391,7 +2399,7 @@ export default function TaskDetail() {
                             </Button>
                           )}
                           {(() => {
-                            const fileLinkUrl = getFileLinkUrl(file);
+                            const fileLinkUrl = getFileActionUrl(file);
                             return (
                               <Button
                                 variant="ghost"
@@ -2482,8 +2490,8 @@ export default function TaskDetail() {
                                 <Trash2 className="h-4 w-4 text-status-urgent" />
                               </Button>
                             )}
-                            {(() => {
-                              const fileLinkUrl = getFileLinkUrl(displayFile);
+                          {(() => {
+                              const fileLinkUrl = getFileActionUrl(displayFile);
                               return (
                                 <Button
                                   variant="ghost"
@@ -2557,141 +2565,144 @@ export default function TaskDetail() {
               {/* Upload (Designer only) */}
               {isDesignerOrAdmin && (
                 <>
-                  <div className="mt-6 rounded-2xl border-2 border-dashed border-[#D9E6FF] bg-[#F8FAFF] p-6 text-center">
-                    <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
-                    <p className="text-xs text-muted-foreground">
-                      Drag and drop or click to upload
-                    </p>
-                    <div className="mt-3 text-left">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                        Version note (optional)
+                  <div className="mt-6 relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white p-6 text-center shadow-[0_18px_44px_-30px_rgba(15,23,42,0.35)] dark:border-border dark:bg-card dark:shadow-none">
+                    <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
+                    <div className="relative">
+                      <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
+                      <p className="text-xs text-muted-foreground">
+                        Drag and drop or click to upload
                       </p>
-                      <Textarea
-                        value={finalVersionNote}
-                        onChange={(event) => setFinalVersionNote(event.target.value)}
-                        rows={2}
-                        className="mt-2 bg-white/90"
-                        placeholder="Summarize changes in this version..."
+                      <div className="mt-3 text-left">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                          Version note (optional)
+                        </p>
+                        <Textarea
+                          value={finalVersionNote}
+                          onChange={(event) => setFinalVersionNote(event.target.value)}
+                          rows={2}
+                          className="mt-2 bg-white/90 dark:bg-card/90 dark:border-border dark:text-slate-100 dark:placeholder:text-slate-400"
+                          placeholder="Summarize changes in this version..."
+                          disabled={isUploadingFinal}
+                        />
+                      </div>
+                      <input
+                        type="file"
+                        multiple
+                        onChange={handleFinalUpload}
+                        className="hidden"
+                        id="final-file-upload"
                         disabled={isUploadingFinal}
                       />
-                    </div>
-                    <input
-                      type="file"
-                      multiple
-                      onChange={handleFinalUpload}
-                      className="hidden"
-                      id="final-file-upload"
-                      disabled={isUploadingFinal}
-                    />
-                    <label
-                      htmlFor="final-file-upload"
-                      className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full border border-[#D9E6FF] bg-white px-4 py-2 text-xs font-semibold text-foreground shadow-sm hover:bg-[#F4F7FF]"
-                    >
-                      {isUploadingFinal ? 'Uploading...' : 'Select files'}
-                    </label>
-                    {finalUploadItems.length > 0 && (
-                      <div className="mt-4 w-full rounded-2xl border border-[#D9E6FF] bg-white/80 p-3 text-left shadow-[0_12px_28px_-20px_rgba(15,23,42,0.4)]">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-foreground">
-                            {finalUploadLabel}
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            {isUploadingFinal && (
-                              <button
-                                type="button"
-                                onClick={handleCancelFinalUpload}
-                                className="rounded-full px-2 py-1 text-[11px] font-semibold text-primary/80 hover:text-primary"
-                              >
-                                Cancel
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setShowFinalUploadList((prev) => !prev)}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white"
-                            >
-                              <ChevronDown
-                                className={cn(
-                                  'h-4 w-4 transition-transform',
-                                  showFinalUploadList ? 'rotate-180' : ''
-                                )}
-                              />
-                            </button>
-                            {!isUploadingFinal && (
-                              <button
-                                type="button"
-                                onClick={clearFinalUploadItems}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        {showFinalUploadList && (
-                          <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3">
-                            {finalUploadItems.map((item) => {
-                              const extension = getFileExtension(item.name);
-                              return (
-                                <div
-                                  key={item.id}
-                                  className="flex items-center justify-between rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2"
+                      <label
+                        htmlFor="final-file-upload"
+                        className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full border border-[#D9E6FF] bg-white px-4 py-2 text-xs font-semibold text-foreground shadow-sm hover:bg-[#F4F7FF] dark:border-border dark:bg-card/90 dark:text-slate-100 dark:shadow-none dark:hover:bg-muted/80"
+                      >
+                        {isUploadingFinal ? 'Uploading...' : 'Select files'}
+                      </label>
+                      {finalUploadItems.length > 0 && (
+                        <div className="mt-4 w-full rounded-2xl border border-[#D9E6FF] bg-white/80 p-3 text-left shadow-[0_12px_28px_-20px_rgba(15,23,42,0.4)] dark:border-border dark:bg-card/90 dark:shadow-none">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-foreground">
+                              {finalUploadLabel}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {isUploadingFinal && (
+                                <button
+                                  type="button"
+                                  onClick={handleCancelFinalUpload}
+                                  className="rounded-full px-2 py-1 text-[11px] font-semibold text-primary/80 hover:text-primary dark:text-slate-300 dark:hover:text-slate-100"
                                 >
-                                  <div className="flex min-w-0 items-center gap-3">
-                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6]">
-                                      {extension.slice(0, 4)}
-                                    </div>
-                                    <span className="min-w-0 truncate text-xs font-medium text-foreground">
-                                      {item.name}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                    {item.status === 'uploading' && (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    )}
-                                    {item.status === 'done' && (
-                                      <Check className="h-4 w-4 text-emerald-500" />
-                                    )}
-                                    {item.status === 'error' && (
-                                      <AlertTriangle className="h-4 w-4 text-red-500" />
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                            {finalUploadTotals.uploading > 0 && (
-                              <p className="text-xs text-muted-foreground">Starting upload...</p>
-                            )}
+                                  Cancel
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setShowFinalUploadList((prev) => !prev)}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted/80"
+                              >
+                                <ChevronDown
+                                  className={cn(
+                                    'h-4 w-4 transition-transform',
+                                    showFinalUploadList ? 'rotate-180' : ''
+                                  )}
+                                />
+                              </button>
+                              {!isUploadingFinal && (
+                                <button
+                                  type="button"
+                                  onClick={clearFinalUploadItems}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted/80"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    )}
-                    <div className="mt-5 rounded-xl border border-[#D9E6FF] bg-white/90 p-4 text-left shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                        Or add a Google Drive link
-                      </p>
-                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1.6fr_auto]">
-                        <Input
-                          placeholder="File name"
-                          value={finalLinkName}
-                          onChange={(event) => setFinalLinkName(event.target.value)}
-                          className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4"
-                        />
-                        <Input
-                          placeholder="https://drive.google.com/..."
-                          value={finalLinkUrl}
-                          onChange={(event) => setFinalLinkUrl(event.target.value)}
-                          className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4"
-                        />
-                        <Button
-                          type="button"
-                          onClick={handleAddFinalLink}
-                          disabled={!finalLinkUrl.trim() || isAddingFinalLink}
-                          className="h-10 rounded-full px-5"
-                        >
-                          {isAddingFinalLink ? 'Adding...' : 'Add link'}
-                        </Button>
+                          {showFinalUploadList && (
+                            <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3 dark:border-border">
+                              {finalUploadItems.map((item) => {
+                                const extension = getFileExtension(item.name);
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-center justify-between rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2 dark:border-border dark:bg-card/95"
+                                  >
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:bg-muted dark:text-slate-200">
+                                        {extension.slice(0, 4)}
+                                      </div>
+                                      <span className="min-w-0 truncate text-xs font-medium text-foreground">
+                                        {item.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                      {item.status === 'uploading' && (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      )}
+                                      {item.status === 'done' && (
+                                        <Check className="h-4 w-4 text-emerald-500" />
+                                      )}
+                                      {item.status === 'error' && (
+                                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {finalUploadTotals.uploading > 0 && (
+                                <p className="text-xs text-muted-foreground">Starting upload...</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className="mt-5 rounded-xl border border-[#D9E6FF] bg-white/90 p-4 text-left shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)] dark:border-border dark:bg-card/90 dark:shadow-none">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                          Or add a Google Drive link
+                        </p>
+                        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1.6fr_auto]">
+                          <Input
+                            placeholder="File name"
+                            value={finalLinkName}
+                            onChange={(event) => setFinalLinkName(event.target.value)}
+                            className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4 dark:border-border dark:bg-card/95 dark:text-slate-100 dark:placeholder:text-slate-400"
+                          />
+                          <Input
+                            placeholder="https://drive.google.com/..."
+                            value={finalLinkUrl}
+                            onChange={(event) => setFinalLinkUrl(event.target.value)}
+                            className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4 dark:border-border dark:bg-card/95 dark:text-slate-100 dark:placeholder:text-slate-400"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleAddFinalLink}
+                            disabled={!finalLinkUrl.trim() || isAddingFinalLink}
+                            className="h-10 rounded-full px-5"
+                          >
+                            {isAddingFinalLink ? 'Adding...' : 'Add link'}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2830,14 +2841,14 @@ export default function TaskDetail() {
                   <dd
                     className={cn(
                       'mt-1 flex items-center gap-2 text-sm',
-                      isOverdue && 'text-status-urgent font-medium'
+                      isOverdue && 'text-status-urgent font-medium dark:text-rose-300'
                     )}
                   >
                     <Calendar className="h-4 w-4" />
                     <span>{format(taskState.deadline, 'MMM d, yyyy')}</span>
                   </dd>
                   {isOverdue && (
-                    <dd className="text-xs text-status-urgent mt-0.5 ml-6 flex items-center gap-1">
+                    <dd className="text-xs text-status-urgent dark:text-rose-300/95 mt-0.5 ml-6 flex items-center gap-1">
                       <AlertTriangle className="h-3 w-3" />
                       Overdue by {formatDistanceToNow(taskState.deadline)}
                     </dd>
@@ -2881,11 +2892,11 @@ export default function TaskDetail() {
                           <div className="relative flex flex-col items-center">
                             <div className="flex h-9 w-9 sm:h-12 sm:w-12 items-center justify-center">
                               {isPast ? (
-                                <span className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary/85 text-white shadow-[0_8px_18px_-12px_rgba(30,58,138,0.4)]">
+                                <span className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary/85 text-white shadow-[0_8px_18px_-12px_rgba(30,58,138,0.4)] dark:bg-primary/80 dark:shadow-none">
                                   <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                 </span>
                               ) : isCurrent ? (
-                                <span className="flex h-12 w-12 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-white">
+                                <span className="flex h-12 w-12 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-white dark:bg-transparent">
                                   <DotLottieReact
                                     src="https://lottie.host/31b5d829-4d1f-42a6-ba16-3560e550c0ac/KTsiywVfWC.lottie"
                                     loop
@@ -2894,27 +2905,29 @@ export default function TaskDetail() {
                                   />
                                 </span>
                               ) : (
-                                <span className="h-6 w-6 sm:h-8 sm:w-8 rounded-full border-2 border-[#D9E6FF] bg-white" />
+                                <span className="h-6 w-6 sm:h-8 sm:w-8 rounded-full border-2 border-[#D9E6FF] bg-white dark:border-slate-500/80 dark:bg-slate-800" />
                               )}
                             </div>
                             {index !== steps.length - 1 && (
                               <div
                                 className={cn(
-                                  'mt-1 h-8 sm:h-10 w-[2px] opacity-60',
-                                  isPast ? 'bg-primary' : 'bg-[#D9E6FF]'
+                                  'mt-1 h-8 sm:h-10 w-px rounded-full',
+                                  isPast
+                                    ? 'bg-primary/75 dark:bg-primary/55'
+                                    : 'bg-[#D9E6FF] dark:bg-slate-700/70'
                                 )}
                               />
                             )}
                           </div>
-                          <div className="w-full min-w-0 flex-1 rounded-2xl border border-[#D9E6FF] bg-gradient-to-br from-white/90 via-[#F2F7FF]/85 to-[#E8F0FF]/75 px-3 py-2 sm:px-4 sm:py-3 shadow-[0_16px_36px_-26px_rgba(15,23,42,0.35)] backdrop-blur dark:bg-card dark:border-border dark:shadow-card dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent">
+                          <div className={cn(changeHistoryCardClass, 'w-full min-w-0 flex-1 px-3 py-2 sm:px-4 sm:py-3')}>
                             <div
                               className={cn(
                                 'min-w-0 text-xs sm:text-sm font-semibold',
                                 isCurrent
-                                  ? 'text-foreground'
+                                  ? 'text-foreground dark:text-slate-100'
                                   : isPast
-                                    ? 'text-muted-foreground'
-                                    : 'text-muted-foreground/60'
+                                    ? 'text-muted-foreground dark:text-slate-300'
+                                    : 'text-muted-foreground/60 dark:text-slate-300'
                               )}
                             >
                               {statusConfig[step].label}
@@ -2923,10 +2936,10 @@ export default function TaskDetail() {
                               className={cn(
                                 'mt-1 text-[11px] sm:text-xs',
                                 isCurrent
-                                  ? 'text-muted-foreground'
+                                  ? 'text-muted-foreground dark:text-slate-300'
                                   : isPast
-                                    ? 'text-muted-foreground/80'
-                                    : 'text-muted-foreground/60'
+                                    ? 'text-muted-foreground/80 dark:text-slate-400'
+                                    : 'text-muted-foreground/60 dark:text-slate-400'
                               )}
                             >
                               {statusDetails[step]}
@@ -3121,7 +3134,7 @@ export default function TaskDetail() {
                 </div>
                 <div className="space-y-3">
                   {changeHistory.slice(0, 3).map((entry) => (
-                    <div key={entry.id} className="rounded-lg border border-border/60 bg-secondary/40 p-3">
+                    <div key={entry.id} className={cn(changeHistoryCardClass, 'p-3')}>
                       <p className="text-sm font-medium text-foreground">
                         {entry.note || `${entry.userName} updated ${formatChangeField(entry.field)}`}
                       </p>
@@ -3146,7 +3159,8 @@ export default function TaskDetail() {
                       key={entry.id}
                       id={`change-${entry.id}`}
                       className={cn(
-                        'rounded-lg border border-border/60 bg-secondary/40 p-2.5 transition-colors',
+                        changeHistoryCardClass,
+                        'p-2.5 transition-colors',
                         entry.id === highlightChangeId && 'border-primary/40 bg-primary/10'
                       )}
                     >
@@ -3198,7 +3212,7 @@ export default function TaskDetail() {
           </div>
           <div className="px-7 pb-7 pt-5 text-center">
             <DialogHeader className="text-center sm:text-center">
-              <DialogTitle className="text-2xl font-bold text-foreground">
+              <DialogTitle className="text-2xl font-bold text-foreground premium-headline">
                 Thank you!
               </DialogTitle>
               <DialogDescription className="mt-2.5 text-sm text-muted-foreground">

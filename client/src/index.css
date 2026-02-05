@@ -76,6 +76,8 @@
     --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+    color-scheme: light;
   }
 
   .dark {
@@ -111,6 +113,17 @@
     --sidebar-foreground: 215 20% 85%;
     --sidebar-accent: 222 47% 12%;
     --sidebar-primary: 232 50% 41%;
+
+    color-scheme: dark;
+  }
+
+  html.dark input[type='date'],
+  html.dark input[type='datetime-local'],
+  html.dark input[type='time'],
+  [data-theme='dark'] input[type='date'],
+  [data-theme='dark'] input[type='datetime-local'],
+  [data-theme='dark'] input[type='time'] {
+    color-scheme: dark;
   }
 }
 
@@ -183,6 +196,20 @@
   .status-clarification {
     background-color: hsl(var(--status-clarification-bg));
     color: hsl(var(--status-clarification));
+  }
+
+  .icon-action-press {
+    transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+    will-change: transform;
+  }
+
+  .icon-action-press:active {
+    transform: scale(0.9);
+  }
+
+  .icon-action-press[data-success='true'] {
+    animation: iconActionSuccess 360ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .animate-fade-in {
@@ -371,6 +398,35 @@
     animation: gradientNameFlow 6s ease-in-out infinite;
   }
 
+  .dark .gradient-name {
+    background: linear-gradient(90deg, #7dd3fc, #818cf8, #f9a8d4);
+    background-size: 200% 200%;
+    animation: gradientNameFlow 6s ease-in-out infinite;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  @keyframes iconActionSuccess {
+    0% {
+      transform: scale(1);
+    }
+    55% {
+      transform: scale(1.08);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .login-dynamic-word {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-transform: none;
+  }
+
   @keyframes gradientNameFlow {
     0% {
       background-position: 0% 50%;
@@ -440,12 +496,42 @@
     @apply dark:bg-muted/70;
   }
 
+  .dark .search-chip,
+  :root.dark .search-chip,
+  html.dark .search-chip,
+  body.dark .search-chip,
+  [data-theme='dark'] .search-chip {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(71, 85, 105, 0.75);
+    color: #cbd5e1;
+  }
+
+  .dark .search-chip:hover,
+  :root.dark .search-chip:hover,
+  html.dark .search-chip:hover,
+  body.dark .search-chip:hover,
+  [data-theme='dark'] .search-chip:hover {
+    background: rgba(30, 41, 59, 0.88);
+    border-color: rgba(100, 116, 139, 0.75);
+  }
+
   .search-chip[data-active='true'] {
     border-color: #b7c8ff;
     background: linear-gradient(135deg, rgba(238, 244, 255, 0.95), rgba(214, 227, 255, 0.8));
     color: hsl(var(--primary));
     box-shadow: 0 8px 18px -14px rgba(15, 23, 42, 0.4);
     @apply dark:border-slate-600/70 dark:bg-slate-800/80 dark:text-primary;
+  }
+
+  .dark .search-chip[data-active='true'],
+  :root.dark .search-chip[data-active='true'],
+  html.dark .search-chip[data-active='true'],
+  body.dark .search-chip[data-active='true'],
+  [data-theme='dark'] .search-chip[data-active='true'] {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(51, 65, 85, 0.88));
+    border-color: rgba(99, 102, 241, 0.55);
+    color: #f8fafc;
+    box-shadow: none;
   }
 
   .search-chip-count {
@@ -456,6 +542,25 @@
     background-color: rgba(255, 255, 255, 0.9);
     color: hsl(var(--primary));
     @apply dark:bg-slate-900 dark:text-primary;
+  }
+
+  .dark .search-chip[data-active='true'] .search-chip-count,
+  :root.dark .search-chip[data-active='true'] .search-chip-count,
+  html.dark .search-chip[data-active='true'] .search-chip-count,
+  body.dark .search-chip[data-active='true'] .search-chip-count,
+  [data-theme='dark'] .search-chip[data-active='true'] .search-chip-count {
+    background-color: rgba(15, 23, 42, 0.95);
+    color: #f8fafc;
+    border: 1px solid rgba(71, 85, 105, 0.7);
+  }
+
+  .dark .search-chip-count,
+  :root.dark .search-chip-count,
+  html.dark .search-chip-count,
+  body.dark .search-chip-count,
+  [data-theme='dark'] .search-chip-count {
+    background-color: rgba(15, 23, 42, 0.88);
+    color: #cbd5e1;
   }
 
   .ai-attach-hint {
@@ -921,38 +1026,54 @@
     transform: translate(-50%, 0);
   }
 
-  .dark .MuiPickersPopper-root .MuiPaper-root {
+  .dark .MuiPickersPopper-root .MuiPaper-root,
+  .dark .MuiPickerPopper-paper,
+  .dark .MuiPickerPopper-root .MuiPaper-root {
     background-color: #0f172a;
     color: #e2e8f0;
     border: 1px solid rgba(51, 65, 85, 0.8);
   }
 
-  .dark .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel {
+  .dark .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel,
+  .dark .MuiPickerPopper-root .MuiDayCalendar-weekDayLabel {
     color: #94a3b8;
   }
 
-  .dark .MuiPickersPopper-root .MuiPickersDay-root {
+  .dark .MuiPickersPopper-root .MuiPickersDay-root,
+  .dark .MuiPickerPopper-root .MuiPickersDay-root {
     color: #e2e8f0;
   }
 
-  .dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled {
+  .dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled,
+  .dark .MuiPickerPopper-root .MuiPickersDay-root.Mui-disabled {
     color: rgba(148, 163, 184, 0.5);
   }
 
-  .dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected {
+  .dark .MuiPickersPopper-root .MuiPickersDay-root.MuiPickersDay-today,
+  .dark .MuiPickerPopper-root .MuiPickersDay-root.MuiPickersDay-today {
+    border-color: rgba(148, 163, 184, 0.65);
+    color: #e2e8f0;
+  }
+
+  .dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected,
+  .dark .MuiPickerPopper-root .MuiPickersDay-root.Mui-selected {
     background-color: rgba(99, 102, 241, 0.6);
   }
 
-  .dark .MuiPickersPopper-root .MuiPickersDay-root:hover {
+  .dark .MuiPickersPopper-root .MuiPickersDay-root:hover,
+  .dark .MuiPickerPopper-root .MuiPickersDay-root:hover {
     background-color: rgba(59, 130, 246, 0.18);
   }
 
   .dark .MuiPickersPopper-root .MuiPickersArrowSwitcher-button,
-  .dark .MuiPickersPopper-root .MuiPickersCalendarHeader-switchViewButton {
+  .dark .MuiPickersPopper-root .MuiPickersCalendarHeader-switchViewButton,
+  .dark .MuiPickerPopper-root .MuiPickersArrowSwitcher-button,
+  .dark .MuiPickerPopper-root .MuiPickersCalendarHeader-switchViewButton {
     color: #cbd5f5;
   }
 
-  .dark .MuiPickersPopper-root .MuiPickersCalendarHeader-label {
+  .dark .MuiPickersPopper-root .MuiPickersCalendarHeader-label,
+  .dark .MuiPickerPopper-root .MuiPickersCalendarHeader-label {
     color: #e2e8f0;
   }
 
@@ -985,7 +1106,15 @@
   :root.dark .MuiPickersPopper-root .MuiPaper-root,
   html.dark .MuiPickersPopper-root .MuiPaper-root,
   body.dark .MuiPickersPopper-root .MuiPaper-root,
-  [data-theme='dark'] .MuiPickersPopper-root .MuiPaper-root {
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPaper-root,
+  :root.dark .MuiPickerPopper-paper,
+  html.dark .MuiPickerPopper-paper,
+  body.dark .MuiPickerPopper-paper,
+  [data-theme='dark'] .MuiPickerPopper-paper,
+  :root.dark .MuiPickerPopper-root .MuiPaper-root,
+  html.dark .MuiPickerPopper-root .MuiPaper-root,
+  body.dark .MuiPickerPopper-root .MuiPaper-root,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiPaper-root {
     background-color: #0f172a !important;
     color: #e2e8f0 !important;
     border: 1px solid rgba(51, 65, 85, 0.8) !important;
@@ -994,28 +1123,56 @@
   :root.dark .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel,
   html.dark .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel,
   body.dark .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel,
-  [data-theme='dark'] .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel {
+  [data-theme='dark'] .MuiPickersPopper-root .MuiDayCalendar-weekDayLabel,
+  :root.dark .MuiPickerPopper-root .MuiDayCalendar-weekDayLabel,
+  html.dark .MuiPickerPopper-root .MuiDayCalendar-weekDayLabel,
+  body.dark .MuiPickerPopper-root .MuiDayCalendar-weekDayLabel,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiDayCalendar-weekDayLabel {
     color: #94a3b8 !important;
   }
 
   :root.dark .MuiPickersPopper-root .MuiPickersDay-root,
   html.dark .MuiPickersPopper-root .MuiPickersDay-root,
   body.dark .MuiPickersPopper-root .MuiPickersDay-root,
-  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root {
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root,
+  :root.dark .MuiPickerPopper-root .MuiPickersDay-root,
+  html.dark .MuiPickerPopper-root .MuiPickersDay-root,
+  body.dark .MuiPickerPopper-root .MuiPickersDay-root,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiPickersDay-root {
     color: #e2e8f0 !important;
   }
 
   :root.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled,
   html.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled,
   body.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled,
-  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled {
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root.Mui-disabled,
+  :root.dark .MuiPickerPopper-root .MuiPickersDay-root.Mui-disabled,
+  html.dark .MuiPickerPopper-root .MuiPickersDay-root.Mui-disabled,
+  body.dark .MuiPickerPopper-root .MuiPickersDay-root.Mui-disabled,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiPickersDay-root.Mui-disabled {
     color: rgba(148, 163, 184, 0.5) !important;
+  }
+
+  :root.dark .MuiPickersPopper-root .MuiPickersDay-root.MuiPickersDay-today,
+  html.dark .MuiPickersPopper-root .MuiPickersDay-root.MuiPickersDay-today,
+  body.dark .MuiPickersPopper-root .MuiPickersDay-root.MuiPickersDay-today,
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root.MuiPickersDay-today,
+  :root.dark .MuiPickerPopper-root .MuiPickersDay-root.MuiPickersDay-today,
+  html.dark .MuiPickerPopper-root .MuiPickersDay-root.MuiPickersDay-today,
+  body.dark .MuiPickerPopper-root .MuiPickersDay-root.MuiPickersDay-today,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiPickersDay-root.MuiPickersDay-today {
+    border-color: rgba(148, 163, 184, 0.65) !important;
+    color: #e2e8f0 !important;
   }
 
   :root.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected,
   html.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected,
   body.dark .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected,
-  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected {
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root.Mui-selected,
+  :root.dark .MuiPickerPopper-root .MuiPickersDay-root.Mui-selected,
+  html.dark .MuiPickerPopper-root .MuiPickersDay-root.Mui-selected,
+  body.dark .MuiPickerPopper-root .MuiPickersDay-root.Mui-selected,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiPickersDay-root.Mui-selected {
     background-color: rgba(99, 102, 241, 0.6) !important;
     color: #f8fafc !important;
   }
@@ -1023,7 +1180,11 @@
   :root.dark .MuiPickersPopper-root .MuiPickersDay-root:hover,
   html.dark .MuiPickersPopper-root .MuiPickersDay-root:hover,
   body.dark .MuiPickersPopper-root .MuiPickersDay-root:hover,
-  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root:hover {
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersDay-root:hover,
+  :root.dark .MuiPickerPopper-root .MuiPickersDay-root:hover,
+  html.dark .MuiPickerPopper-root .MuiPickersDay-root:hover,
+  body.dark .MuiPickerPopper-root .MuiPickersDay-root:hover,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiPickersDay-root:hover {
     background-color: rgba(59, 130, 246, 0.18) !important;
   }
 
@@ -1034,14 +1195,26 @@
   body.dark .MuiPickersPopper-root .MuiPickersArrowSwitcher-button,
   body.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-switchViewButton,
   [data-theme='dark'] .MuiPickersPopper-root .MuiPickersArrowSwitcher-button,
-  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersCalendarHeader-switchViewButton {
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersCalendarHeader-switchViewButton,
+  :root.dark .MuiPickerPopper-root .MuiPickersArrowSwitcher-button,
+  :root.dark .MuiPickerPopper-root .MuiPickersCalendarHeader-switchViewButton,
+  html.dark .MuiPickerPopper-root .MuiPickersArrowSwitcher-button,
+  html.dark .MuiPickerPopper-root .MuiPickersCalendarHeader-switchViewButton,
+  body.dark .MuiPickerPopper-root .MuiPickersArrowSwitcher-button,
+  body.dark .MuiPickerPopper-root .MuiPickersCalendarHeader-switchViewButton,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiPickersArrowSwitcher-button,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiPickersCalendarHeader-switchViewButton {
     color: #cbd5f5 !important;
   }
 
   :root.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-label,
   html.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-label,
   body.dark .MuiPickersPopper-root .MuiPickersCalendarHeader-label,
-  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersCalendarHeader-label {
+  [data-theme='dark'] .MuiPickersPopper-root .MuiPickersCalendarHeader-label,
+  :root.dark .MuiPickerPopper-root .MuiPickersCalendarHeader-label,
+  html.dark .MuiPickerPopper-root .MuiPickersCalendarHeader-label,
+  body.dark .MuiPickerPopper-root .MuiPickersCalendarHeader-label,
+  [data-theme='dark'] .MuiPickerPopper-root .MuiPickersCalendarHeader-label {
     color: #e2e8f0 !important;
   }
 
@@ -1229,6 +1402,89 @@
   .scrollbar-brand::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--primary) / 0.8);
   }
+
+  .premium-headline {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .dark .premium-headline {
+    background: linear-gradient(180deg, #ffffff 0%, #e6e6e6 45%, #bdbdbd 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .dark .premium-heading {
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 500;
+    letter-spacing: 0.015em;
+  }
+
+  .dark .premium-body {
+    color: rgba(255, 255, 255, 0.65);
+    font-weight: 400;
+    line-height: 1.6;
+  }
+
+  .dark .premium-muted {
+    color: rgba(255, 255, 255, 0.4);
+    font-weight: 400;
+  }
+
+  .premium-emphasis {
+    font-weight: 600;
+  }
+
+  .dark .premium-emphasis {
+    background: linear-gradient(90deg, #ffffff, #d9d9d9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .guideline-preview-card {
+    animation: guideline-float 4.8s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  .guideline-preview-card--delay {
+    animation-delay: 1.2s;
+  }
+
+  .guideline-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .guideline-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.42) 45%,
+      transparent 100%
+    );
+    animation: guideline-shimmer 2.6s ease-in-out infinite;
+  }
+
+  .dark .guideline-shimmer::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(148, 163, 184, 0.2) 45%,
+      transparent 100%
+    );
+  }
+
+  .guideline-toggle-pulse {
+    animation: guideline-toggle-pulse 2.8s ease-in-out infinite;
+  }
 }
 
 @keyframes fadeIn {
@@ -1318,5 +1574,42 @@
   }
   50% {
     opacity: 0.8;
+  }
+}
+
+@keyframes guideline-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes guideline-shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes guideline-toggle-pulse {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guideline-preview-card,
+  .guideline-toggle-pulse,
+  .guideline-shimmer::after {
+    animation: none !important;
   }
 }

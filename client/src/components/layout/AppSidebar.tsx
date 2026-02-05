@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { UserAvatar } from '@/components/common/UserAvatar';
 
 interface NavItem {
   title: string;
@@ -70,7 +71,7 @@ const navItems: NavItem[] = [
     title: 'My Requests',
     href: '/my-requests',
     icon: ListTodo,
-    roles: ['staff'],
+    roles: ['staff', 'treasurer'],
   },
   {
     title: 'Pending Approvals',
@@ -146,7 +147,7 @@ export function AppSidebar() {
     return cn(
       'flex w-full items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent transition-all duration-200',
       isActive
-        ? 'bg-primary/75 bg-gradient-to-br from-white/20 via-primary/80 to-primary/90 text-primary-foreground border border-white/40 shadow-[0_22px_44px_-26px_hsl(var(--primary)/0.5)] backdrop-blur-2xl ring-1 ring-white/30 dark:bg-primary/70 dark:text-primary-foreground dark:border-border'
+        ? 'bg-primary/75 bg-gradient-to-br from-white/20 via-primary/80 to-primary/90 text-primary-foreground shadow-[0_22px_44px_-26px_hsl(var(--primary)/0.5)] backdrop-blur-2xl dark:bg-primary/70 dark:text-primary-foreground'
         : 'text-[#475569] hover:border hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:shadow-[0_16px_34px_-22px_rgba(30,58,138,0.35)] hover:backdrop-blur-xl dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground dark:hover:border-border',
       collapsed && 'justify-center px-2'
     );
@@ -181,13 +182,13 @@ export function AppSidebar() {
             <img
               src="/favicon.png"
               alt="DesignDesk"
-              className="h-9 w-9 rounded-xl object-contain p-1 bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 dark:bg-muted/60 dark:border-border border border-[#C9D7FF] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)] backdrop-blur"
+              className="h-9 w-9 rounded-xl object-contain p-1 bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 border border-[#C9D7FF] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)] backdrop-blur dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80 dark:shadow-none"
             />
             <div>
-              <h1 className="text-lg font-bold text-[#1E2A5A] dark:text-foreground">
+              <h1 className="text-lg font-bold text-[#1E2A5A] dark:text-foreground premium-headline">
                 DesignDesk
               </h1>
-              <p className="text-xs text-[#6B7A99] dark:text-muted-foreground">Task Portal</p>
+              <p className="text-xs text-[#6B7A99] dark:text-muted-foreground premium-muted">Task Portal</p>
             </div>
           </button>
         )}
@@ -209,9 +210,12 @@ export function AppSidebar() {
       {!collapsed && (
         <div className="p-4 border-b border-[#D9E6FF]/70 dark:border-border animate-fade-in">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold">
-              {user.name.charAt(0)}
-            </div>
+            <UserAvatar
+              name={user.name}
+              avatar={user.avatar}
+              className="h-10 w-10 border border-white/10"
+              fallbackClassName="text-sm"
+            />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-[#1E2A5A] dark:text-foreground truncate">
                 {user.name}

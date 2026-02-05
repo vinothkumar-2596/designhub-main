@@ -1023,7 +1023,7 @@ export function DashboardLayout({
               </button>
             </div>
           </div>
-          <div className="mt-3 space-y-2 max-h-[420px] overflow-y-auto pr-1 scrollbar-brand">
+          <div className="mt-3 space-y-2 max-h-[420px] overflow-y-auto pr-2 scrollbar-thin">
             {uiNotifications.length > 0 ? (
               uiNotifications.map((entry, idx) => (
                 <button
@@ -1154,32 +1154,32 @@ export function DashboardLayout({
                     </div>
                   </div>
                   <div className="relative hidden md:block">
-                    <div className="absolute -right-6 top-8 h-32 w-56 rounded-[28px] border border-white/70 bg-white/70 dark:border-white/10 dark:bg-slate-900/60" />
-                    <div className="relative rounded-[32px] bg-white p-6 dark:bg-slate-900/70">
+                    <div className="absolute -right-6 top-8 h-32 w-56 rounded-[28px] border border-white/70 bg-white/70 dark:hidden" />
+                    <div className="guideline-preview-card relative rounded-[32px] bg-white p-6 dark:bg-slate-900 dark:border dark:border-slate-800/70">
                       <div className="flex items-center gap-3">
                         <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56] dark:bg-slate-800 dark:text-slate-200">
                           <Sparkles className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
-                          <div className="h-3 w-24 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
-                          <div className="mt-2 h-2 w-32 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
+                          <div className="guideline-shimmer h-3 w-24 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
+                          <div className="guideline-shimmer mt-2 h-2 w-32 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
                         </div>
-                        <span className="ml-auto h-7 w-10 rounded-full bg-[#EAF1FF] dark:bg-slate-800" />
+                        <span className="guideline-toggle-pulse ml-auto h-7 w-10 rounded-full bg-[#EAF1FF] dark:bg-slate-800" />
                       </div>
-                      <div className="mt-4 h-2 w-28 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
+                      <div className="guideline-shimmer mt-4 h-2 w-28 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
                     </div>
-                    <div className="relative mt-3 ml-6 rounded-[32px] bg-white p-6 dark:bg-slate-900/70">
+                    <div className="guideline-preview-card guideline-preview-card--delay relative mt-3 ml-6 rounded-[32px] bg-white p-6 dark:bg-slate-900 dark:border dark:border-slate-800/70">
                       <div className="flex items-center gap-3">
                         <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56] dark:bg-slate-800 dark:text-slate-200">
                           <Clock className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
-                          <div className="h-3 w-24 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
-                          <div className="mt-2 h-2 w-32 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
+                          <div className="guideline-shimmer h-3 w-24 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
+                          <div className="guideline-shimmer mt-2 h-2 w-32 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
                         </div>
-                        <span className="ml-auto h-7 w-10 rounded-full bg-[#EAF1FF] dark:bg-slate-800" />
+                        <span className="guideline-toggle-pulse ml-auto h-7 w-10 rounded-full bg-[#EAF1FF] dark:bg-slate-800" />
                       </div>
-                      <div className="mt-4 h-2 w-24 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
+                      <div className="guideline-shimmer mt-4 h-2 w-24 rounded-full bg-[#EEF4FF] dark:bg-slate-800" />
                     </div>
                   </div>
                 </div>
@@ -1563,15 +1563,15 @@ function DashboardShell({
                         {showPanel && (
                           <GlassCard
                             className="absolute left-0 right-0 mt-2 z-50"
-                            contentClassName="rounded-[32px] overflow-hidden border border-slate-100 bg-white dark:bg-card dark:border-border p-2 shadow-xl shadow-slate-200/50 dark:shadow-[0_22px_50px_-28px_rgba(0,0,0,0.6)] animate-dropdown"
-                            blur={0}
-                            saturation={100}
-                            backgroundColor="#ffffff"
-                            backgroundOpacity={0}
+                            contentClassName="rounded-[30px] overflow-hidden border border-slate-100/90 bg-white/82 backdrop-blur-xl dark:border-white/10 dark:bg-[linear-gradient(145deg,_rgba(12,24,56,0.76),_rgba(8,18,43,0.62))] dark:backdrop-blur-2xl p-2 shadow-xl shadow-slate-200/45 dark:shadow-[0_26px_54px_-30px_rgba(2,8,23,0.95)] animate-dropdown"
+                            blur={22}
+                            saturation={145}
+                            backgroundColor="#0b1738"
+                            backgroundOpacity={0.45}
                             borderColor="#ffffff"
-                            borderOpacity={0}
-                            borderSize={0}
-                            innerLightOpacity={0}
+                            borderOpacity={0.14}
+                            borderSize={1}
+                            innerLightOpacity={0.1}
                           >
                             <div onMouseDown={(event) => event.preventDefault()}>
                               <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">

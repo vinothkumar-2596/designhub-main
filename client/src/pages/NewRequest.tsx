@@ -384,6 +384,7 @@ export default function NewRequest() {
   const [category, setCategory] = useState<TaskCategory | ''>('');
   const [urgency, setUrgency] = useState<TaskUrgency>('normal');
   const [deadline, setDeadline] = useState<Date | null>(null);
+  const [hasDeadlineInteracted, setHasDeadlineInteracted] = useState(false);
   const [isEmergency, setIsEmergency] = useState(false);
   const [requesterPhone, setRequesterPhone] = useState(user?.phone || '');
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -438,6 +439,18 @@ export default function NewRequest() {
         end: startOfDay(range.end),
       })
     );
+  const getNextAvailableDeadline = (baseDate: Date) => {
+    let candidate = startOfDay(baseDate);
+    if (!isEmergency && isBefore(candidate, minDeadlineDate)) {
+      candidate = minDeadlineDate;
+    }
+    let attempts = 0;
+    while (!isEmergency && isDateBlocked(candidate) && attempts < 120) {
+      candidate = addDays(candidate, 1);
+      attempts += 1;
+    }
+    return candidate;
+  };
 
   useEffect(() => {
     if (!apiUrl) {
@@ -506,13 +519,25 @@ export default function NewRequest() {
       }
       if (!deadline && typeof parsed.deadlineBufferDays === 'number') {
         const bufferDays = Math.max(0, parsed.deadlineBufferDays);
-        setDeadline(startOfDay(addDays(new Date(), bufferDays)));
+        setDeadline(getNextAvailableDeadline(addDays(new Date(), bufferDays)));
       }
       setDefaultsApplied(true);
     } catch {
       setDefaultsApplied(true);
     }
   }, [defaultsApplied, category, urgency, deadline]);
+
+  useEffect(() => {
+    if (hasDeadlineInteracted || !deadline || isEmergency) return;
+    const normalized = startOfDay(deadline);
+    const requiresMinLead = isBefore(normalized, minDeadlineDate);
+    const blockedDate = isDateBlocked(normalized);
+    if (!requiresMinLead && !blockedDate) return;
+    const corrected = getNextAvailableDeadline(normalized);
+    if (corrected.getTime() !== normalized.getTime()) {
+      setDeadline(corrected);
+    }
+  }, [deadline, hasDeadlineInteracted, isEmergency, minDeadlineDate, invalidRanges]);
 
   const updateFile = (id: string, updates: Partial<UploadedFile>) => {
     setFiles((prev) =>
@@ -876,8 +901,8 @@ export default function NewRequest() {
         {/* Header */}
         <div className="animate-fade-in flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">New Design Request</h1>
-            <p className="text-muted-foreground mt-1">
+            <h1 className="text-2xl font-bold text-foreground premium-headline">New Design Request</h1>
+            <p className="text-muted-foreground mt-1 premium-body">
               Submit a new design request to the team
             </p>
           </div>
@@ -1028,7 +1053,10 @@ export default function NewRequest() {
                 <LocalizationProvider dateAdapter={AdapterDateFns}>
                   <DatePicker
                     value={deadline}
-                    onChange={(newValue) => setDeadline(newValue)}
+                    onChange={(newValue) => {
+                      setHasDeadlineInteracted(true);
+                      setDeadline(newValue);
+                    }}
                     minDate={isEmergency ? undefined : minDeadlineDate}
                     shouldDisableDate={isDateBlocked}
                     slotProps={{
@@ -1248,7 +1276,7 @@ export default function NewRequest() {
           </div>
           <div className="px-7 pb-7 pt-5 text-center">
             <DialogHeader className="text-center sm:text-center">
-              <DialogTitle className="text-2xl font-bold text-foreground">Thank you!</DialogTitle>
+              <DialogTitle className="text-2xl font-bold text-foreground premium-headline">Thank you!</DialogTitle>
               <DialogDescription className="mt-2.5 text-sm text-muted-foreground">
                 Your request has been successfully submitted.
                 <br />

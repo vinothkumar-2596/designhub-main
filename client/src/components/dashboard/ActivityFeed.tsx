@@ -47,14 +47,14 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
                                     <Link
                                         key={item.id}
                                         to={item.link || '#'}
-                                        className="flex items-center gap-3 group/item cursor-pointer"
+                                        className="flex items-center gap-3 cursor-pointer"
                                         style={{ animationDelay: `${index * 100}ms` }}
                                     >
                                         <div className={cn(
-                                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors",
-                                            item.type === 'attachment' && "bg-blue-50 text-blue-500 group-hover/item:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-300",
-                                            item.type === 'message' && "bg-emerald-50 text-emerald-500 group-hover/item:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300",
-                                            item.type === 'system' && "bg-rose-50 text-rose-500 group-hover/item:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300",
+                                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
+                                            item.type === 'attachment' && "bg-blue-50 text-blue-500 dark:bg-blue-500/10 dark:text-blue-300",
+                                            item.type === 'message' && "bg-emerald-50 text-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-300",
+                                            item.type === 'system' && "bg-rose-50 text-rose-500 dark:bg-rose-500/10 dark:text-rose-300",
                                         )}>
                                             {item.type === 'attachment' && <Paperclip className="h-4 w-4" />}
                                             {item.type === 'message' && <MessageSquare className="h-4 w-4" />}
@@ -71,9 +71,9 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
                             ) : (
                                 // Empty State Visualization (Skeleton lines)
                                 [1, 2, 3].map((i) => (
-                                    <div key={i} className="flex items-center gap-3 opacity-40">
+                                    <div key={i} className="flex items-center gap-3 opacity-60 dark:opacity-90">
                                         <div className={cn(
-                                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-muted dark:text-muted-foreground",
+                                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800/80 dark:text-slate-300",
                                             i === 1 && "text-blue-400",
                                             i === 2 && "text-emerald-400",
                                             i === 3 && "text-rose-400"
@@ -83,8 +83,8 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
                                             {i === 3 && <Laptop className="h-4 w-4" />}
                                         </div>
                                         <div className="flex-1 space-y-2">
-                                            <div className="h-2 w-16 rounded-full bg-slate-200 dark:bg-muted" />
-                                            <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-muted/80" />
+                                            <div className="h-2 w-16 rounded-full bg-slate-200 dark:bg-slate-700/70" />
+                                            <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-700/40" />
                                         </div>
                                     </div>
                                 ))

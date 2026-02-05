@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { API_URL, authFetch } from '@/lib/api';
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Palette, Users, Briefcase, Eye, EyeOff } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType; description: string }[] = [
@@ -31,6 +32,8 @@ const roleOptions: { value: UserRole; label: string; icon: React.ElementType; de
 ];
 
 export default function Login() {
+  const { setTheme } = useTheme();
+  const previousThemeRef = useRef<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('staff');
@@ -53,6 +56,25 @@ export default function Login() {
     }, 1800);
     return () => window.clearInterval(interval);
   }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedTheme = window.localStorage.getItem('designhub-theme');
+    const root = document.documentElement;
+    const initialTheme =
+      storedTheme ?? (root.classList.contains('dark') ? 'dark' : 'light');
+    if (!previousThemeRef.current) {
+      previousThemeRef.current = initialTheme;
+    }
+    if (initialTheme !== 'light') {
+      setTheme('light');
+    }
+    return () => {
+      const previousTheme = previousThemeRef.current;
+      if (previousTheme && previousTheme !== 'light') {
+        setTheme(previousTheme);
+      }
+    };
+  }, [setTheme]);
   const [isResetLoading, setIsResetLoading] = useState(false);
   const [isSignupOpen, setIsSignupOpen] = useState(false);
   const [signupEmail, setSignupEmail] = useState('');
@@ -254,7 +276,10 @@ export default function Login() {
       <div className="min-h-screen flex bg-background">
         {/* Left Panel - Branding */}
         <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.22),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.18),_transparent_60%)]" />
+          <div className="absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]">
+            <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(148,163,184,0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.18)_1px,transparent_1px)] bg-[size:20px_20px] opacity-35" />
+          </div>
           <div className="relative z-10 flex flex-col justify-center px-16 ml-[150px] text-sidebar-foreground">
             <div className="animate-slide-in-left">
               <div className="flex items-center gap-3 mb-8">
@@ -280,7 +305,7 @@ export default function Login() {
                   </span>
                   <span
                     key={wordIndex}
-                    className="inline-block min-w-[9ch] text-left text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-300 to-slate-100 animate-word-swap"
+                    className="login-dynamic-word gradient-name inline-block min-w-[9ch] text-left text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-indigo-400 to-pink-300 animate-word-swap"
                   >
                     {rotatingWords[wordIndex]}.
                   </span>

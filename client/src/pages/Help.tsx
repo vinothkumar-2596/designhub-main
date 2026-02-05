@@ -104,27 +104,27 @@ const helpItems: HelpItem[] = [
     icon: AlarmClock,
     body: (
       <div className="space-y-2">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-700/50 dark:bg-amber-900/30">
-          <p className="font-semibold text-amber-700 dark:text-amber-200">Pending</p>
-          <p className="text-xs text-amber-700/80 dark:text-amber-200/80">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-[#1E3A75]/70 dark:bg-[#11234A]/70">
+          <p className="font-semibold text-amber-700 dark:text-slate-100">Pending</p>
+          <p className="text-xs text-amber-700/80 dark:text-slate-300">
             Task submitted and awaiting action. No designer assigned yet.
           </p>
         </div>
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-700/50 dark:bg-blue-900/30">
-          <p className="font-semibold text-blue-700 dark:text-blue-200">In Progress</p>
-          <p className="text-xs text-blue-700/80 dark:text-blue-200/80">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-[#1E3A75]/70 dark:bg-[#11234A]/70">
+          <p className="font-semibold text-blue-700 dark:text-slate-100">In Progress</p>
+          <p className="text-xs text-blue-700/80 dark:text-slate-300">
             A designer has started working on your request.
           </p>
         </div>
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-700/50 dark:bg-emerald-900/30">
-          <p className="font-semibold text-emerald-700 dark:text-emerald-200">Completed</p>
-          <p className="text-xs text-emerald-700/80 dark:text-emerald-200/80">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-[#1E3A75]/70 dark:bg-[#11234A]/70">
+          <p className="font-semibold text-emerald-700 dark:text-slate-100">Completed</p>
+          <p className="text-xs text-emerald-700/80 dark:text-slate-300">
             Design work is finished and final files are uploaded.
           </p>
         </div>
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 dark:border-rose-700/50 dark:bg-rose-900/30">
-          <p className="font-semibold text-rose-700 dark:text-rose-200">Overdue</p>
-          <p className="text-xs text-rose-700/80 dark:text-rose-200/80">
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 dark:border-[#1E3A75]/70 dark:bg-[#11234A]/70">
+          <p className="font-semibold text-rose-700 dark:text-slate-100">Overdue</p>
+          <p className="text-xs text-rose-700/80 dark:text-slate-300">
             The expected deadline has passed without completion.
           </p>
         </div>
@@ -247,20 +247,20 @@ export default function Help() {
               <Badge className="rounded-full border border-[#DDE6FF] bg-white/80 text-[#5B6B8A] dark:border-border dark:bg-muted/70 dark:text-slate-300">
                 Help & Support - DesignDesk Task Portal
               </Badge>
-              <h1 className="text-3xl md:text-4xl font-semibold text-[#1E2A5A] dark:text-slate-100">
+              <h1 className="text-3xl md:text-4xl font-semibold text-[#1E2A5A] dark:text-slate-100 premium-headline">
                 Frequently asked questions
               </h1>
-              <p className="text-base text-[#5B6B8A] dark:text-slate-400">
+              <p className="text-base text-[#5B6B8A] dark:text-slate-400 premium-body">
                 Welcome to the Help Center. Find answers about submitting requests,
                 tracking progress, and managing your tasks in the DesignDesk portal.
               </p>
             </div>
 
             <div className="rounded-2xl border border-[#E3EBFF] bg-[#F5F7FF] p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.3)] dark:border-border dark:bg-slate-900/60 dark:shadow-none">
-              <h2 className="text-lg font-semibold text-[#1E2A5A] dark:text-slate-100">
+              <h2 className="text-lg font-semibold text-[#1E2A5A] dark:text-slate-100 premium-heading">
                 Still have questions?
               </h2>
-              <p className="mt-2 text-sm text-[#5B6B8A] dark:text-slate-400">
+              <p className="mt-2 text-sm text-[#5B6B8A] dark:text-slate-400 premium-body">
                 Cannot find the answer? Send us an email and we will get back to you
                 as soon as possible.
               </p>
