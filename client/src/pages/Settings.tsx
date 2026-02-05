@@ -219,7 +219,6 @@ export default function Settings() {
                 })}
               </div>
               <p className="text-xs text-muted-foreground">
-                Choose from 4 profile avatars.
               </p>
             </div>
             <Separator />

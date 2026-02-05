@@ -419,7 +419,7 @@ export default function NewRequest() {
     }
   }, [location.state]);
   const glassPanelClass =
-    'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)] dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:border-slate-700/60 dark:ring-white/5 dark:shadow-lg';
+    'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border-0 ring-1 ring-black/5 rounded-2xl shadow-none dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:ring-white/5';
   const glassInputClass =
     'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
   const apiUrl = API_URL;
@@ -579,6 +579,11 @@ export default function NewRequest() {
             const errData = JSON.parse(xhr.responseText);
             errorMsg = errData.error || errData.message || errorMsg;
           } catch { }
+          if (xhr.status === 401 || xhr.status === 403) {
+            errorMsg = token
+              ? 'Session expired. Please sign in again.'
+              : 'Please sign in to upload files.';
+          }
           if (errorMsg === 'Upload failed') {
             errorMsg = xhr.status
               ? `Upload failed (HTTP ${xhr.status})`

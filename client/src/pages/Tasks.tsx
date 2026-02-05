@@ -337,7 +337,7 @@ export default function Tasks() {
         </div>
 
         {isAdvancedFilterPortal && (
-          <div className="rounded-2xl border border-[#D9E6FF] bg-white/80 p-4 shadow-card dark:border-[#1E3A75]/55 dark:bg-[#0B1738]/85 dark:shadow-none">
+          <div className="rounded-2xl border border-[#D9E6FF] bg-white/80 p-4 shadow-none dark:border-[#1E3A75]/55 dark:bg-[#0B1738]/85 dark:shadow-none">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground dark:text-slate-100">
                 <SlidersHorizontal className="h-4 w-4 text-primary/80 dark:text-indigo-200" />

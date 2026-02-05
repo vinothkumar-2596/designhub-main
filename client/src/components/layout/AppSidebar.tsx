@@ -513,9 +513,6 @@ export function AppSidebar() {
             onClick={() => {
               logout();
               navigate('/', { replace: true });
-              setTimeout(() => {
-                window.location.href = '/';
-              }, 0);
             }}
             aria-label="Logout"
             className={cn(

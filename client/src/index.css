@@ -447,6 +447,11 @@
   }
 
   .dark .gradient-border {
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+  }
+
+  .dark .gradient-border:focus-within {
     border: 1px solid transparent;
     background:
       linear-gradient(hsl(var(--card)), hsl(var(--card))) padding-box,
@@ -1326,7 +1331,7 @@
     padding: 14px 18px;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(233, 241, 255, 0.6));
     border: 1px solid rgba(226, 232, 255, 0.7);
-    box-shadow: 0 20px 36px -30px rgba(30, 58, 138, 0.45);
+    box-shadow: none;
     display: flex;
     flex-direction: column;
     gap: 4px;

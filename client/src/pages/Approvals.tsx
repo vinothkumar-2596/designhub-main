@@ -242,9 +242,9 @@ export default function Approvals() {
         </div>
 
         {/* Info Banner */}
-        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 animate-slide-up">
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm animate-slide-up">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+            <AlertTriangle className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
             <div>
               <h3 className="font-semibold text-foreground">Approval Guidelines</h3>
               <p className="text-sm text-muted-foreground mt-1">
@@ -282,20 +282,19 @@ export default function Approvals() {
               return (
                 <div
                   key={task.id}
-                  className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white p-4 md:p-5 animate-slide-up shadow-card dark:border-[#1E3A75]/55 dark:bg-[#0B1738]/92 dark:shadow-none"
+                  className="relative overflow-hidden rounded-xl border border-border bg-card p-4 md:p-5 animate-slide-up shadow-sm"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(77,92,218,0.14),transparent_58%)] dark:bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.14),transparent_56%)]" />
                   <div className="relative grid gap-4 xl:grid-cols-[210px_minmax(0,1fr)_220px] xl:items-start">
-                    <div className="flex items-center gap-3 rounded-xl border border-[#E4ECFF] bg-[#F8FBFF]/80 p-3 dark:border-[#1E3A75]/65 dark:bg-[#11234A]/55">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary font-semibold dark:border-primary/35 dark:bg-primary/20 dark:text-indigo-200">
+                    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-foreground font-semibold">
                         {requesterInitials}
                       </div>
                       <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                           Submitted
                         </p>
-                        <p className="text-sm font-semibold text-foreground dark:text-slate-100">
+                        <p className="text-sm font-semibold text-foreground">
                           {format(task.createdAt, 'MMM d, yyyy')}
                         </p>
                         <p className="text-xs text-muted-foreground">
@@ -305,10 +304,10 @@ export default function Approvals() {
                     </div>
 
                     <div className="min-w-0">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
                         <Badge
                           variant="pending"
-                          className="border border-primary/25 bg-primary/10 text-primary dark:border-primary/35 dark:bg-primary/18 dark:text-indigo-200"
+                          className="border border-border bg-muted/60 text-foreground"
                         >
                           Awaiting Approval
                         </Badge>
@@ -316,27 +315,27 @@ export default function Approvals() {
                           <Badge variant="urgent">Urgent</Badge>
                         )}
                       </div>
-                      <h3 className="text-lg font-semibold leading-tight text-foreground dark:text-slate-100">
+                      <h3 className="text-xl font-semibold leading-snug text-foreground">
                         {headline}
                       </h3>
-                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground dark:text-slate-300">
+                      <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">
                         {summary}
                       </p>
                       {staffPreview && (
-                        <div className="mt-3 rounded-lg border border-[#CFE0FF] bg-[#F5F9FF]/90 px-3 py-2 dark:border-[#1E3A75]/70 dark:bg-[#11234A]/70">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/70 dark:text-indigo-200/80">
+                        <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                             Staff update
                           </p>
-                          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground dark:text-slate-300">
+                          <p className="mt-1 line-clamp-2 text-sm text-foreground/80">
                             {staffPreview}
                           </p>
                         </div>
                       )}
                     </div>
 
-                    <div className="grid gap-2 rounded-xl border border-[#E4ECFF] bg-[#F8FBFF]/80 p-3 text-sm text-muted-foreground dark:border-[#1E3A75]/65 dark:bg-[#11234A]/55 dark:text-slate-300">
+                    <div className="grid gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
                       <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-primary/80 dark:text-indigo-200" />
+                        <User className="h-4 w-4 text-muted-foreground" />
                         <span className="truncate">
                           {task.requesterName}
                           {task.requesterDepartment && (
@@ -347,21 +346,21 @@ export default function Approvals() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-primary/80 dark:text-indigo-200" />
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
                         <span>Due {format(task.deadline, 'MMM d, yyyy')}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Paperclip className="h-4 w-4 text-primary/80 dark:text-indigo-200" />
+                        <Paperclip className="h-4 w-4 text-muted-foreground" />
                         <span>{task.files.length} files attached</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#E4ECFF] pt-4 dark:border-[#1E3A75]/55">
+                  <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="default"
-                        className="h-9 gap-2 rounded-lg px-4"
+                        className="h-9 gap-2 rounded-md px-4"
                         onClick={() => handleApprove(task.id)}
                         disabled={processingId === task.id}
                       >
@@ -370,7 +369,7 @@ export default function Approvals() {
                       </Button>
                       <Button
                         variant="outline"
-                        className="h-9 gap-2 rounded-lg border-primary/30 text-primary hover:bg-primary/5 dark:border-slate-600/70 dark:text-slate-200 dark:hover:bg-slate-800/80 dark:hover:text-white dark:hover:border-slate-500/80"
+                        className="h-9 gap-2 rounded-md border-border text-foreground hover:bg-muted/60"
                         onClick={() => handleReject(task.id)}
                         disabled={processingId === task.id}
                       >
@@ -382,7 +381,7 @@ export default function Approvals() {
                       variant="ghost"
                       size="sm"
                       asChild
-                      className="h-9 gap-2 rounded-lg px-3 text-primary hover:bg-primary/5 dark:text-slate-300 dark:hover:bg-slate-800/80 dark:hover:text-white"
+                      className="h-9 gap-2 rounded-md px-3 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     >
                       <Link to={`/task/${task.id}`} state={{ task }}>
                         <Eye className="h-4 w-4" />

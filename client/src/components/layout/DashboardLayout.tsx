@@ -1233,6 +1233,8 @@ function DashboardShell({
   hideGrid?: boolean;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
   const [activeFilter, setActiveFilter] = useState<'all' | 'tasks' | 'people' | 'files' | 'categories' | 'more'>('all');
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -1570,16 +1572,21 @@ function DashboardShell({
                         </div>
                         {showPanel && (
                           <GlassCard
-                            className="absolute left-0 right-0 mt-2 z-50"
-                            contentClassName="rounded-[30px] overflow-hidden border border-slate-100/90 bg-white/82 backdrop-blur-xl dark:border-white/10 dark:bg-[linear-gradient(145deg,_rgba(12,24,56,0.76),_rgba(8,18,43,0.62))] dark:backdrop-blur-2xl p-2 shadow-xl shadow-slate-200/45 dark:shadow-[0_26px_54px_-30px_rgba(2,8,23,0.95)] animate-dropdown"
-                            blur={22}
-                            saturation={145}
-                            backgroundColor="#0b1738"
-                            backgroundOpacity={0.45}
-                            borderColor="#ffffff"
-                            borderOpacity={0.14}
+                            className="absolute left-0 right-0 mt-2 z-50 backdrop-blur-2xl"
+                            contentClassName={cn(
+                              'rounded-2xl overflow-hidden border p-2 animate-dropdown',
+                              isDark
+                                ? 'border-white/10 bg-[linear-gradient(160deg,_rgba(12,24,56,0.86),_rgba(8,18,43,0.78))] backdrop-blur-xl shadow-[0_26px_54px_-30px_rgba(2,8,23,0.95)] ring-1 ring-white/10'
+                                : 'border-slate-200 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/40'
+                            )}
+                            blur={isDark ? 18 : 14}
+                            saturation={isDark ? 145 : 115}
+                            backgroundColor={isDark ? '#0b1738' : '#ffffff'}
+                            backgroundOpacity={isDark ? 0.62 : 0.8}
+                            borderColor={isDark ? '#ffffff' : '#e2e8f0'}
+                            borderOpacity={isDark ? 0.14 : 1}
                             borderSize={1}
-                            innerLightOpacity={0.1}
+                            innerLightOpacity={isDark ? 0.1 : 0}
                           >
                             <div onMouseDown={(event) => event.preventDefault()}>
                               <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
