@@ -31,7 +31,7 @@ import { mockTasks } from '@/data/mockTasks';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { UserAvatar } from '@/components/common/UserAvatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
@@ -101,13 +101,6 @@ export function DashboardLayout({
   const useServerNotifications = Boolean(apiUrl);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
-  const getInitials = useCallback((name: string) => {
-    const safe = (name || '').trim();
-    if (!safe) return '?';
-    const parts = safe.split(/\s+/).filter(Boolean);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  }, []);
 
   const normalizeNotification = useCallback((entry: any): NotificationItem => {
     const createdAt = entry?.createdAt ? new Date(entry.createdAt) : new Date();
@@ -299,6 +292,7 @@ export function DashboardLayout({
         userName: user?.name,
         userRole: user?.role,
         userEmail: user?.email,
+        avatar: user?.avatar,
       });
       socket.emit('notifications:join', { userId });
       fetchNotifications(lastFetchedAtRef.current);
@@ -342,6 +336,7 @@ export function DashboardLayout({
           userName: viewer.userName || 'Someone',
           userRole: viewer.userRole,
           userEmail: viewer.userEmail,
+          avatar: viewer.avatar || (viewer.userId === userId ? user?.avatar : undefined),
           lastSeenAt: viewer.lastSeenAt,
         }))
       );
@@ -355,6 +350,7 @@ export function DashboardLayout({
           userName: viewer.userName || 'Someone',
           userRole: viewer.userRole,
           userEmail: viewer.userEmail,
+          avatar: viewer.avatar || (viewer.userId === userId ? user?.avatar : undefined),
           lastSeenAt: viewer.lastTypingAt,
         }))
       );
@@ -388,12 +384,24 @@ export function DashboardLayout({
     user?.email,
     user?.name,
     user?.role,
+    user?.avatar,
     fetchNotifications,
     fetchUnreadCount,
     mergeNotifications,
     normalizeNotification,
     updateLastFetchedAt,
   ]);
+
+  useEffect(() => {
+    if (!isRealtimeConnected || !notificationsSocketRef.current || !userId) return;
+    notificationsSocketRef.current.emit('presence:global:join', {
+      userId,
+      userName: user?.name,
+      userRole: user?.role,
+      userEmail: user?.email,
+      avatar: user?.avatar,
+    });
+  }, [isRealtimeConnected, userId, user?.name, user?.role, user?.email, user?.avatar]);
 
   useEffect(() => {
     if (!apiUrl || !userId || isRealtimeConnected) return;
@@ -910,6 +918,7 @@ export function DashboardLayout({
         <div className="flex -space-x-2">
           {avatars.map((viewer) => {
             const isSelf = viewer.userId === userId;
+            const avatarSrc = isSelf ? user?.avatar || viewer.avatar : viewer.avatar;
             const labelRole =
               viewer.userRole
                 ? viewer.userRole.charAt(0).toUpperCase() + viewer.userRole.slice(1)
@@ -920,17 +929,15 @@ export function DashboardLayout({
                   <span
                     className={cn('inline-flex rounded-full', isSelf ? '' : 'presence-highlight')}
                   >
-                    <Avatar
+                    <UserAvatar
+                      name={viewer.userName}
+                      avatar={avatarSrc}
                       className={cn(
                         'h-6 w-6 border-2 border-white shadow-sm bg-white/90 dark:border-white/10 dark:bg-slate-900/80',
                         isSelf && 'ring-2 ring-primary/40'
                       )}
-                    >
-                      <AvatarImage src={viewer.avatar} alt={viewer.userName} />
-                      <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-semibold">
-                        {getInitials(viewer.userName)}
-                      </AvatarFallback>
-                    </Avatar>
+                      fallbackClassName="bg-primary/10 text-primary text-[9px] font-semibold"
+                    />
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="end">
@@ -954,7 +961,7 @@ export function DashboardLayout({
         </div>
       </div>
     );
-  }, [globalPresenceSummary, globalTypingSummary, user, userId, getInitials]);
+  }, [globalPresenceSummary, globalTypingSummary, user, userId]);
 
   useEffect(() => {
     const onOpenGuidelines = () => {
@@ -969,7 +976,7 @@ export function DashboardLayout({
     <div className="relative" ref={notificationsRef}>
       <button
         type="button"
-        className="relative h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/90 dark:bg-muted/80 dark:border-border text-muted-foreground hover:text-foreground dark:hover:text-foreground shadow-sm flex items-center justify-center"
+        className="relative h-9 w-9 rounded-full border border-[#D9E6FF] bg-white/90 dark:bg-muted/80 dark:border-border text-muted-foreground shadow-none flex items-center justify-center transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 hover:text-muted-foreground dark:hover:text-muted-foreground"
         onClick={() => {
           const nextOpen = !notificationsOpen;
           setNotificationsOpen(nextOpen);

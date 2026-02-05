@@ -581,6 +581,26 @@ export default function TaskDetail() {
     });
   };
 
+  const hasUnseenComments = useMemo(
+    () => hasUnseenForRole(taskState, user?.role),
+    [taskState?.comments, user?.role]
+  );
+  const unseenFingerprint = useMemo(() => {
+    if (!taskState || !user?.role) return '';
+    const relevant = taskState.comments
+      .filter((comment) => resolveCommentReceivers(comment).includes(user.role))
+      .map((comment) => {
+        const id = (comment as { id?: string; _id?: string }).id || (comment as { _id?: string })._id;
+        const seenCount = (comment.seenBy ?? []).length;
+        return `${id || comment.createdAt?.toString() || 'comment'}:${seenCount}`;
+      })
+      .join('|');
+    return `${taskState.id}:${user.role}:${relevant}`;
+  }, [taskState?.comments, taskState?.id, user?.role]);
+  const seenRequestRef = useRef(false);
+  const lastSeenAttemptAtRef = useRef(0);
+  const lastSeenFingerprintRef = useRef('');
+
   const mentionRoleMap: Record<string, UserRole> = {
     staff: 'staff',
     treasurer: 'treasurer',
@@ -1114,8 +1134,18 @@ export default function TaskDetail() {
 
   useEffect(() => {
     if (!user || !taskState || !user.role) return;
-    if (!hasUnseenForRole(taskState, user.role)) return;
+    if (!hasUnseenComments) return;
+    const now = Date.now();
+    if (
+      seenRequestRef.current ||
+      (lastSeenFingerprintRef.current === unseenFingerprint && now - lastSeenAttemptAtRef.current < 10000)
+    ) {
+      return;
+    }
     const markSeen = async () => {
+      seenRequestRef.current = true;
+      lastSeenAttemptAtRef.current = now;
+      lastSeenFingerprintRef.current = unseenFingerprint;
       if (apiUrl) {
         try {
           const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/comments/seen`, {
@@ -1123,12 +1153,15 @@ export default function TaskDetail() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ role: user.role }),
           });
-          if (!response.ok) return;
-          const updated = await response.json();
-          const hydrated = hydrateTask(updated);
-          setTaskState(hydrated);
+          if (response.ok) {
+            const updated = await response.json();
+            const hydrated = hydrateTask(updated);
+            setTaskState(hydrated);
+          }
         } catch {
           // no-op
+        } finally {
+          seenRequestRef.current = false;
         }
         return;
       }
@@ -1148,9 +1181,10 @@ export default function TaskDetail() {
       };
       setTaskState(nextTask);
       persistTask(nextTask);
+      seenRequestRef.current = false;
     };
     markSeen();
-  }, [apiUrl, taskState, user]);
+  }, [apiUrl, taskState?.id, hasUnseenComments, unseenFingerprint, user]);
 
   const submitComment = async (
     content: string,
@@ -2565,7 +2599,7 @@ export default function TaskDetail() {
               {/* Upload (Designer only) */}
               {isDesignerOrAdmin && (
                 <>
-                  <div className="mt-6 relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white p-6 text-center shadow-[0_18px_44px_-30px_rgba(15,23,42,0.35)] dark:border-border dark:bg-card dark:shadow-none">
+                  <div className="mt-6 relative overflow-hidden rounded-2xl gradient-border bg-white p-6 text-center shadow-none dark:bg-card">
                     <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
                     <div className="relative">
                       <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />

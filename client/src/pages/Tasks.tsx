@@ -349,13 +349,13 @@ export default function Tasks() {
             </div>
 
             <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_180px_200px_180px]">
-              <div className="relative">
+              <div className="relative gradient-border rounded-xl">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Filter within tasks..."
                   value={designerSearch}
                   onChange={(event) => setDesignerSearch(event.target.value)}
-                  className="pl-9"
+                  className="pl-9 border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-xl"
                 />
               </div>
               <Select value={sortBy} onValueChange={(value) => setSortBy(value as typeof sortBy)}>

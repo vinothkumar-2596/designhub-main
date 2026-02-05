@@ -21,32 +21,26 @@ export const avatarPresets: AvatarPreset[] = [
   {
     id: 'aurora',
     label: 'Aurora',
-    variant: 'marble',
-    colors: ['#4F46E5', '#1E3A8A', '#2563EB', '#0EA5E9', '#94A3FF'],
+    variant: 'beam',
+    colors: ['#111827', '#2563EB', '#60A5FA', '#A78BFA', '#F8FAFC'],
   },
   {
     id: 'graphite',
     label: 'Graphite',
-    variant: 'beam',
-    colors: ['#0F172A', '#1E293B', '#334155', '#475569', '#64748B'],
+    variant: 'bauhaus',
+    colors: ['#0B1020', '#1F2937', '#334155', '#94A3B8', '#E2E8F0'],
   },
   {
     id: 'nebula',
     label: 'Nebula',
-    variant: 'ring',
-    colors: ['#111827', '#1D4ED8', '#2563EB', '#22D3EE', '#E0E7FF'],
+    variant: 'pixel',
+    colors: ['#0F172A', '#22D3EE', '#38BDF8', '#6366F1', '#F8FAFC'],
   },
   {
     id: 'mint',
     label: 'Mint',
-    variant: 'sunset',
-    colors: ['#0F172A', '#0EA5A6', '#14B8A6', '#34D399', '#A7F3D0'],
-  },
-  {
-    id: 'studio',
-    label: 'Studio',
-    variant: 'bauhaus',
-    colors: ['#0B1228', '#312E81', '#4F46E5', '#818CF8', '#E2E8F0'],
+    variant: 'abstract',
+    colors: ['#0B1020', '#1E293B', '#334155', '#60A5FA', '#E2E8F0'],
   },
 ];
 

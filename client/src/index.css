@@ -396,6 +396,8 @@
   .gradient-name {
     background-size: 200% 200%;
     animation: gradientNameFlow 6s ease-in-out infinite;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   .dark .gradient-name {
@@ -440,15 +442,15 @@
   }
 
   .gradient-border {
-    border: 1px solid transparent;
-    background:
-      linear-gradient(#ffffff, #ffffff) padding-box,
-      linear-gradient(120deg, #38bdf8, #6366f1, #f472b6) border-box;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
   }
 
   .dark .gradient-border {
-    background: hsl(var(--card));
-    border-color: hsl(var(--border));
+    border: 1px solid transparent;
+    background:
+      linear-gradient(hsl(var(--card)), hsl(var(--card))) padding-box,
+      linear-gradient(120deg, #38bdf8, #6366f1, #f472b6) border-box;
   }
 
   .search-placeholder {
@@ -597,6 +599,15 @@
     border-color: rgba(159, 180, 255, 0.9);
     box-shadow: 0 10px 20px -16px rgba(30, 58, 138, 0.45);
     color: #1e2a5a;
+  }
+
+  .avatar-picker__option,
+  .avatar-picker__option * {
+    box-shadow: none !important;
+  }
+
+  .avatar-picker__option svg {
+    filter: none !important;
   }
 
   .ai-attach-hint button:disabled {

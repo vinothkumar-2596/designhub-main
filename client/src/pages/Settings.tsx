@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { UserAvatar } from '@/components/common/UserAvatar';
-import { avatarPresets, getDefaultAvatarValue, toAvatarPresetValue } from '@/lib/avatarPresets';
+import { avatarPresets, getAvatarPreset, getDefaultAvatarValue, toAvatarPresetValue } from '@/lib/avatarPresets';
 import { cn } from '@/lib/utils';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[] = [
@@ -41,7 +41,9 @@ export default function Settings() {
   const [fullName, setFullName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState(user?.phone || '');
-  const [profileAvatar, setProfileAvatar] = useState(user?.avatar || getDefaultAvatarValue());
+  const [profileAvatar, setProfileAvatar] = useState(
+    getAvatarPreset(user?.avatar) ? (user?.avatar as string) : getDefaultAvatarValue()
+  );
   const [defaultCategory, setDefaultCategory] = useState('');
   const [defaultUrgency, setDefaultUrgency] = useState('normal');
   const [deadlineBufferDays, setDeadlineBufferDays] = useState('3');
@@ -76,7 +78,7 @@ export default function Settings() {
     setFullName(user?.name || '');
     setEmail(user?.email || '');
     setPhone(user?.phone || '');
-    setProfileAvatar(user?.avatar || getDefaultAvatarValue());
+    setProfileAvatar(getAvatarPreset(user?.avatar) ? (user?.avatar as string) : getDefaultAvatarValue());
   }, [user]);
 
   useEffect(() => {
@@ -184,7 +186,7 @@ export default function Settings() {
             <Separator />
             <div className="space-y-2">
               <Label htmlFor="avatar-options">Profile Avatar</Label>
-              <div id="avatar-options" className="flex flex-wrap gap-3">
+              <div id="avatar-options" className="avatar-picker flex flex-wrap gap-3">
                 {avatarPresets.map((preset) => {
                   const presetValue = toAvatarPresetValue(preset.id);
                   const isActive = profileAvatar === presetValue;
@@ -194,7 +196,7 @@ export default function Settings() {
                       type="button"
                       onClick={() => setProfileAvatar(presetValue)}
                       className={cn(
-                        'relative h-12 w-12 overflow-hidden rounded-full border transition-all duration-200',
+                        'avatar-picker__option relative h-12 w-12 overflow-hidden rounded-full border transition-all duration-200 shadow-none',
                         isActive
                           ? 'border-primary ring-2 ring-primary/30 shadow-[0_0_0_1px_hsl(var(--primary)/0.45)]'
                           : 'border-border/80 hover:border-primary/45'
@@ -217,7 +219,7 @@ export default function Settings() {
                 })}
               </div>
               <p className="text-xs text-muted-foreground">
-                Choose from 5 profile avatars.
+                Choose from 4 profile avatars.
               </p>
             </div>
             <Separator />
