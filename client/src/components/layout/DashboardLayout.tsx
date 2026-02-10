@@ -584,7 +584,9 @@ export function DashboardLayout({
       if (!task && taskId) {
         task = taskIndex.byId.get(taskId);
       }
-      if (!link && taskId) {
+      const linkTaskMatch = link ? link.match(/\/tasks?\/([^/?#]+)/) : null;
+      const linkTaskId = linkTaskMatch && linkTaskMatch[1] ? linkTaskMatch[1] : '';
+      if (taskId && (!link || (linkTaskId && linkTaskId !== taskId))) {
         link = `/task/${taskId}`;
       }
       return { link, taskId, task };

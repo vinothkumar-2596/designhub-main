@@ -368,7 +368,7 @@ const resolveTaskAccessContext = async (task, user) => {
     };
   }
   return {
-    mode: "none",
+    mode: "view_only",
     assignedDesignerEmail,
     ccEmails
   };
@@ -474,14 +474,22 @@ const canAccessTask = (task, user) => {
 
 const ensureTaskAccess = async (req, res, next) => {
   try {
-    const task = await Task.findById(req.params.id);
+    const rawTaskParam = String(req.params.id || "").trim();
+    const isReadOnly =
+      req.method === "GET" ||
+      req.method === "HEAD";
+    let task = null;
+    if (mongoose.Types.ObjectId.isValid(rawTaskParam)) {
+      task = await Task.findById(rawTaskParam);
+    }
+    // Backward compatibility: some older links may carry task code/title instead of ObjectId.
+    if (!task && isReadOnly && rawTaskParam) {
+      task = await Task.findOne({ title: rawTaskParam }).sort({ createdAt: -1 });
+    }
     if (!task) {
       return res.status(404).json({ error: "Task not found." });
     }
     const userRole = normalizeTaskRole(req.user?.role);
-    const isReadOnly =
-      req.method === "GET" ||
-      req.method === "HEAD";
     const isUnassigned = !normalizeId(task.assignedToId);
     const isCommentWrite =
       req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/comments");
@@ -582,6 +590,16 @@ const ensureTaskAccess = async (req, res, next) => {
       return next();
     }
     if (!canAccessTask(task, req.user)) {
+      if (isReadOnly) {
+        req.task = task;
+        req.taskAccessMode = "view_only";
+        req.taskAccessContext = {
+          mode: "view_only",
+          assignedDesignerEmail: await resolveAssignedDesignerEmail(task),
+          ccEmails: extractTaskCcEmails(task)
+        };
+        return next();
+      }
       return res.status(403).json({ error: "Forbidden." });
     }
     req.task = task;
@@ -1013,13 +1031,11 @@ router.get("/:id", ensureTaskAccess, async (req, res) => {
   try {
     let task = req.task;
     task = await hydrateMissingFileMeta(task);
-    const hasAssignmentMetadata = hasAssignedDesignerAccessMetadata(task);
-    const accessContext = hasAssignmentMetadata
-      ? (req.taskAccessContext || await resolveTaskAccessContext(task, req.user))
-      : null;
+    const accessContext =
+      req.taskAccessContext || await resolveTaskAccessContext(task, req.user);
     const payload = typeof task.toJSON === "function" ? task.toJSON() : task;
     payload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
-    payload.accessMode = accessContext?.mode || "full";
+    payload.accessMode = req.taskAccessMode || accessContext?.mode || "full";
     payload.viewOnly = payload.accessMode === "view_only";
     if (accessContext?.assignedDesignerEmail) {
       payload.assignedDesignerEmail = accessContext.assignedDesignerEmail;
