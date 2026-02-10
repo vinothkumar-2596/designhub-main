@@ -71,6 +71,9 @@ type GlobalViewer = {
   avatar?: string;
 };
 
+const EMAIL_SEND_PENDING_KEY = 'designhub:gmail-send-pending';
+const EMAIL_SEND_PENDING_MAX_AGE_MS = 1000 * 60 * 60 * 24;
+
 export function DashboardLayout({
   children,
   headerActions,
@@ -257,6 +260,37 @@ export function DashboardLayout({
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [user]);
+
+  const consumePendingEmailSendFlag = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const raw = window.localStorage.getItem(EMAIL_SEND_PENDING_KEY);
+    if (!raw) return false;
+
+    let openedAt = 0;
+    try {
+      const parsed = JSON.parse(raw);
+      openedAt = Number(parsed?.openedAt || 0);
+    } catch {
+      openedAt = Number(raw) || 0;
+    }
+
+    if (openedAt) {
+      const ageMs = Date.now() - openedAt;
+      if (ageMs > EMAIL_SEND_PENDING_MAX_AGE_MS) {
+        window.localStorage.removeItem(EMAIL_SEND_PENDING_KEY);
+        return false;
+      }
+    }
+
+    window.localStorage.removeItem(EMAIL_SEND_PENDING_KEY);
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!consumePendingEmailSendFlag()) return;
+    // intentionally no UI after returning from Gmail
+  }, [consumePendingEmailSendFlag]);
 
   useEffect(() => {
     if (!apiUrl || !userId) {
@@ -1168,7 +1202,7 @@ export function DashboardLayout({
                     <div className="absolute -right-6 top-8 h-32 w-56 rounded-[28px] border border-white/70 bg-white/70 dark:hidden" />
                     <div className="guideline-preview-card relative rounded-[32px] bg-white p-6 dark:bg-slate-900 dark:border dark:border-slate-800/70">
                       <div className="flex items-center gap-3">
-                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56] dark:bg-slate-800 dark:text-slate-200">
+                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-primary dark:bg-slate-800 dark:text-primary">
                           <Sparkles className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
@@ -1181,7 +1215,7 @@ export function DashboardLayout({
                     </div>
                     <div className="guideline-preview-card guideline-preview-card--delay relative mt-3 ml-6 rounded-[32px] bg-white p-6 dark:bg-slate-900 dark:border dark:border-slate-800/70">
                       <div className="flex items-center gap-3">
-                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-[#2F3A56] dark:bg-slate-800 dark:text-slate-200">
+                        <div className="h-11 w-11 rounded-full bg-[#EEF4FF] flex items-center justify-center text-primary dark:bg-slate-800 dark:text-primary">
                           <Clock className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">

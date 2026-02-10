@@ -3524,10 +3524,10 @@ export default function TaskDetail() {
               </a>{' '}
               or{' '}
               <a
-                href="mailto:support@designdesk.com"
+                href="mailto:design@smvec.ac.in"
                 className="font-medium text-foreground/80 hover:text-foreground"
               >
-                support@designdesk.com
+                design@smvec.ac.in
               </a>
               .
             </div>

@@ -50,6 +50,9 @@ const categoryLabels: Record<string, string> = {
   flyer: 'Flyer',
 };
 
+const truncateChipText = (value: string, maxChars: number) =>
+  value.length > maxChars ? `${value.slice(0, maxChars - 1)}…` : value;
+
 export function TaskCard({
   task,
   showRequester = true,
@@ -69,14 +72,21 @@ export function TaskCard({
   const displayTaskId = taskId || 'N/A';
   const normalizedStatus = normalizeTaskStatus(task.status);
   const status = statusConfig[normalizedStatus];
+  const categoryLabel = categoryLabels[task.category] || 'Design';
+  const categoryChipLabel = truncateChipText(categoryLabel, 16);
   const chipBase =
-    'inline-flex items-center gap-2 rounded-full border border-[#C9D7FF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-3 py-1 text-xs font-medium text-[#2F3A56] dark:text-foreground min-w-0 max-w-full';
-  const chipLabel = 'min-w-0 truncate';
+    'inline-flex items-center gap-1.5 rounded-full border border-[#C9D7FF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-2.5 py-1 text-[11px] font-medium text-[#2F3A56] dark:text-foreground min-w-0 max-w-full leading-none';
+  const chipLabel = 'min-w-0 max-w-[9.5rem] truncate';
   const chipCount =
-    'ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-[#C9D7FF] bg-white dark:bg-card dark:border-border px-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground shrink-0';
+    'ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-[#C9D7FF] bg-white dark:bg-card dark:border-border px-1 text-[10px] font-semibold text-[#2F3A56] dark:text-foreground shrink-0';
   const chipIcon = 'h-3.5 w-3.5 shrink-0';
-  const renderChip = (Icon: typeof CheckCircle2, label: string, count = 0) => (
-    <span className={chipBase} title={label}>
+  const renderChip = (
+    Icon: typeof CheckCircle2,
+    label: string,
+    count = 0,
+    options?: { className?: string; title?: string }
+  ) => (
+    <span className={cn(chipBase, options?.className)} title={options?.title || label}>
       <Icon className={chipIcon} />
       <span className={chipLabel}>{label}</span>
       <span className={chipCount}>{count}</span>
@@ -195,26 +205,21 @@ export function TaskCard({
       )}
       className="p-6 h-full flex flex-col"
     >
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
-          {renderChip(CheckCircle2, status.label)}
-          {task.urgency === 'urgent' && (
-            renderChip(AlertTriangle, 'Urgent')
-          )}
-          {task.approvalStatus === 'pending' && (
-            renderChip(Clock, 'Awaiting Approval')
-          )}
-          {(task.isEmergency || emergencyStatus) && (
-            renderChip(AlertTriangle, emergencyLabel)
-          )}
-        </div>
-        <div className="max-w-[45%] min-w-0 flex justify-end">
-          {renderChip(Tag, categoryLabels[task.category])}
-        </div>
+      <div className="mb-4 flex flex-wrap items-start gap-2">
+        {renderChip(CheckCircle2, status.label, 0, {
+          className: 'max-w-[calc(50%-0.25rem)]',
+        })}
+        {renderChip(Tag, categoryChipLabel, 0, {
+          className: 'max-w-[calc(50%-0.25rem)]',
+          title: categoryLabel,
+        })}
+        {task.urgency === 'urgent' && renderChip(AlertTriangle, 'Urgent')}
+        {task.approvalStatus === 'pending' && renderChip(Clock, 'Awaiting Approval')}
+        {(task.isEmergency || emergencyStatus) && renderChip(AlertTriangle, emergencyLabel)}
       </div>
 
       <div className="space-y-3 mb-6">
-        <h3 className="text-lg font-bold text-slate-900 dark:text-foreground dark:transition-none group-hover:text-primary transition-colors tracking-tight line-clamp-2">
+        <h3 className="text-lg font-bold text-slate-900 dark:text-foreground dark:transition-none transition-colors tracking-tight line-clamp-2">
           {task.title}
         </h3>
         <p className="text-sm text-slate-500 dark:text-muted-foreground line-clamp-2 leading-relaxed">
@@ -288,7 +293,7 @@ export function TaskCard({
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mb-6 text-xs text-slate-500 dark:text-muted-foreground font-medium">
         {showRequester && (
           <div className="flex items-center gap-2 group/item">
-            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors dark:transition-none">
+            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 transition-colors dark:transition-none">
               <User className="h-3.5 w-3.5" />
             </div>
             <span>{task.requesterName}</span>
@@ -296,7 +301,7 @@ export function TaskCard({
         )}
         {showAssignee && (
           <div className="flex items-center gap-2 group/item">
-            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors dark:transition-none">
+            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 transition-colors dark:transition-none">
               <UserCheck className="h-3.5 w-3.5" />
             </div>
             <span>
@@ -312,7 +317,7 @@ export function TaskCard({
           </div>
         )}
         <div className={cn('flex items-center gap-2 group/item', isOverdue && 'text-red-500 dark:text-rose-300')}>
-          <div className={cn("p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 group-hover/item:text-primary group-hover/item:bg-primary/5 transition-colors dark:transition-none", isOverdue && "bg-red-50 text-red-500 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-1 dark:ring-rose-300/30")}>
+          <div className={cn("p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 transition-colors dark:transition-none", isOverdue && "bg-red-50 text-red-500 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-1 dark:ring-rose-300/30")}>
             <Calendar className="h-3.5 w-3.5" />
           </div>
           <span>{deadlineText}</span>
@@ -344,19 +349,24 @@ export function TaskCard({
           {showAssignDesignerButton && onAssignDesigner && (
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={onAssignDesigner}
-              className="h-9 whitespace-nowrap rounded-full border-[#D9E6FF] bg-[#F8FBFF] px-4 text-sm font-medium leading-none text-[#1E2A5A] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-border dark:bg-card dark:text-foreground dark:hover:bg-muted dark:hover:text-foreground"
+              title={
+                hasAssignedDesigner
+                  ? `Assigned to ${assignedDesignerLabel}`
+                  : 'No designer assigned'
+              }
+              className="h-9 whitespace-nowrap rounded-full px-4 text-sm font-medium leading-none text-secondary-foreground no-underline shadow-sm hover:text-secondary-foreground"
             >
               {hasAssignedDesigner ? 'Reassign' : 'Assign Designer'}
             </Button>
           )}
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             asChild
-            className="h-9 whitespace-nowrap gap-1.5 rounded-full px-3 text-sm font-semibold leading-none text-primary hover:bg-primary/5 hover:text-primary dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white group/btn dark:transition-none"
+            className="h-9 whitespace-nowrap gap-1.5 rounded-full border border-[#D9E6FF] bg-[#F8FBFF] px-4 text-sm font-semibold leading-none text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white dark:transition-none group/btn"
           >
             <Link to={`/task/${taskId}`} state={{ task }}>
               View Details
