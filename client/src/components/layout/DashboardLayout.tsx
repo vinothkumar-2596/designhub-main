@@ -1043,8 +1043,14 @@ export function DashboardLayout({
                   onClick={() => {
                     markNotificationRead(entry);
                     setNotificationsOpen(false);
-                    if (entry.link) {
-                      navigate(entry.link, entry.linkState ? { state: entry.linkState } : undefined);
+                    const resolvedLink =
+                      entry.link ||
+                      (entry.taskId ? `/task/${entry.taskId}` : '');
+                    if (resolvedLink) {
+                      navigate(
+                        resolvedLink,
+                        entry.linkState ? { state: entry.linkState } : undefined
+                      );
                     }
                   }}
                   className={cn(
