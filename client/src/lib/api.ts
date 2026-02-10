@@ -30,17 +30,101 @@ if (typeof window !== 'undefined') {
 }
 
 export const AUTH_TOKEN_KEY = 'auth_token';
+export const AUTH_USER_KEY = 'auth_user';
+export const AUTH_ROLE_KEY = 'auth_role';
+export const AUTH_SESSION_EXPIRED_EVENT = 'designhub:auth:session-expired';
+
+let refreshTokenPromise: Promise<string | null> | null = null;
 
 export const getAuthToken = (): string | null => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(AUTH_TOKEN_KEY);
 };
 
-export const authFetch = (input: RequestInfo | URL, init: RequestInit = {}) => {
+const isAuthRoute = (url: string) =>
+    url.includes('/api/auth/login') ||
+    url.includes('/api/auth/refresh') ||
+    url.includes('/api/auth/logout');
+
+const resolveRequestUrl = (input: RequestInfo | URL): string => {
+    if (typeof input === 'string') return input;
+    if (input instanceof URL) return input.toString();
+    return input.url || '';
+};
+
+const clearAuthSession = () => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.removeItem(AUTH_TOKEN_KEY);
+    window.localStorage.removeItem(AUTH_USER_KEY);
+    window.localStorage.removeItem(AUTH_ROLE_KEY);
+    window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED_EVENT));
+};
+
+const refreshAccessToken = async (): Promise<string | null> => {
+    if (typeof window === 'undefined') return null;
+    if (refreshTokenPromise) {
+        return refreshTokenPromise;
+    }
+
+    refreshTokenPromise = (async () => {
+        const baseUrl = API_URL || window.location.origin;
+        try {
+            const response = await fetch(`${baseUrl}/api/auth/refresh`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+            if (!response.ok) {
+                return null;
+            }
+            const payload = await response.json().catch(() => null);
+            const token =
+                payload && typeof payload.token === 'string' && payload.token.trim()
+                    ? payload.token.trim()
+                    : '';
+            if (!token) {
+                return null;
+            }
+            window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+            return token;
+        } catch {
+            return null;
+        } finally {
+            refreshTokenPromise = null;
+        }
+    })();
+
+    return refreshTokenPromise;
+};
+
+const requestWithToken = async (
+    input: RequestInfo | URL,
+    init: RequestInit,
+    token?: string | null
+) => {
     const headers = new Headers(init.headers || {});
-    const token = getAuthToken();
-    if (token && !headers.has('Authorization')) {
+    if (token) {
         headers.set('Authorization', `Bearer ${token}`);
     }
     return fetch(input, { ...init, headers });
+};
+
+export const authFetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    const requestUrl = resolveRequestUrl(input);
+    const initialToken = getAuthToken();
+    const firstResponse = await requestWithToken(input, init, initialToken);
+    if (firstResponse.status !== 401 || isAuthRoute(requestUrl)) {
+        return firstResponse;
+    }
+
+    const refreshedToken = await refreshAccessToken();
+    if (!refreshedToken) {
+        clearAuthSession();
+        return firstResponse;
+    }
+
+    const retryResponse = await requestWithToken(input, init, refreshedToken);
+    if (retryResponse.status === 401) {
+        clearAuthSession();
+    }
+    return retryResponse;
 };

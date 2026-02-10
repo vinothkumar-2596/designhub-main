@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { TaskCard } from '@/components/dashboard/TaskCard';
@@ -8,6 +8,24 @@ import { mockTasks, calculateStats } from '@/data/mockTasks';
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter';
 import { DateRangeOption, getDateRange, isWithinRange } from '@/lib/dateRange';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   ListTodo,
   Clock,
@@ -44,6 +62,64 @@ const roleLabels: Record<string, string> = {
   treasurer: 'Treasurer',
   other: 'Member',
 };
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
+type DesignerOption = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+};
+
+const buildFallbackDesigners = (
+  tasks: typeof mockTasks,
+  currentUser?: { id?: string; name?: string; email?: string; role?: string } | null
+): DesignerOption[] => {
+  const fromTasks = Array.from(
+    new Map(
+      tasks
+        .map((task) => {
+          const id =
+            (task as { assignedToId?: string }).assignedToId ||
+            (task as { assignedTo?: string }).assignedTo ||
+            '';
+          const name = task.assignedToName || '';
+          return id && name
+            ? [id, { id, name, email: '', role: 'designer' as const }]
+            : null;
+        })
+        .filter(Boolean) as Array<
+        [string, { id: string; name: string; email: string; role: 'designer' }]
+      >
+    ).values()
+  );
+
+  const currentRole = String(currentUser?.role || '').toLowerCase();
+  const currentId = String(currentUser?.id || '').trim();
+  if (currentRole === 'designer' && currentId) {
+    const currentEmail = String(currentUser?.email || '').trim().toLowerCase();
+    const fallbackName =
+      String(currentUser?.name || '').trim() ||
+      (currentEmail ? currentEmail.split('@')[0] : 'Designer');
+    const existingIndex = fromTasks.findIndex((entry) => entry.id === currentId);
+    const selfOption = {
+      id: currentId,
+      name: fallbackName,
+      email: currentEmail,
+      role: 'designer',
+    };
+    if (existingIndex === -1) {
+      fromTasks.unshift(selfOption);
+    } else {
+      fromTasks[existingIndex] = {
+        ...fromTasks[existingIndex],
+        ...selfOption,
+      };
+    }
+  }
+
+  return fromTasks;
+};
 
 const EmptyState = () => (
   <div className="text-center py-10 bg-white rounded-[32px] border border-slate-100 shadow-sm h-full flex flex-col items-center justify-center dark:bg-card dark:border-border dark:shadow-card">
@@ -76,6 +152,21 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [useLocalData, setUseLocalData] = useState(!apiUrl);
   const [processingApprovalId, setProcessingApprovalId] = useState<string | null>(null);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assigningTask, setAssigningTask] = useState<(typeof mockTasks)[number] | null>(null);
+  const [designerOptions, setDesignerOptions] = useState<DesignerOption[]>([]);
+  const [designersLoaded, setDesignersLoaded] = useState(false);
+  const [isLoadingDesigners, setIsLoadingDesigners] = useState(false);
+  const [selectedDesignerId, setSelectedDesignerId] = useState('');
+  const [ccInput, setCcInput] = useState('');
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [assignmentMessage, setAssignmentMessage] = useState('');
+  const [isAssigningDesigner, setIsAssigningDesigner] = useState(false);
+  const [assignSuccessInfo, setAssignSuccessInfo] = useState<{
+    taskTitle: string;
+    designerName: string;
+    ccCount: number;
+  } | null>(null);
 
   if (!user) {
     return (
@@ -84,6 +175,9 @@ export default function Dashboard() {
       </DashboardLayout>
     );
   }
+  const currentUserRole = String(user.role || '').toLowerCase();
+  const canAssignDesigner =
+    currentUserRole === 'designer' || currentUserRole === 'admin';
 
   const hydrateTask = (raw: typeof mockTasks[number]) => {
     if (!raw) return raw;
@@ -126,6 +220,9 @@ export default function Dashboard() {
       setIsLoading(true);
       try {
         const response = await authFetch(`${apiUrl}/api/tasks`);
+        if (response.status === 401) {
+          return;
+        }
         if (!response.ok) {
           throw new Error('Failed to load tasks');
         }
@@ -206,6 +303,192 @@ export default function Dashboard() {
     if (typeof window === 'undefined') return mockTasks;
     return mergeLocalTasks(mockTasks);
   }, [useLocalData, storageTick, tasks]);
+
+  const resetAssignDesignerModal = () => {
+    setAssigningTask(null);
+    setSelectedDesignerId('');
+    setCcInput('');
+    setCcEmails([]);
+    setAssignmentMessage('');
+    setIsAssigningDesigner(false);
+    setAssignSuccessInfo(null);
+  };
+
+  const handleAssignModalChange = (open: boolean) => {
+    setIsAssignModalOpen(open);
+    if (!open) {
+      resetAssignDesignerModal();
+    }
+  };
+
+  const openAssignDesignerModal = (task: typeof mockTasks[number]) => {
+    const assignedId =
+      (task as { assignedToId?: string }).assignedToId ||
+      (task as { assignedTo?: string }).assignedTo ||
+      '';
+    setAssigningTask(task);
+    setSelectedDesignerId(assignedId);
+    setCcInput('');
+    setCcEmails([]);
+    setAssignmentMessage('');
+    setAssignSuccessInfo(null);
+    setIsAssignModalOpen(true);
+  };
+
+  const addCcEmail = (rawValue: string) => {
+    const normalizedEmail = rawValue.trim().toLowerCase();
+    if (!normalizedEmail) return;
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      toast.error('Enter a valid CC email address.');
+      return;
+    }
+    setCcEmails((prev) => (prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]));
+    setCcInput('');
+  };
+
+  const removeCcEmail = (email: string) => {
+    setCcEmails((prev) => prev.filter((value) => value !== email));
+  };
+
+  const handleCcInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' && event.key !== ',') return;
+    event.preventDefault();
+    addCcEmail(ccInput);
+  };
+
+  useEffect(() => {
+    if (!isAssignModalOpen || !canAssignDesigner || designersLoaded) return;
+
+    const loadDesigners = async () => {
+      if (!apiUrl) {
+        const fallbackDesigners = buildFallbackDesigners(hydratedTasks, user);
+        setDesignerOptions(fallbackDesigners);
+        setDesignersLoaded(true);
+        return;
+      }
+
+      setIsLoadingDesigners(true);
+      try {
+        const response = await authFetch(`${apiUrl}/api/tasks/designers`);
+        const payload = await response.json();
+        if (!response.ok) {
+          const errorMessage =
+            typeof payload?.error === 'string' && payload.error.trim()
+              ? payload.error.trim()
+              : 'Failed to load designers';
+          throw new Error(errorMessage);
+        }
+        const source = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.designers)
+            ? payload.designers
+            : [];
+        const mapped = source
+          .map((designer: any) => {
+            const id = String(designer?.id || designer?._id || '').trim();
+            const email = String(designer?.email || '').trim().toLowerCase();
+            const name =
+              String(designer?.name || '').trim() ||
+              (email ? email.split('@')[0] : '');
+            if (!id || !name) return null;
+            return {
+              id,
+              name,
+              email,
+              role: String(designer?.role || 'designer').trim().toLowerCase(),
+            } as DesignerOption;
+          })
+          .filter(Boolean) as DesignerOption[];
+        setDesignerOptions(mapped);
+        setDesignersLoaded(true);
+      } catch (error) {
+        const fallbackDesigners = buildFallbackDesigners(hydratedTasks, user);
+        if (fallbackDesigners.length > 0) {
+          setDesignerOptions(fallbackDesigners);
+          setDesignersLoaded(true);
+        }
+        const message =
+          error instanceof Error && error.message ? error.message : 'Failed to load designers';
+        toast.error(message);
+      } finally {
+        setIsLoadingDesigners(false);
+      }
+    };
+
+    loadDesigners();
+  }, [
+    apiUrl,
+    canAssignDesigner,
+    designersLoaded,
+    hydratedTasks,
+    isAssignModalOpen,
+    user,
+  ]);
+
+  const submitAssignDesigner = async () => {
+    const taskId = assigningTask?.id || (assigningTask as { _id?: string } | null)?._id || '';
+    if (!taskId) {
+      toast.error('Task not found.');
+      return;
+    }
+    if (!selectedDesignerId) {
+      toast.error('Select a designer to continue.');
+      return;
+    }
+    if (!apiUrl) {
+      toast.error('Assignment API is not configured.');
+      return;
+    }
+
+    setIsAssigningDesigner(true);
+    try {
+      const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/assign-designer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assigned_designer_id: selectedDesignerId,
+          cc_emails: ccEmails,
+          message: assignmentMessage.trim(),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to assign designer.');
+      }
+
+      const updatedTaskRaw = (payload?.task || payload) as any;
+      const updatedTaskId = updatedTaskRaw?.id || updatedTaskRaw?._id;
+      if (updatedTaskId) {
+        const hydrated = hydrateTask({
+          ...updatedTaskRaw,
+          id: updatedTaskId,
+        } as typeof mockTasks[number]);
+        setTasks((prev) =>
+          prev.map((task) =>
+            (task.id || (task as { _id?: string })._id) === updatedTaskId
+              ? hydrated
+              : task
+          )
+        );
+      }
+
+      const selectedDesigner = designerOptions.find((designer) => designer.id === selectedDesignerId);
+      setAssignSuccessInfo({
+        taskTitle: updatedTaskRaw?.title || assigningTask?.title || 'Task',
+        designerName: selectedDesigner?.name || updatedTaskRaw?.assignedToName || 'Designer',
+        ccCount: ccEmails.length,
+      });
+      toast.success('Task assigned and email notification sent.');
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to assign designer.';
+      toast.error(message);
+    } finally {
+      setIsAssigningDesigner(false);
+    }
+  };
 
   const activeRange = useMemo(
     () => getDateRange(dateRange, customStart, customEnd),
@@ -832,7 +1115,13 @@ export default function Dashboard() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {treasurerRecentTasks.map((task, index) => (
                         <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
-                          <TaskCard task={task} showRequester showAssignee />
+                          <TaskCard
+                            task={task}
+                            showRequester
+                            showAssignee
+                            showAssignDesignerButton={canAssignDesigner}
+                            onAssignDesigner={() => openAssignDesignerModal(task)}
+                          />
                         </div>
                       ))}
                     </div>
@@ -845,7 +1134,13 @@ export default function Dashboard() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {recentTasks.map((task, index) => (
                         <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
-                          <TaskCard task={task} showRequester={user.role !== 'staff'} showAssignee={user.role !== 'designer'} />
+                          <TaskCard
+                            task={task}
+                            showRequester={user.role !== 'staff'}
+                            showAssignee={user.role !== 'designer' || canAssignDesigner}
+                            showAssignDesignerButton={canAssignDesigner}
+                            onAssignDesigner={() => openAssignDesignerModal(task)}
+                          />
                         </div>
                       ))}
                     </div>
@@ -864,6 +1159,148 @@ export default function Dashboard() {
           */}
 
       </div>
+      <Dialog open={isAssignModalOpen} onOpenChange={handleAssignModalChange}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Assign Designer</DialogTitle>
+            <DialogDescription>
+              {assignSuccessInfo
+                ? `Assignment submitted for "${assignSuccessInfo.taskTitle}".`
+                : assigningTask
+                ? `Assign a designer for "${assigningTask.title}" and notify everyone in CC.`
+                : 'Assign a designer and send an email notification.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {assignSuccessInfo ? (
+            <div className="rounded-xl border border-[#D9E6FF] bg-[#F5F8FF] p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 rounded-full bg-[#EAF0FF] p-1.5 text-[#34429D]">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-[#1E2A5A]">
+                    Task assigned successfully
+                  </p>
+                  <p className="text-sm text-[#2B3F86]">
+                    <span className="font-medium">{assignSuccessInfo.taskTitle}</span> is assigned to{' '}
+                    <span className="font-medium">{assignSuccessInfo.designerName}</span>.
+                  </p>
+                  <p className="text-xs text-[#4B5FA8]">
+                    Email notification sent{assignSuccessInfo.ccCount > 0 ? ` with ${assignSuccessInfo.ccCount} CC recipient(s).` : '.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-1">
+            <div className="space-y-2">
+              <Label htmlFor="assign-designer-select">Assign Designer</Label>
+              <Select
+                value={selectedDesignerId}
+                onValueChange={setSelectedDesignerId}
+                disabled={isLoadingDesigners || isAssigningDesigner}
+              >
+                <SelectTrigger id="assign-designer-select">
+                  <SelectValue
+                    placeholder={isLoadingDesigners ? 'Loading designers...' : 'Select designer'}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {designerOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      No designers available.
+                    </div>
+                  ) : (
+                    designerOptions.map((designer) => (
+                      <SelectItem key={designer.id} value={designer.id}>
+                        {designer.name} ({designer.role === 'designer' ? 'Junior Designer' : designer.role})
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assign-cc-input">CC Email(s)</Label>
+              <Input
+                id="assign-cc-input"
+                type="email"
+                value={ccInput}
+                onChange={(event) => setCcInput(event.target.value)}
+                onKeyDown={handleCcInputKeyDown}
+                onBlur={() => addCcEmail(ccInput)}
+                placeholder="Type email and press Enter"
+                disabled={isAssigningDesigner}
+              />
+              {ccEmails.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {ccEmails.map((email) => (
+                    <Badge key={email} variant="secondary" className="flex items-center gap-1">
+                      {email}
+                      <button
+                        type="button"
+                        onClick={() => removeCcEmail(email)}
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-muted/70"
+                        aria-label={`Remove ${email}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assign-message">Message (optional)</Label>
+              <Textarea
+                id="assign-message"
+                value={assignmentMessage}
+                onChange={(event) => setAssignmentMessage(event.target.value)}
+                placeholder="Add an optional assignment note"
+                rows={4}
+                disabled={isAssigningDesigner}
+              />
+            </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {assignSuccessInfo ? (
+              <Button type="button" onClick={() => handleAssignModalChange(false)}>
+                Done
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleAssignModalChange(false)}
+                  disabled={isAssigningDesigner}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={submitAssignDesigner}
+                  disabled={!selectedDesignerId || isAssigningDesigner || isLoadingDesigners}
+                >
+                  {isAssigningDesigner ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Assigning...
+                    </>
+                  ) : (
+                    'Assign & Notify'
+                  )}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout >
   );
 }

@@ -117,7 +117,13 @@ export interface Task {
   requesterPhone?: string;
   requesterDepartment?: string;
   assignedTo?: string;
+  assignedToId?: string;
   assignedToName?: string;
+  assignedDesignerEmail?: string;
+  ccEmails?: string[];
+  cc_emails?: string[];
+  accessMode?: 'full' | 'view_only';
+  viewOnly?: boolean;
   deadline: Date;
   proposedDeadline?: Date;
   deadlineApprovalStatus?: 'pending' | 'approved' | 'rejected';

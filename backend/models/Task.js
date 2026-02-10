@@ -99,7 +99,16 @@ const TaskSchema = new mongoose.Schema(
     urgency: { type: String, enum: ["low", "intermediate", "normal", "urgent"], default: "normal" },
     status: {
       type: String,
-      enum: ["pending", "in_progress", "under_review", "completed", "clarification", "clarification_required"],
+      enum: [
+        "pending",
+        "assigned",
+        "accepted",
+        "in_progress",
+        "under_review",
+        "completed",
+        "clarification",
+        "clarification_required"
+      ],
       default: "pending"
     },
     isEmergency: { type: Boolean, default: false },

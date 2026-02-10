@@ -23,6 +23,30 @@ const normalizeGmailPassword = (value) => {
   return normalized.replace(/\s+/g, "");
 };
 
+const resolveBrandName = () => {
+  const rawBrand = normalizeEnvValue(process.env.BRAND_NAME);
+  if (!rawBrand) return "DesignDesk";
+  if (/designhub/i.test(rawBrand)) return "DesignDesk";
+  return rawBrand;
+};
+
+const extractEmailFromAddress = (value) => {
+  const raw = normalizeEnvValue(value);
+  if (!raw) return "";
+  const bracketMatch = raw.match(/<([^>]+)>/);
+  if (bracketMatch?.[1]) {
+    return normalizeEnvValue(bracketMatch[1]);
+  }
+  return raw;
+};
+
+const resolveEmailFromHeader = (brandName) => {
+  const fromAddress =
+    normalizeEnvValue(process.env.GMAIL_SMTP_FROM) || normalizeEnvValue(process.env.GMAIL_SMTP_USER);
+  const emailOnly = extractEmailFromAddress(fromAddress);
+  return emailOnly ? `"${brandName}" <${emailOnly}>` : undefined;
+};
+
 const resolveExistingPath = (candidates) => {
   for (const candidate of candidates) {
     if (candidate && fs.existsSync(candidate)) {
@@ -451,12 +475,16 @@ const buildMailer = () => {
 
 export const sendFinalFilesEmail = async ({
   to,
+  cc = [],
   taskTitle,
   files,
   designerName,
   taskUrl,
   submittedAt,
   taskDetails,
+  emailType = "FINAL_FILES_UPLOADED",
+  assignmentMessage = "",
+  assignedByName = "",
 }) => {
   const transporter = buildMailer();
   if (!transporter) {
@@ -494,17 +522,38 @@ export const sendFinalFilesEmail = async ({
       minute: "2-digit",
     });
   };
+  const formatDeadlineDateTime = (value) => {
+    if (!value) return "";
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const datePart = date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    const timePart = date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `${datePart} at ${timePart}`;
+  };
 
-  const brandName = process.env.BRAND_NAME || "DesignDesk-Official";
-  const fromAddress =
-    normalizeEnvValue(process.env.GMAIL_SMTP_FROM) || normalizeEnvValue(process.env.GMAIL_SMTP_USER);
-  const from = fromAddress
-    ? fromAddress.includes("<")
-      ? fromAddress
-      : `"${brandName}" <${fromAddress}>`
-    : undefined;
+  const brandName = resolveBrandName();
+  const from = resolveEmailFromHeader(brandName);
+  const normalizedEmailType = String(emailType || "").toUpperCase();
+  const email_type =
+    normalizedEmailType === "TASK_ASSIGNED"
+      ? "TASK_ASSIGNED"
+      : normalizedEmailType === "TASK_ACCEPTED"
+        ? "TASK_ACCEPTED"
+        : "FINAL_FILES_UPLOADED";
+  const isTaskAssignedEmail = email_type === "TASK_ASSIGNED";
+  const isTaskAcceptedEmail = email_type === "TASK_ACCEPTED";
+  const isAssignmentLifecycleEmail = isTaskAssignedEmail || isTaskAcceptedEmail;
   const safeTitle = taskTitle || "your task";
   const displayDesigner = designerName || "A designer";
+  const displayAssigner = assignedByName || "A manager";
+  const safeAssignmentMessage = assignmentMessage ? String(assignmentMessage).trim() : "";
   const fileItems = Array.isArray(files) ? files : [];
   const brandColor = process.env.BRAND_PRIMARY_HEX || "#34429D";
   const brandSoft = process.env.BRAND_PRIMARY_SOFT || "#EEF1FF";
@@ -526,17 +575,33 @@ export const sendFinalFilesEmail = async ({
     { label: "Category", value: humanize(taskDetails?.category) },
     { label: "Designer", value: displayDesigner },
     { label: "Submitted", value: formatDateTime(submittedAt) },
-    { label: "Deadline", value: formatDate(taskDetails?.deadline) },
+    {
+      label: "Deadline",
+      value: isAssignmentLifecycleEmail
+        ? formatDeadlineDateTime(taskDetails?.deadline)
+        : formatDate(taskDetails?.deadline)
+    },
     { label: "Requester", value: requesterLabel },
   ].filter((item) => item.value);
-  const lines = [
-    `${displayDesigner} uploaded final files for "${safeTitle}".`,
-    "",
-    "Files:",
-    ...(fileItems.length > 0
-      ? fileItems.map((file) => `- ${file.name}${file.url ? ` (${file.url})` : ""}`)
-      : ["- (no file names provided)"]),
-  ];
+  const lines = isTaskAssignedEmail
+    ? [
+      `New task assigned: "${safeTitle}".`,
+      `${displayAssigner} assigned this task to ${displayDesigner}.`,
+      ...(safeAssignmentMessage ? ["", `Message: ${safeAssignmentMessage}`] : []),
+    ]
+    : isTaskAcceptedEmail
+      ? [
+        `Task accepted: "${safeTitle}".`,
+        `${displayDesigner} has accepted this task.`,
+      ]
+    : [
+      `${displayDesigner} uploaded final files for "${safeTitle}".`,
+      "",
+      "Files:",
+      ...(fileItems.length > 0
+        ? fileItems.map((file) => `- ${file.name}${file.url ? ` (${file.url})` : ""}`)
+        : ["- (no file names provided)"]),
+    ];
   if (detailItems.length > 0) {
     lines.push("", "Details:", ...detailItems.map((item) => `${item.label}: ${item.value}`));
   }
@@ -580,9 +645,9 @@ export const sendFinalFilesEmail = async ({
     : "";
 
   const logoMark = hasLocalLogo
-    ? `<img src="cid:${logoCid}" width="40" height="40" alt="${brandName}" style="display:block;border-radius:10px;background:${brandSoft};" />`
+    ? `<img src="cid:${logoCid}" width="36" height="36" alt="${brandName}" style="display:block;margin:0 auto;" />`
     : logoUrl
-      ? `<img src="${logoUrl}" width="40" height="40" alt="${brandName}" style="display:block;border-radius:10px;background:${brandSoft};" />`
+      ? `<img src="${logoUrl}" width="36" height="36" alt="${brandName}" style="display:block;margin:0 auto;" />`
       : "";
 
   const viewInBrowser = taskUrl
@@ -614,6 +679,15 @@ export const sendFinalFilesEmail = async ({
           </tr>
         `;
 
+  const emailDescription = isTaskAssignedEmail
+    ? `You have been assigned <strong>${safeTitle}</strong>. Review the task details below and start work.
+                    ${safeAssignmentMessage ? `<br /><br /><strong>Message:</strong> ${safeAssignmentMessage}` : ""}`
+    : isTaskAcceptedEmail
+      ? `<strong>${displayDesigner}</strong> has accepted <strong>${safeTitle}</strong>.
+                    You can monitor progress from the task page.`
+    : `${displayDesigner} uploaded final files for <strong>${safeTitle}</strong>.
+                    Download them below or open the task to review details.`;
+
   const html = `
     <div style="background:#f5f7fb;padding:24px 16px;font-family:Helvetica, Arial, sans-serif;color:#101828;">
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;margin:0 auto;">
@@ -630,29 +704,44 @@ export const sendFinalFilesEmail = async ({
       : ""
     }
         <tr>
-          <td style="text-align:center;padding-bottom:18px;">
-            ${logoMark}
-            <div style="margin-top:10px;font-weight:700;font-size:18px;color:${brandColor};letter-spacing:0.5px;">
-              ${brandName}
-            </div>
-          </td>
-        </tr>
-        <tr>
           <td>
             <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ffffff;border-radius:20px;border:1px solid #e6e9f2;">
               <tr>
-                <td style="padding:32px 32px 16px;text-align:center;">
-                  <div style="font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
-                    Final files uploaded.
+                <td style="padding:24px 32px 8px;text-align:right;">
+                  <div style="display:inline-block;background:#f8faff;border-radius:14px;padding:10px 14px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="vertical-align:middle;padding-right:10px;">
+                          ${logoMark}
+                        </td>
+                        <td style="vertical-align:middle;text-align:left;">
+                          <div style="font-weight:700;font-size:18px;color:${brandColor};letter-spacing:0.2px;line-height:1.2;">
+                            ${brandName}
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
                   </div>
-                  <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};">
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:12px 32px 16px;${isTaskAssignedEmail ? "text-align:left;" : "text-align:center;"}">
+                  <div style="font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
+                    ${isTaskAssignedEmail
+      ? "New task assigned."
+      : isTaskAcceptedEmail
+      ? "Task accepted."
+        : "Final files uploaded."}
+                  </div>
+                  <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};${isTaskAssignedEmail ? "text-align:left;" : ""}">
                     ${safeTitle}
                   </div>
-                  <p style="margin:12px auto 0;max-width:460px;font-size:15px;color:#475467;line-height:1.5;">
-                    ${displayDesigner} uploaded final files for <strong>${safeTitle}</strong>.
-                    Download them below or open the task to review details.
+                  <p style="${isTaskAssignedEmail
+      ? "margin:12px 0 0;max-width:540px;font-size:15px;color:#475467;line-height:1.6;text-align:left;"
+      : "margin:12px auto 0;max-width:460px;font-size:15px;color:#475467;line-height:1.5;"}">
+                    ${emailDescription}
                   </p>
-                  <div style="margin-top:20px;">
+                  <div style="margin-top:20px;${isTaskAssignedEmail ? "text-align:left;" : ""}">
                     ${taskCta}
                   </div>
                 </td>
@@ -669,18 +758,23 @@ export const sendFinalFilesEmail = async ({
                   </div>
                 </td>
               </tr>
-              <tr>
-                <td style="padding:0 32px 24px;">
-                  <div style="background:${brandSoft};border-radius:16px;padding:20px;text-align:left;">
-                    <div style="font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
-                      Files delivered
-                    </div>
-                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:12px;">
-                      ${fileRows}
-                    </table>
-                  </div>
-                </td>
-              </tr>
+              ${isAssignmentLifecycleEmail
+      ? ""
+      : `
+                  <tr>
+                    <td style="padding:0 32px 24px;">
+                      <div style="background:${brandSoft};border-radius:16px;padding:20px;text-align:left;">
+                        <div style="font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
+                          Files delivered
+                        </div>
+                        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:12px;">
+                          ${fileRows}
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                `
+    }
               <tr>
                 <td style="padding:0 32px 28px;">
                   <div style="background:#ffffff;border:1px solid #e6e9f2;border-radius:16px;padding:18px;text-align:left;">
@@ -704,10 +798,32 @@ export const sendFinalFilesEmail = async ({
   `;
 
   try {
+    const ccRecipients = Array.isArray(cc)
+      ? Array.from(
+        new Set(
+          cc
+            .map((value) => normalizeEnvValue(value))
+            .filter(Boolean)
+        )
+      )
+      : normalizeEnvValue(cc)
+        ? [normalizeEnvValue(cc)]
+        : [];
+
     const info = await transporter.sendMail({
       from,
       to,
-      subject: `DesignDesk-Official: Final files uploaded for ${safeTitle}`,
+      cc: ccRecipients.length > 0 ? ccRecipients.join(", ") : undefined,
+      subject: isTaskAssignedEmail
+        ? (() => {
+          const deadlineForSubject = formatDateTime(taskDetails?.deadline);
+          return deadlineForSubject
+            ? `Task Assigned: ${safeTitle} | Due ${deadlineForSubject}`
+            : `Task Assigned: ${safeTitle}`;
+        })()
+        : isTaskAcceptedEmail
+          ? `Task Accepted: ${safeTitle}`
+          : `DesignDesk-Official: Final files uploaded for ${safeTitle}`,
       text: lines.join("\n"),
       html,
       attachments: hasLocalLogo
@@ -720,10 +836,16 @@ export const sendFinalFilesEmail = async ({
         ]
         : [],
     });
-    console.log("Final files email sent:", info?.response || info?.messageId || "ok");
+    console.log(
+      `${isTaskAssignedEmail ? "Task assigned" : isTaskAcceptedEmail ? "Task accepted" : "Final files"} email sent:`,
+      info?.response || info?.messageId || "ok"
+    );
     return true;
   } catch (error) {
-    console.error("Final files email failed:", error?.message || error);
+    console.error(
+      `${isTaskAssignedEmail ? "Task assigned" : isTaskAcceptedEmail ? "Task accepted" : "Final files"} email failed:`,
+      error?.message || error
+    );
     if (error?.response) {
       console.error("SMTP response:", error.response);
     }
@@ -738,14 +860,8 @@ export const sendPasswordResetEmail = async ({ to, resetUrl }) => {
     return false;
   }
 
-  const brandName = process.env.BRAND_NAME || "DesignDesk-Official";
-  const fromAddress =
-    normalizeEnvValue(process.env.GMAIL_SMTP_FROM) || normalizeEnvValue(process.env.GMAIL_SMTP_USER);
-  const from = fromAddress
-    ? fromAddress.includes("<")
-      ? fromAddress
-      : `"${brandName}" <${fromAddress}>`
-    : undefined;
+  const brandName = resolveBrandName();
+  const from = resolveEmailFromHeader(brandName);
   const brandColor = process.env.BRAND_PRIMARY_HEX || "#34429D";
   const brandSoft = process.env.BRAND_PRIMARY_SOFT || "#EEF1FF";
 

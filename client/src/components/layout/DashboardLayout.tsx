@@ -119,8 +119,8 @@ export function DashboardLayout({
     }
     const inferredTaskId =
       rawTaskId ||
-      (normalizedLink.startsWith('/task/')
-        ? normalizedLink.replace('/task/', '').split(/[?#]/)[0]
+      ((normalizedLink.startsWith('/task/') || normalizedLink.startsWith('/tasks/'))
+        ? normalizedLink.replace('/tasks/', '').replace('/task/', '').split(/[?#]/)[0]
         : '');
     const resolvedLink = normalizedLink || (inferredTaskId ? `/task/${inferredTaskId}` : '');
     return {
@@ -436,6 +436,9 @@ export function DashboardLayout({
     const loadTasks = async () => {
       try {
         const response = await authFetch(`${apiUrl}/api/tasks`);
+        if (response.status === 401) {
+          return;
+        }
         if (!response.ok) {
           throw new Error('Failed to load tasks');
         }
@@ -563,7 +566,7 @@ export function DashboardLayout({
         link = `/${link}`;
       }
       if (!taskId && link) {
-        const match = link.match(/\/task\/([^/?#]+)/);
+        const match = link.match(/\/tasks?\/([^/?#]+)/);
         if (match && match[1]) {
           taskId = match[1];
         }

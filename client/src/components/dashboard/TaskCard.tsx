@@ -12,14 +12,31 @@ interface TaskCardProps {
   task: Task;
   showRequester?: boolean;
   showAssignee?: boolean;
+  showAssignDesignerButton?: boolean;
+  onAssignDesigner?: () => void;
 }
 
-const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
+type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
+const statusConfig: Record<DisplayTaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
   pending: { label: 'Pending', variant: 'pending' },
+  assigned: { label: 'Assigned', variant: 'pending' },
+  accepted: { label: 'Accepted', variant: 'progress' },
   in_progress: { label: 'In Progress', variant: 'progress' },
   clarification_required: { label: 'Clarification Required', variant: 'clarification' },
   under_review: { label: 'Under Review', variant: 'review' },
   completed: { label: 'Completed', variant: 'completed' },
+};
+const normalizeTaskStatus = (value?: string): DisplayTaskStatus => {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'assigned') return 'assigned';
+  if (normalized === 'accepted') return 'accepted';
+  if (normalized === 'in_progress') return 'in_progress';
+  if (normalized === 'clarification' || normalized === 'clarification_required') {
+    return 'clarification_required';
+  }
+  if (normalized === 'under_review') return 'under_review';
+  if (normalized === 'completed') return 'completed';
+  return 'pending';
 };
 
 const categoryLabels: Record<string, string> = {
@@ -33,7 +50,13 @@ const categoryLabels: Record<string, string> = {
   flyer: 'Flyer',
 };
 
-export function TaskCard({ task, showRequester = true, showAssignee = false }: TaskCardProps) {
+export function TaskCard({
+  task,
+  showRequester = true,
+  showAssignee = false,
+  showAssignDesignerButton = false,
+  onAssignDesigner,
+}: TaskCardProps) {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,7 +67,8 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
       : '';
   const taskShareText = `DesignDesk task: ${task.title}${taskId ? ` (ID: ${taskId})` : ''}`;
   const displayTaskId = taskId || 'N/A';
-  const status = statusConfig[task.status];
+  const normalizedStatus = normalizeTaskStatus(task.status);
+  const status = statusConfig[normalizedStatus];
   const chipBase =
     'inline-flex items-center gap-2 rounded-full border border-[#C9D7FF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-3 py-1 text-xs font-medium text-[#2F3A56] dark:text-foreground min-w-0 max-w-full';
   const chipLabel = 'min-w-0 truncate';
@@ -58,7 +82,7 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
       <span className={chipCount}>{count}</span>
     </span>
   );
-  const isOverdue = isPast(task.deadline) && task.status !== 'completed';
+  const isOverdue = isPast(task.deadline) && normalizedStatus !== 'completed';
   const deadlineText = isPast(task.deadline)
     ? `${formatDistanceToNow(task.deadline)} overdue`
     : `Due ${formatDistanceToNow(task.deadline, { addSuffix: true })}`;
@@ -79,8 +103,10 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
   const assignedToId =
     (task as { assignedTo?: string; assignedToId?: string }).assignedTo ||
     (task as { assignedToId?: string }).assignedToId;
-  const assignedToName = task.assignedToName || '';
-  const normalizedAssignedName = assignedToName.trim().toLowerCase();
+  const assignedToName = (task.assignedToName || '').trim();
+  const hasAssignedDesigner = Boolean(assignedToName || assignedToId);
+  const assignedDesignerLabel = assignedToName || 'Designer';
+  const normalizedAssignedName = assignedToName.toLowerCase();
   const normalizedUserName = user?.name?.trim().toLowerCase() || '';
   const normalizedUserEmail = user?.email?.trim().toLowerCase() || '';
   const emailPrefix = normalizedUserEmail.split('@')[0];
@@ -274,7 +300,14 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
               <UserCheck className="h-3.5 w-3.5" />
             </div>
             <span>
-              {task.assignedToName ? task.assignedToName : <span className="text-slate-400 italic">Unassigned</span>}
+              {hasAssignedDesigner ? (
+                <span className="inline-flex items-center gap-1">
+                  <span className="text-slate-500 dark:text-muted-foreground">Assigned to</span>
+                  <span className="font-semibold text-slate-700 dark:text-foreground">{assignedDesignerLabel}</span>
+                </span>
+              ) : (
+                <span className="text-slate-400 italic">Unassigned</span>
+              )}
             </span>
           </div>
         )}
@@ -286,8 +319,8 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
         </div>
       </div>
 
-      <div className="mt-auto flex items-center justify-between pt-4 border-t border-slate-50 dark:border-border">
-        <div className="flex items-center gap-3">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-4 border-t border-slate-50 dark:border-border">
+        <div className="flex min-w-0 items-center gap-3">
           {task.files.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors dark:transition-none">
               <Paperclip className="h-3.5 w-3.5" />
@@ -303,21 +336,34 @@ export function TaskCard({ task, showRequester = true, showAssignee = false }: T
           <div className="w-px h-3 bg-slate-200 dark:bg-slate-700 mx-1" />
           <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400">
             <Clock className="h-3.5 w-3.5" />
-            <span>{format(task.createdAt, 'MMM d')}</span>
+            <span className="whitespace-nowrap">{format(task.createdAt, 'MMM d')}</span>
           </div>
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          className="h-8 gap-2 pl-3 pr-2 text-primary hover:text-primary hover:bg-primary/5 dark:text-slate-200 dark:hover:text-white dark:hover:bg-white/10 rounded-full font-semibold text-xs group/btn dark:transition-none"
-        >
-          <Link to={`/task/${taskId}`} state={{ task }}>
-            View Details
-            <ArrowRight className="h-3 w-3 transition-transform group-hover/btn:translate-x-0.5" />
-          </Link>
-        </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-2.5">
+          {showAssignDesignerButton && onAssignDesigner && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onAssignDesigner}
+              className="h-9 whitespace-nowrap rounded-full border-[#D9E6FF] bg-[#F8FBFF] px-4 text-sm font-medium leading-none text-[#1E2A5A] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-border dark:bg-card dark:text-foreground dark:hover:bg-muted dark:hover:text-foreground"
+            >
+              {hasAssignedDesigner ? 'Reassign' : 'Assign Designer'}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+            className="h-9 whitespace-nowrap gap-1.5 rounded-full px-3 text-sm font-semibold leading-none text-primary hover:bg-primary/5 hover:text-primary dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white group/btn dark:transition-none"
+          >
+            <Link to={`/task/${taskId}`} state={{ task }}>
+              View Details
+              <ArrowRight className="h-3 w-3 transition-transform group-hover/btn:translate-x-0.5" />
+            </Link>
+          </Button>
+        </div>
       </div>
     </AnimatedCard>
   );

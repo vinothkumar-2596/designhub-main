@@ -235,7 +235,10 @@ export default function Tasks() {
     () =>
       scopedTasks.reduce(
         (acc, task) => {
-          acc[task.status] += 1;
+          const statusKey = String(task.status || '').trim().toLowerCase();
+          if (statusKey in acc) {
+            acc[statusKey as TaskStatus] += 1;
+          }
           return acc;
         },
         {

@@ -47,6 +47,7 @@ const App = () => (
                 <Route path="/my-requests" element={<MyRequests />} />
                 <Route path="/approvals" element={<Approvals />} />
                 <Route path="/task/:id" element={<TaskDetail />} />
+                <Route path="/tasks/:id" element={<TaskDetail />} />
                 <Route path="/activity" element={<Activity />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/ai-mode" element={<AIMode />} />

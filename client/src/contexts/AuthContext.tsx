@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, UserRole } from '@/types';
-import { API_URL, authFetch } from '@/lib/api';
+import { API_URL, authFetch, AUTH_SESSION_EXPIRED_EVENT } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -20,6 +20,12 @@ const TOKEN_KEY = 'auth_token';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      localStorage.removeItem(USER_KEY);
+      localStorage.removeItem(ROLE_KEY);
+      return null;
+    }
     const stored = localStorage.getItem(USER_KEY);
     if (stored) {
       try {
@@ -31,6 +37,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     return null;
   });
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setUser(null);
+      localStorage.removeItem(USER_KEY);
+      localStorage.removeItem(ROLE_KEY);
+      localStorage.removeItem(TOKEN_KEY);
+    };
+
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+  }, []);
 
   useEffect(() => {
     const handleAuthMessage = (event: MessageEvent) => {

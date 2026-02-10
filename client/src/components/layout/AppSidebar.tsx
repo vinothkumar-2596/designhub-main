@@ -170,33 +170,44 @@ export function AppSidebar() {
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-[#D9E6FF]/70 dark:border-border">
-        {!collapsed && (
-          <button
-            type="button"
-            onClick={() => {
-              navigate('/dashboard');
-            }}
-            className="animate-fade-in flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md"
-          >
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#D9E6FF]/70 dark:border-border">
+        <button
+          type="button"
+          onClick={() => {
+            navigate('/dashboard');
+          }}
+          className={cn(
+            "animate-fade-in flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md",
+            collapsed ? "justify-center" : "min-w-0 flex-1"
+          )}
+          aria-label="Go to dashboard"
+        >
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 border border-[#C9D7FF] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)] backdrop-blur dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80 dark:shadow-none">
             <img
               src="/favicon.png"
               alt="DesignDesk"
-              className="h-9 w-9 rounded-xl object-contain p-1 bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 border border-[#C9D7FF] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)] backdrop-blur dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80 dark:shadow-none"
+              className="h-8 w-8 rounded-lg object-contain p-0.5"
             />
-            <div>
-              <h1 className="text-lg font-bold text-[#1E2A5A] dark:text-foreground premium-headline">
+          </span>
+          {!collapsed && (
+            <div className="min-w-0 leading-tight">
+              <h1 className="text-[1.05rem] font-bold tracking-[-0.01em] text-[#1E2A5A] dark:text-foreground premium-headline">
                 DesignDesk
               </h1>
-              <p className="text-xs text-[#6B7A99] dark:text-muted-foreground premium-muted">Task Portal</p>
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6B7A99] dark:text-muted-foreground premium-muted">
+                Task Portal
+              </p>
             </div>
-          </button>
-        )}
+          )}
+        </button>
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={() => setCollapsed(!collapsed)}
-          className="text-[#6B7A99] dark:text-muted-foreground hover:bg-white/70 dark:hover:bg-muted hover:text-[#1E2A5A] dark:hover:text-foreground"
+          className={cn(
+            "text-[#6B7A99] dark:text-muted-foreground hover:bg-white/70 dark:hover:bg-muted hover:text-[#1E2A5A] dark:hover:text-foreground",
+            collapsed ? "ml-0" : "ml-2"
+          )}
         >
           {collapsed ? (
             <ChevronRight className="h-4 w-4" />

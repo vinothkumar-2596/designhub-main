@@ -43,6 +43,7 @@ import {
   Check,
   ChevronDown,
   X,
+  Eye,
   ExternalLink,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
@@ -65,20 +66,37 @@ import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { pushScheduleNotification } from '@/lib/designerSchedule';
 import { GridBackground } from '@/components/ui/background';
 
-const statusConfig: Record<TaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
+type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
+const statusConfig: Record<DisplayTaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
   pending: { label: 'Pending', variant: 'pending' },
+  assigned: { label: 'Assigned', variant: 'pending' },
+  accepted: { label: 'Accepted', variant: 'progress' },
   in_progress: { label: 'In Progress', variant: 'progress' },
   clarification_required: { label: 'Clarification Required', variant: 'clarification' },
   under_review: { label: 'Under Review', variant: 'review' },
   completed: { label: 'Completed', variant: 'completed' },
 };
 
-const statusDetails: Record<TaskStatus, string> = {
+const statusDetails: Record<DisplayTaskStatus, string> = {
   pending: 'Request submitted',
+  assigned: 'Task assigned to designer',
+  accepted: 'Designer accepted the task',
   in_progress: 'Design work in motion',
   clarification_required: 'Waiting on clarifications',
   under_review: 'Review in progress',
   completed: 'Delivery complete',
+};
+const normalizeTaskStatus = (value?: string): DisplayTaskStatus => {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'assigned') return 'assigned';
+  if (normalized === 'accepted') return 'accepted';
+  if (normalized === 'in_progress') return 'in_progress';
+  if (normalized === 'clarification' || normalized === 'clarification_required') {
+    return 'clarification_required';
+  }
+  if (normalized === 'under_review') return 'under_review';
+  if (normalized === 'completed') return 'completed';
+  return 'pending';
 };
 
 const categoryLabels: Record<string, string> = {
@@ -109,19 +127,35 @@ const roleLabels: Record<UserRole, string> = {
 const allRoles: UserRole[] = ['staff', 'treasurer', 'designer'];
 const normalizeUserRole = (role?: string) =>
   allRoles.includes(role as UserRole) ? (role as UserRole) : 'staff';
+type TaskAccessMode = 'full' | 'view_only';
+const normalizeTaskAccessMode = (value?: string): TaskAccessMode | null => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'full') return 'full';
+  if (normalized === 'view_only') return 'view_only';
+  return null;
+};
+const normalizeEmail = (value?: string) => String(value || '').trim().toLowerCase();
+const resolveTaskCcEmails = (task?: typeof mockTasks[number]) => {
+  const raw =
+    (task as { ccEmails?: string[]; cc_emails?: string[] } | undefined)?.ccEmails ||
+    (task as { cc_emails?: string[] } | undefined)?.cc_emails ||
+    [];
+  if (!Array.isArray(raw)) return [];
+  return Array.from(new Set(raw.map((email) => normalizeEmail(email)).filter(Boolean)));
+};
 
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 type UploadStatus = 'uploading' | 'done' | 'error';
 type UploadItem = { id: string; name: string; status: UploadStatus };
 
 const glassPanelClass =
-  'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF] ring-1 ring-black/5 rounded-2xl shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)] dark:bg-card dark:border-border dark:shadow-card dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
+  'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF]/35 ring-0 rounded-2xl shadow-none dark:bg-card dark:border-border/55 dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
 const fileRowClass =
   'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-4 py-1.5 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl dark:bg-none dark:bg-slate-900/70 dark:border-slate-700/60 dark:text-slate-200';
 const fileActionButtonClass =
-  'border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.35)] dark:hover:border-slate-600/70 dark:hover:bg-slate-800/70 dark:hover:text-slate-100';
+  'border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md dark:hover:border-slate-600/70 dark:hover:bg-slate-800/70 dark:hover:text-slate-100';
 const badgeGlassClass =
-  'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] shadow-[0_16px_30px_-22px_rgba(30,58,138,0.38)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
+  'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
 const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
 
 import { API_URL, authFetch } from '@/lib/api';
@@ -177,6 +211,7 @@ export default function TaskDetail() {
   const [selectedFinalVersionId, setSelectedFinalVersionId] = useState('');
   const [isAddingFinalLink, setIsAddingFinalLink] = useState(false);
   const [showHandoverModal, setShowHandoverModal] = useState(false);
+  const [isAcceptingTask, setIsAcceptingTask] = useState(false);
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const sizeFetchRef = useRef(new Set<string>());
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
@@ -212,7 +247,7 @@ export default function TaskDetail() {
   const activeDesignVersionId =
     taskState?.activeDesignVersionId || designVersions[designVersions.length - 1]?.id;
   const activeDesignVersion = designVersions.find((version) => version.id === activeDesignVersionId);
-  const canManageVersions = user?.role === 'designer';
+  const isDesignerRole = user?.role === 'designer';
   const compareLeft = designVersions.find((version) => version.id === compareLeftId);
   const compareRight = designVersions.find((version) => version.id === compareRightId);
   useEffect(() => {
@@ -322,6 +357,41 @@ export default function TaskDetail() {
         createdAt: new Date(entry.createdAt),
       })),
     };
+  };
+
+  const withAccessMetadata = (
+    nextTask: typeof taskState,
+    currentTask: typeof taskState = taskState
+  ) => {
+    if (!nextTask) return nextTask;
+    const nextRaw = nextTask as {
+      accessMode?: string;
+      viewOnly?: boolean;
+      ccEmails?: string[];
+      cc_emails?: string[];
+    };
+    const currentRaw = (currentTask || {}) as {
+      accessMode?: string;
+      viewOnly?: boolean;
+      ccEmails?: string[];
+      cc_emails?: string[];
+    };
+    const merged: typeof nextTask = { ...nextTask };
+    if (!nextRaw.accessMode && currentRaw.accessMode) {
+      (merged as { accessMode?: string }).accessMode = currentRaw.accessMode;
+    }
+    if (nextRaw.viewOnly === undefined && currentRaw.viewOnly !== undefined) {
+      (merged as { viewOnly?: boolean }).viewOnly = currentRaw.viewOnly;
+    }
+    const nextCc = resolveTaskCcEmails(nextTask as typeof mockTasks[number]);
+    if (nextCc.length === 0) {
+      const currentCc = resolveTaskCcEmails(currentTask as typeof mockTasks[number]);
+      if (currentCc.length > 0) {
+        (merged as { ccEmails?: string[]; cc_emails?: string[] }).ccEmails = currentCc;
+        (merged as { ccEmails?: string[]; cc_emails?: string[] }).cc_emails = currentCc;
+      }
+    }
+    return merged;
   };
 
   const normalizeIncomingComment = (comment: any): TaskComment => ({
@@ -441,7 +511,7 @@ export default function TaskDetail() {
 
     socket.on('task:updated', (payload: any) => {
       if (!payload || payload.taskId !== roomId || !payload.task) return;
-      const hydrated = hydrateTask(payload.task);
+      const hydrated = withAccessMetadata(hydrateTask(payload.task));
       setTaskState(hydrated);
       setChangeHistory(hydrated?.changeHistory ?? []);
       setChangeCount(hydrated?.changeCount ?? 0);
@@ -467,7 +537,7 @@ export default function TaskDetail() {
       const payloadId = payload.id || payload._id;
       const currentId = taskState?.id || (taskState as { _id?: string } | undefined)?._id || id;
       if (!payloadId || !currentId || payloadId !== currentId) return;
-      const hydrated = hydrateTask({ ...payload, id: payloadId });
+      const hydrated = withAccessMetadata(hydrateTask({ ...payload, id: payloadId }));
       setTaskState(hydrated);
       setChangeHistory(hydrated?.changeHistory ?? []);
       setChangeCount(hydrated?.changeCount ?? 0);
@@ -488,6 +558,22 @@ export default function TaskDetail() {
 
   useEffect(() => {
     if (!apiUrl || !taskState) return;
+    const mode = normalizeTaskAccessMode(
+      (taskState as { accessMode?: string; viewOnly?: boolean }).accessMode
+    );
+    const explicitViewOnly =
+      (taskState as { viewOnly?: boolean }).viewOnly === true;
+    const assignedId = String(
+      (taskState as { assignedToId?: string; assignedTo?: string }).assignedToId ||
+      (taskState as { assignedTo?: string }).assignedTo ||
+      ''
+    );
+    const isAssignedToUser = Boolean(assignedId && user?.id && assignedId === user.id);
+    const ccMatch = resolveTaskCcEmails(taskState).includes(normalizeEmail(user?.email));
+    const isViewOnlyMode = mode
+      ? mode === 'view_only' || explicitViewOnly
+      : ccMatch && !isAssignedToUser;
+    if (isViewOnlyMode) return;
     const missingSizes = taskState.files.filter(
       (file) => !file.size && file.url && getDriveFileId(file.url)
     );
@@ -553,7 +639,7 @@ export default function TaskDetail() {
     return () => {
       isActive = false;
     };
-  }, [apiUrl, taskState]);
+  }, [apiUrl, taskState, user?.email, user?.id]);
 
   const getReceiverRoles = (senderRole?: UserRole) =>
     senderRole ? allRoles.filter((role) => role !== senderRole) : allRoles;
@@ -710,11 +796,38 @@ export default function TaskDetail() {
     }
     return result;
   };
-  const status = statusConfig[taskState.status];
-  const isOverdue = isPast(taskState.deadline) && taskState.status !== 'completed';
-  const isDesignerOrAdmin = user?.role === 'designer';
-  const canEditTask = user?.role === 'staff';
-  const canApproveDeadline = user?.role === 'designer';
+  const normalizedTaskStatus = normalizeTaskStatus(taskState.status);
+  const status = statusConfig[normalizedTaskStatus];
+  const isOverdue = isPast(taskState.deadline) && normalizedTaskStatus !== 'completed';
+  const backendAccessMode = normalizeTaskAccessMode(
+    (taskState as { accessMode?: string; viewOnly?: boolean }).accessMode
+  );
+  const explicitViewOnlyFlag =
+    (taskState as { viewOnly?: boolean }).viewOnly === true;
+  const normalizedUserEmail = normalizeEmail(user?.email);
+  const userId = String(user?.id || '');
+  const assignedToId = String(
+    (taskState as { assignedToId?: string; assignedTo?: string }).assignedToId ||
+    (taskState as { assignedTo?: string }).assignedTo ||
+    ''
+  );
+  const isAssignedToCurrentUser = Boolean(assignedToId && userId && assignedToId === userId);
+  const taskCcEmails = resolveTaskCcEmails(taskState);
+  const isCcViewer = Boolean(
+    normalizedUserEmail && taskCcEmails.includes(normalizedUserEmail)
+  );
+  const hasExplicitAccessMode = Boolean(backendAccessMode) || explicitViewOnlyFlag;
+  const isViewOnlyTask = hasExplicitAccessMode
+    ? backendAccessMode === 'view_only' || explicitViewOnlyFlag
+    : isCcViewer && !isAssignedToCurrentUser;
+  const hasFullTaskAccess = hasExplicitAccessMode
+    ? backendAccessMode === 'full' && !explicitViewOnlyFlag
+    : !isViewOnlyTask;
+  const canDesignerActions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
+  const canEditTask = user?.role === 'staff' && !isViewOnlyTask;
+  const canApproveDeadline = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
+  const canManageVersions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
+  const canComment = !isViewOnlyTask;
   const minDeadlineDate = addWorkingDays(new Date(), 3);
   const emergencyStatus =
     taskState.isEmergency || taskState.emergencyApprovalStatus
@@ -796,10 +909,14 @@ export default function TaskDetail() {
     return latest?.uploadedAt ? new Date(latest.uploadedAt).getTime() : 0;
   }, [sortedFinalDeliverableVersions]);
   const canHandover =
-    isDesignerOrAdmin &&
-    taskState.status !== 'completed' &&
+    canDesignerActions &&
+    normalizedTaskStatus !== 'completed' &&
     hasFinalDeliverables &&
     !isUploadingFinal;
+  const canAcceptTask =
+    canDesignerActions &&
+    isAssignedToCurrentUser &&
+    (normalizedTaskStatus === 'assigned' || normalizedTaskStatus === 'pending');
   const finalUploadTotals = finalUploadItems.reduce(
     (acc, item) => {
       if (item.status === 'uploading') acc.uploading += 1;
@@ -924,7 +1041,7 @@ export default function TaskDetail() {
     const extLabel = getFileExtension(file.name);
     const previewUrl = getPreviewUrl(file);
     return (
-      <div className="relative h-9 w-12 overflow-hidden rounded-[6px] border border-transparent bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.6),_transparent_55%),linear-gradient(160deg,_rgba(236,244,255,0.85),_rgba(198,220,255,0.45))] shadow-[0_12px_26px_-18px_rgba(15,23,42,0.4)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(100,116,139,0.35),_transparent_55%),linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.75))] dark:shadow-none">
+      <div className="relative h-9 w-12 overflow-hidden rounded-[6px] border border-transparent bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.6),_transparent_55%),linear-gradient(160deg,_rgba(236,244,255,0.85),_rgba(198,220,255,0.45))] backdrop-blur-xl dark:border-slate-700/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(100,116,139,0.35),_transparent_55%),linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.75))] dark:shadow-none">
         {!previewUrl && (
           <div className="absolute inset-0 rounded-[6px] border border-transparent bg-gradient-to-br from-white/85 via-[#EEF4FF]/75 to-[#D5E5FF]/65 backdrop-blur-sm dark:bg-gradient-to-br dark:from-slate-800/95 dark:via-slate-700/90 dark:to-slate-700/70 dark:border-slate-700/60">
             <div className="absolute left-2 top-2 h-1 w-6 rounded-full bg-[#D6E2FA]/70 dark:bg-slate-400/55" />
@@ -943,7 +1060,7 @@ export default function TaskDetail() {
             }}
           />
         )}
-        <span className="absolute bottom-1 left-1 z-20 rounded-[4px] border border-white/70 bg-white/55 px-1.5 py-0.5 text-[9px] font-semibold text-[#2C4A83] shadow-[0_6px_14px_-10px_rgba(15,23,42,0.28)] backdrop-blur-md dark:border-slate-600/70 dark:bg-slate-900/85 dark:text-slate-200 dark:shadow-none">
+        <span className="absolute bottom-1 left-1 z-20 rounded-[4px] border border-white/70 bg-white/55 px-1.5 py-0.5 text-[9px] font-semibold text-[#2C4A83] backdrop-blur-md dark:border-slate-600/70 dark:bg-slate-900/85 dark:text-slate-200 dark:shadow-none">
           {extLabel}
         </span>
         <span className="absolute bottom-0 right-0 z-20 h-0 w-0 border-b-[12px] border-b-[#D8E4FF] border-l-[12px] border-l-transparent dark:border-b-slate-500/70" />
@@ -951,8 +1068,17 @@ export default function TaskDetail() {
     );
   };
 
+  const ensureWritableTask = () => {
+    if (isViewOnlyTask || !hasFullTaskAccess) {
+      toast.error('View-only mode enabled for this task.');
+      return false;
+    }
+    return true;
+  };
+
   const recordChanges = async (changes: ChangeInput[], updates: Partial<typeof taskState> = {}) => {
     if (changes.length === 0) return;
+    if (!ensureWritableTask()) return;
 
     const isStaffUser = user?.role === 'staff';
     const now = new Date();
@@ -1134,6 +1260,12 @@ export default function TaskDetail() {
 
   useEffect(() => {
     if (!user || !taskState || !user.role) return;
+    const accessMode = normalizeTaskAccessMode(
+      (taskState as { accessMode?: string; viewOnly?: boolean }).accessMode
+    );
+    const explicitViewOnly =
+      (taskState as { viewOnly?: boolean }).viewOnly === true;
+    if (accessMode === 'view_only' || explicitViewOnly) return;
     if (!hasUnseenComments) return;
     const now = Date.now();
     if (
@@ -1192,6 +1324,10 @@ export default function TaskDetail() {
     onSuccess?: () => void
   ) => {
     if (!content.trim() || !taskState) return;
+    if (!canComment) {
+      toast.error('View-only mode: commenting is disabled.');
+      return;
+    }
     const trimmed = content.trim();
     const mentions = extractMentions(trimmed);
     const receiverRoles = buildReceiverRoles(trimmed);
@@ -1284,7 +1420,7 @@ export default function TaskDetail() {
         {
           type: 'status',
           field: 'status',
-          oldValue: statusConfig[taskState.status].label,
+          oldValue: statusConfig[normalizedTaskStatus].label,
           newValue: statusConfig[status].label,
           note: isCompletion ? `Completed by ${user?.name || 'Designer'}` : undefined,
         },
@@ -1294,8 +1430,59 @@ export default function TaskDetail() {
     setNewStatus('');
   };
 
+  const handleAcceptTask = async () => {
+    if (!taskState) return;
+    if (!ensureWritableTask()) return;
+    if (!apiUrl) {
+      toast.error('Task acceptance API is not configured.');
+      return;
+    }
+    const taskId = taskState.id || (taskState as { _id?: string })._id || '';
+    if (!taskId) {
+      toast.error('Task not found.');
+      return;
+    }
+
+    setIsAcceptingTask(true);
+    try {
+      const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/accept`, {
+        method: 'POST',
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to accept task.');
+      }
+
+      const updatedTaskRaw = (payload?.task || payload) as any;
+      const hydrated = withAccessMetadata(
+        hydrateTask({
+          ...updatedTaskRaw,
+          id: updatedTaskRaw?.id || updatedTaskRaw?._id || taskId,
+        } as typeof mockTasks[number]),
+        taskState
+      );
+      if (hydrated) {
+        setTaskState(hydrated);
+        setChangeHistory(hydrated.changeHistory ?? []);
+        setChangeCount(hydrated.changeCount ?? 0);
+        setApprovalStatus(hydrated.approvalStatus);
+        persistTask(hydrated);
+      }
+      toast.success('Task accepted.');
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to accept task.';
+      toast.error(message);
+    } finally {
+      setIsAcceptingTask(false);
+    }
+  };
+
   const handleHandoverTask = async () => {
-    if (!taskState || taskState.status === 'completed') return;
+    if (!taskState || normalizedTaskStatus === 'completed') return;
+    if (!ensureWritableTask()) return;
     if (!hasFinalDeliverables) {
       toast.message('Upload final files before handing over the task.');
       return;
@@ -1305,7 +1492,7 @@ export default function TaskDetail() {
         {
           type: 'status',
           field: 'status',
-          oldValue: statusConfig[taskState.status].label,
+          oldValue: statusConfig[normalizedTaskStatus].label,
           newValue: statusConfig.completed.label,
           note: `Completed by ${user?.name || 'Designer'}`,
         },
@@ -1322,6 +1509,7 @@ export default function TaskDetail() {
   const handleEmergencyDecision = async (decision: 'approved' | 'rejected') => {
     if (!taskState) return;
     if (!user) return;
+    if (!ensureWritableTask()) return;
     setIsEmergencyUpdating(true);
     const now = new Date();
     const prevStatus = emergencyStatus ?? 'pending';
@@ -1556,6 +1744,10 @@ export default function TaskDetail() {
     const selectedFiles = e.target.files;
     if (!selectedFiles || selectedFiles.length === 0) return;
     if (!taskState) return;
+    if (!ensureWritableTask()) {
+      e.target.value = '';
+      return;
+    }
     const taskId = (taskState as { id?: string; _id?: string })?.id || (taskState as { _id?: string })?._id;
     if (!taskId) {
       toast.error('Task id missing. Please refresh and try again.');
@@ -1747,6 +1939,7 @@ export default function TaskDetail() {
   };
 
   const handleAddFinalLink = async () => {
+    if (!ensureWritableTask()) return;
     if (!finalLinkUrl.trim()) {
       toast.message('Add a Google Drive link first.');
       return;
@@ -1836,6 +2029,10 @@ export default function TaskDetail() {
   const handleEditAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles || selectedFiles.length === 0) return;
+    if (!ensureWritableTask()) {
+      e.target.value = '';
+      return;
+    }
     if (approvalLockedForStaff) {
       toast.message('Approval pending. Changes are locked.');
       e.target.value = '';
@@ -2031,16 +2228,18 @@ export default function TaskDetail() {
           </div>
           <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-3">
             <span>{format(comment.createdAt, 'MMM d, yyyy - h:mm a')}</span>
-            <button
-              type="button"
-              className="text-primary/80 hover:text-primary font-medium"
-              onClick={() => {
-                setReplyToId(comment.id);
-                setReplyText('');
-              }}
-            >
-              Reply
-            </button>
+            {canComment && (
+              <button
+                type="button"
+                className="text-primary/80 hover:text-primary font-medium"
+                onClick={() => {
+                  setReplyToId(comment.id);
+                  setReplyText('');
+                }}
+              >
+                Reply
+              </button>
+            )}
             {comment.userId === user?.id && (
               <span>
                 {(() => {
@@ -2072,7 +2271,7 @@ export default function TaskDetail() {
               </span>
             )}
           </div>
-          {replyToId === comment.id && (
+          {canComment && replyToId === comment.id && (
             <div className="mt-3 flex gap-2">
               <Textarea
                 placeholder={getMentionPlaceholder(user?.role, 'Reply with')}
@@ -2160,6 +2359,12 @@ export default function TaskDetail() {
               </span>
               Changes: {changeCount}
             </Badge>
+            {isViewOnlyTask && (
+              <Badge variant="secondary" className={badgeGlassClass}>
+                <Eye className="mr-1.5 h-3 w-3" />
+                View Only
+              </Badge>
+            )}
             {approvalStatus && (
               <Badge
                 variant={
@@ -2331,8 +2536,31 @@ export default function TaskDetail() {
               </div>
             )}
 
+            {canAcceptTask && (
+              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-semibold text-foreground">Task Acceptance</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Confirm this assignment before starting task updates.
+                    </p>
+                  </div>
+                  <Button onClick={handleAcceptTask} disabled={isAcceptingTask}>
+                    {isAcceptingTask ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Accepting...
+                      </span>
+                    ) : (
+                      'Accept Task'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Status Update (Designer/Admin only) */}
-            {isDesignerOrAdmin && taskState.status !== 'completed' && (
+            {canDesignerActions && normalizedTaskStatus !== 'completed' && (
               <div className={`${glassPanelClass} p-6 animate-slide-up`}>
                 <h2 className="font-semibold text-foreground mb-3">Update Status</h2>
                 <div className="flex gap-3">
@@ -2610,7 +2838,7 @@ export default function TaskDetail() {
               )}
 
               {/* Upload (Designer only) */}
-              {isDesignerOrAdmin && (
+              {canDesignerActions && (
                 <>
                   <div className="mt-6 relative overflow-hidden rounded-2xl gradient-border bg-white p-6 text-center shadow-none dark:bg-card">
                     <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
@@ -2643,12 +2871,12 @@ export default function TaskDetail() {
                       />
                       <label
                         htmlFor="final-file-upload"
-                        className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full border border-[#D9E6FF] bg-white px-4 py-2 text-xs font-semibold text-foreground shadow-sm hover:bg-[#F4F7FF] dark:border-border dark:bg-card/90 dark:text-slate-100 dark:shadow-none dark:hover:bg-muted/80"
+                        className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full border border-[#D9E6FF] bg-white px-4 py-2 text-xs font-semibold text-foreground hover:bg-[#F4F7FF] dark:border-border dark:bg-card/90 dark:text-slate-100 dark:shadow-none dark:hover:bg-muted/80"
                       >
                         {isUploadingFinal ? 'Uploading...' : 'Select files'}
                       </label>
                       {finalUploadItems.length > 0 && (
-                        <div className="mt-4 w-full rounded-2xl border border-[#D9E6FF] bg-white/80 p-3 text-left shadow-[0_12px_28px_-20px_rgba(15,23,42,0.4)] dark:border-border dark:bg-card/90 dark:shadow-none">
+                        <div className="mt-4 w-full rounded-2xl border border-[#D9E6FF] bg-white/80 p-3 text-left dark:border-border dark:bg-card/90 dark:shadow-none">
                           <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold text-foreground">
                               {finalUploadLabel}
@@ -2753,7 +2981,7 @@ export default function TaskDetail() {
                       </div>
                     </div>
                   </div>
-                  {taskState.status !== 'completed' && (
+                  {normalizedTaskStatus !== 'completed' && (
                     <div className="mt-4 flex flex-col items-center gap-2">
                       <Button
                         onClick={handleHandoverTask}
@@ -2790,7 +3018,11 @@ export default function TaskDetail() {
 
               <div className="flex gap-3">
                 <Textarea
-                  placeholder={getMentionPlaceholder(user?.role)}
+                  placeholder={
+                    canComment
+                      ? getMentionPlaceholder(user?.role)
+                      : 'View-only access enabled for this task.'
+                  }
                   value={newComment}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -2814,18 +3046,24 @@ export default function TaskDetail() {
                   }}
                   rows={2}
                   className="flex-1 select-text"
+                  disabled={!canComment}
                 />
                 <Button
                   onClick={handleAddComment}
-                  disabled={!newComment.trim()}
+                  disabled={!canComment || !newComment.trim()}
                   size="icon"
                   className="self-end"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
+              {isViewOnlyTask && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  View-only mode: comments are disabled for this task.
+                </p>
+              )}
               {Object.keys(typingUsers).length > 0 && (
-                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/80 px-3 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm">
+                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/80 px-3 py-1 text-[11px] font-semibold text-muted-foreground">
                   <span>
                     {(() => {
                       const entries = Object.values(typingUsers);
@@ -2927,8 +3165,16 @@ export default function TaskDetail() {
             <div className={`${glassPanelClass} p-6 overflow-hidden animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Status</h2>
               {(() => {
-                const steps: TaskStatus[] = ['pending', 'in_progress', 'under_review', 'completed'];
-                const currentIndex = steps.indexOf(taskState.status);
+                const steps: DisplayTaskStatus[] = [
+                  'pending',
+                  'assigned',
+                  'accepted',
+                  'in_progress',
+                  'clarification_required',
+                  'under_review',
+                  'completed',
+                ];
+                const currentIndex = steps.indexOf(normalizedTaskStatus);
                 return (
                   <div className="space-y-3 sm:space-y-4">
                     {steps.map((step, index) => {
@@ -2939,7 +3185,7 @@ export default function TaskDetail() {
                           <div className="relative flex flex-col items-center">
                             <div className="flex h-9 w-9 sm:h-12 sm:w-12 items-center justify-center">
                               {isPast ? (
-                                <span className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary/85 text-white shadow-[0_8px_18px_-12px_rgba(30,58,138,0.4)] dark:bg-primary/80 dark:shadow-none">
+                                <span className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary/85 text-white dark:bg-primary/80 dark:shadow-none">
                                   <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                 </span>
                               ) : isCurrent ? (
@@ -3019,7 +3265,7 @@ export default function TaskDetail() {
                     {format(taskState.emergencyApprovedAt, 'MMM d, yyyy')}
                   </p>
                 )}
-                {user?.role === 'designer' && emergencyStatus === 'pending' && (
+                {canDesignerActions && emergencyStatus === 'pending' && (
                   <div className="mt-4 flex gap-2">
                     <Button
                       size="sm"
