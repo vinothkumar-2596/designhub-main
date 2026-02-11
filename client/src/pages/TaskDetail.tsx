@@ -43,6 +43,7 @@ import {
   Check,
   ChevronDown,
   X,
+  XCircle,
   ExternalLink,
   Folder,
 } from 'lucide-react';
@@ -191,7 +192,7 @@ type PendingFinalFile = {
   mime?: string;
   thumbnailUrl?: string;
 };
-const STAFF_EDIT_CHANGE_FIELDS = new Set(['description', 'staff_note', 'files']);
+const STAFF_EDIT_CHANGE_FIELDS = new Set(['description']);
 
 const glassPanelClass =
   'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF]/35 ring-0 rounded-2xl shadow-none dark:bg-card dark:border-border/55 dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
@@ -246,7 +247,8 @@ export default function TaskDetail() {
     initialTask?.proposedDeadline ? format(initialTask.proposedDeadline, 'yyyy-MM-dd') : ''
   );
   const [newFileName, setNewFileName] = useState('');
-  const [newFileType, setNewFileType] = useState<'input' | 'output'>('input');
+  const [newFileCategory, setNewFileCategory] = useState<'reference' | 'others'>('reference');
+  const [newFileDetails, setNewFileDetails] = useState('');
   const [isUploadingFinal, setIsUploadingFinal] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null);
@@ -268,6 +270,7 @@ export default function TaskDetail() {
   const [isEditAttachmentDragging, setIsEditAttachmentDragging] = useState(false);
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const sizeFetchRef = useRef(new Set<string>());
+  const addAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -277,10 +280,8 @@ export default function TaskDetail() {
   const [compareRightId, setCompareRightId] = useState('');
   const storageKey = id ? `designhub.task.${id}` : '';
   const staffChangeCount = useMemo(() => {
-    const latestFinalApprovalAt = changeHistory.reduce((latest, entry) => {
+    const latestApprovalCheckpointAt = changeHistory.reduce((latest, entry) => {
       if (entry.field !== 'approval_status') return latest;
-      const status = String(entry.newValue ?? '').toLowerCase();
-      if (status === 'pending') return latest;
       const time = new Date(entry.createdAt ?? 0).getTime();
       return time > latest ? time : latest;
     }, 0);
@@ -288,15 +289,69 @@ export default function TaskDetail() {
       if (entry.userRole !== 'staff') return false;
       if (!STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))) return false;
       const time = new Date(entry.createdAt ?? 0).getTime();
-      return latestFinalApprovalAt ? time > latestFinalApprovalAt : true;
+      return latestApprovalCheckpointAt ? time > latestApprovalCheckpointAt : true;
     }).length;
   }, [changeHistory]);
   const displayedChangeCount = user?.role === 'staff' ? staffChangeCount : changeCount;
-  const approvalLockedForStaff = user?.role === 'staff' && approvalStatus === 'pending';
+  const approvalLockedForStaff = false;
   const staffChangeLabel = staffChangeCount === 1 ? '1 change updated' : `${staffChangeCount} changes updated`;
   const canSendForApproval =
-    user?.role === 'staff' && staffChangeCount >= 3 && approvalStatus !== 'pending';
+    user?.role === 'staff' && staffChangeCount >= 3;
   const staffChangeLimitReached = user?.role === 'staff' && staffChangeCount >= 3;
+  const chronologicalChangeHistory = useMemo(
+    () =>
+      [...changeHistory].sort(
+        (a, b) =>
+          new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()
+      ),
+    [changeHistory]
+  );
+  const latestPendingApprovalAt = useMemo(() => {
+    return chronologicalChangeHistory.reduce((latest, entry) => {
+      if (entry.field !== 'approval_status') return latest;
+      const status = String(entry.newValue || '').trim().toLowerCase();
+      if (status !== 'pending') return latest;
+      const time = new Date(entry.createdAt ?? 0).getTime();
+      return time > latest ? time : latest;
+    }, 0);
+  }, [chronologicalChangeHistory]);
+  const treasurerApprovalCycleChanges = useMemo(() => {
+    if (!latestPendingApprovalAt) return [];
+    const previousApprovalCheckpointAt = chronologicalChangeHistory.reduce((latest, entry) => {
+      if (entry.field !== 'approval_status') return latest;
+      const time = new Date(entry.createdAt ?? 0).getTime();
+      if (time >= latestPendingApprovalAt) return latest;
+      return time > latest ? time : latest;
+    }, 0);
+    return chronologicalChangeHistory.filter((entry) => {
+      if (entry.userRole !== 'staff') return false;
+      if (!STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))) return false;
+      const time = new Date(entry.createdAt ?? 0).getTime();
+      return time > previousApprovalCheckpointAt && time <= latestPendingApprovalAt;
+    });
+  }, [chronologicalChangeHistory, latestPendingApprovalAt]);
+  const changeHistoryForDisplay = useMemo(() => {
+    if (user?.role === 'treasurer' && approvalStatus === 'pending') {
+      if (treasurerApprovalCycleChanges.length > 0) {
+        return treasurerApprovalCycleChanges;
+      }
+      const staffTracked = chronologicalChangeHistory.filter(
+        (entry) =>
+          entry.userRole === 'staff' &&
+          STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))
+      );
+      if (staffTracked.length > 0) {
+        return staffTracked;
+      }
+    }
+    return chronologicalChangeHistory;
+  }, [
+    user?.role,
+    approvalStatus,
+    treasurerApprovalCycleChanges,
+    chronologicalChangeHistory,
+  ]);
+  const isTreasurerReviewMode = user?.role === 'treasurer' && approvalStatus === 'pending';
   const designVersions = taskState?.designVersions ?? [];
   const activeDesignVersionId =
     taskState?.activeDesignVersionId || designVersions[designVersions.length - 1]?.id;
@@ -1386,7 +1441,18 @@ export default function TaskDetail() {
       }
     }
 
-    if (!overrideApproval && isStaffUser && nextCount >= 3 && approvalStatus !== 'pending') {
+    const hasStaffTrackedChange = entries.some((entry) =>
+      STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))
+    );
+    const nextStaffTrackedCount =
+      staffChangeCount +
+      entries.filter((entry) => STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))).length;
+    if (
+      !overrideApproval &&
+      isStaffUser &&
+      hasStaffTrackedChange &&
+      nextStaffTrackedCount >= 3
+    ) {
       toast.message('Treasurer approval required after 3+ changes.');
       return;
     }
@@ -1881,7 +1947,6 @@ export default function TaskDetail() {
   };
 
   const handleRequestApproval = () => {
-    if (approvalStatus === 'pending') return;
     if (user?.role !== 'staff' || staffChangeCount < 3) {
       toast.message('Send for approval after 3 staff changes.');
       return;
@@ -1971,41 +2036,9 @@ export default function TaskDetail() {
   };
 
   const handleAddFile = () => {
-    if (approvalLockedForStaff) {
-      toast.message('Approval pending. Changes are locked.');
-      return;
-    }
-    if (staffChangeLimitReached) {
-      toast.message('Change limit reached. Send for approval.');
-      return;
-    }
-    if (!newFileName.trim()) return;
-    const newFile = {
-      id: `f-${Date.now()}`,
-      name: newFileName.trim(),
-      url: '#',
-      type: newFileType,
-      uploadedAt: new Date(),
-      uploadedBy: user?.id || '',
-    };
-
-    const updates = {
-      files: [...taskState.files, newFile],
-    };
-
-    recordChanges(
-      [
-        {
-          type: 'file_added',
-          field: 'files',
-          oldValue: '',
-          newValue: newFile.name,
-        },
-      ],
-      updates
-    );
-
-    setNewFileName('');
+    if (!ensureWritableTask()) return;
+    if (isUploadingAttachment) return;
+    addAttachmentInputRef.current?.click();
   };
 
   const handleRemoveFile = (fileId: string, fileName: string) => {
@@ -2342,23 +2375,32 @@ export default function TaskDetail() {
     toast.message('Design version restored.');
   };
 
-  const uploadEditAttachments = async (selectedFiles: File[]) => {
-    if (!selectedFiles || selectedFiles.length === 0) return;
-    if (!taskState) return;
-    if (!ensureWritableTask()) {
-      return;
+  const uploadTaskAttachments = async (
+    selectedFiles: File[],
+    options?: {
+      type?: 'input' | 'output';
+      category?: 'reference' | 'others';
+      details?: string;
+      nameOverride?: string;
+      successMessage?: string;
     }
-    if (approvalLockedForStaff) {
-      toast.message('Approval pending. Changes are locked.');
-      return;
+  ) => {
+    if (!selectedFiles || selectedFiles.length === 0) return 0;
+    if (!taskState) return 0;
+    if (!ensureWritableTask()) {
+      return 0;
     }
     if (!apiUrl) {
       toast.error('File upload requires the backend.');
-      return;
+      return 0;
     }
 
     setIsUploadingAttachment(true);
     const uploads = Array.from(selectedFiles);
+    const selectedType = options?.type ?? 'input';
+    const selectedCategory = options?.category ?? 'reference';
+    const trimmedDetails = options?.details?.trim() || '';
+    const trimmedNameOverride = options?.nameOverride?.trim() || '';
     setAttachmentUploadProgress(0);
     const uploadedTaskFiles: typeof taskState.files = [];
     const changeEntries: ChangeInput[] = [];
@@ -2376,11 +2418,17 @@ export default function TaskDetail() {
         if (!response.ok) {
           throw new Error(data?.error || 'Upload failed');
         }
+        const baseName =
+          uploads.length === 1 && trimmedNameOverride ? trimmedNameOverride : file.name;
+        const resolvedName =
+          selectedCategory === 'others' && trimmedDetails
+            ? `${baseName} - ${trimmedDetails}`
+            : baseName;
         const newFile = {
           id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          name: file.name,
+          name: resolvedName,
           url: data.webViewLink || data.webContentLink || '',
-          type: 'input' as const,
+          type: selectedType,
           size: file.size,
           thumbnailUrl: data.thumbnailLink,
           uploadedAt: new Date(),
@@ -2394,7 +2442,7 @@ export default function TaskDetail() {
           type: 'file_added',
           field: 'files',
           oldValue: '',
-          newValue: newFile.name,
+          newValue: resolvedName,
           note: 'Attachment uploaded',
         });
       }
@@ -2402,7 +2450,13 @@ export default function TaskDetail() {
         await recordChanges(changeEntries, { files: [...taskState.files, ...uploadedTaskFiles] });
       }
       setAttachmentUploadProgress(100);
-      toast.success('Attachments uploaded.');
+      if (uploadedTaskFiles.length > 0) {
+        toast.success(
+          options?.successMessage ||
+            (uploadedTaskFiles.length === 1 ? 'File uploaded.' : 'Attachments uploaded.')
+        );
+      }
+      return uploadedTaskFiles.length;
     } catch (error: any) {
       const errorMsg = error.message || "Upload failed";
       if (errorMsg.includes("Drive OAuth not connected")) {
@@ -2427,6 +2481,7 @@ export default function TaskDetail() {
       } else {
         toast.error('File upload failed');
       }
+      return 0;
     } finally {
       setIsUploadingAttachment(false);
       setAttachmentUploadProgress(null);
@@ -2436,13 +2491,30 @@ export default function TaskDetail() {
   const handleEditAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
     if (selectedFiles.length === 0) return;
-    await uploadEditAttachments(selectedFiles);
+    await uploadTaskAttachments(selectedFiles, { type: 'input', category: 'reference' });
+    e.target.value = '';
+  };
+
+  const handleAddFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
+    if (selectedFiles.length === 0) return;
+    const uploadedCount = await uploadTaskAttachments(selectedFiles, {
+      type: 'input',
+      category: newFileCategory,
+      details: newFileCategory === 'others' ? newFileDetails : '',
+      nameOverride: newFileName,
+      successMessage: 'File uploaded.',
+    });
+    if (uploadedCount > 0) {
+      setNewFileName('');
+      setNewFileDetails('');
+    }
     e.target.value = '';
   };
 
   const handleEditAttachmentDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    if (approvalLockedForStaff || isUploadingAttachment) return;
+    if (isUploadingAttachment) return;
     event.dataTransfer.dropEffect = 'copy';
     setIsEditAttachmentDragging(true);
   };
@@ -2455,10 +2527,10 @@ export default function TaskDetail() {
   const handleEditAttachmentDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsEditAttachmentDragging(false);
-    if (approvalLockedForStaff || isUploadingAttachment) return;
+    if (isUploadingAttachment) return;
     const files = Array.from(event.dataTransfer.files || []);
     if (files.length === 0) return;
-    await uploadEditAttachments(files);
+    await uploadTaskAttachments(files, { type: 'input', category: 'reference' });
   };
 
   const handleRequestDeadline = () => {
@@ -2670,6 +2742,122 @@ export default function TaskDetail() {
     );
   };
 
+  const renderChangeHistoryPanel = () => (
+    <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-semibold text-foreground">Change History</h2>
+          {isTreasurerReviewMode && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Review sequence for this approval request
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant="secondary"
+            className="text-xs border-[#C9D7FF] bg-white/85 text-[#1E2A5A] dark:border-border dark:bg-secondary dark:text-foreground"
+          >
+            {changeHistoryForDisplay.length} item{changeHistoryForDisplay.length === 1 ? '' : 's'}
+          </Badge>
+          <History className="h-4 w-4 text-muted-foreground" />
+        </div>
+      </div>
+      {changeHistoryForDisplay.length > 0 ? (
+        <div className="max-h-[460px] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin">
+          {changeHistoryForDisplay.map((entry, index) => {
+            const oldValueText = String(entry.oldValue || '').trim();
+            const newValueText = String(entry.newValue || '').trim();
+            const noteText = String(entry.note || '').trim();
+            const changeLabel =
+              isTreasurerReviewMode && entry.userRole === 'staff'
+                ? `Change ${index + 1}`
+                : `Update ${index + 1}`;
+            return (
+              <div
+                key={entry.id}
+                id={`change-${entry.id}`}
+                className="relative pl-10 pb-4 last:pb-0"
+              >
+                {index !== changeHistoryForDisplay.length - 1 && (
+                  <span className="absolute left-[0.9rem] top-8 h-[calc(100%-1.1rem)] w-px bg-[#C9D7FF]/70 dark:bg-border/70" />
+                )}
+                <span className="absolute left-0 top-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#BFD1F4] bg-gradient-to-br from-white/95 via-[#F2F7FF]/90 to-[#E5EEFF]/85 text-[11px] font-semibold text-[#1E2A5A] dark:border-border dark:bg-card dark:text-slate-100">
+                  {index + 1}
+                </span>
+                <div
+                  className={cn(
+                    changeHistoryCardClass,
+                    'rounded-xl border border-[#BFD1F4]/70 bg-gradient-to-br from-white/88 via-[#F4F8FF]/78 to-[#E8F1FF]/70 supports-[backdrop-filter]:bg-[#F4F8FF]/60 backdrop-blur-xl p-3 transition-colors dark:border-border/70 dark:bg-slate-900/55 dark:backdrop-blur-none',
+                    entry.id === highlightChangeId && 'border-primary/40 bg-primary/10'
+                  )}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{changeLabel}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {entry.userName} updated {formatChangeField(entry.field)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] text-muted-foreground">
+                        {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {formatDistanceToNow(entry.createdAt, { addSuffix: true })}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(oldValueText || newValueText) && (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-lg border border-[#D5E2FB]/80 bg-white/80 supports-[backdrop-filter]:bg-white/55 backdrop-blur-md p-2 dark:border-border/60 dark:bg-background/70 dark:backdrop-blur-none">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Before
+                        </p>
+                        <p className="mt-1 text-xs text-foreground/90 break-words">
+                          {oldValueText || 'Not provided'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-[#D5E2FB]/80 bg-white/80 supports-[backdrop-filter]:bg-white/55 backdrop-blur-md p-2 dark:border-border/60 dark:bg-background/70 dark:backdrop-blur-none">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          After
+                        </p>
+                        <p className="mt-1 text-xs text-foreground/90 break-words">
+                          {newValueText || 'Not provided'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {noteText && (
+                    <div className="mt-3 rounded-lg border border-dashed border-[#BFD1F4]/75 bg-[#ECF3FF]/70 supports-[backdrop-filter]:bg-[#ECF3FF]/50 backdrop-blur-md p-2 dark:border-border/70 dark:bg-background/60 dark:backdrop-blur-none">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Note
+                      </p>
+                      <p className="mt-1 text-xs text-foreground/90 break-words">{noteText}</p>
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs">
+                      {entry.userRole}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      {entry.type.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">No updates recorded yet.</p>
+      )}
+    </div>
+  );
+
   return (
     <DashboardLayout hideGrid>
       <div className="space-y-6 max-w-4xl select-none relative z-10">
@@ -2815,7 +3003,7 @@ export default function TaskDetail() {
                           isEditAttachmentDragging
                             ? 'border-primary/75 bg-primary/8'
                             : 'border-[#BFD1F4] bg-[#F6FAFF]/75 dark:border-slate-600/85 dark:bg-slate-900/45',
-                          (approvalLockedForStaff || isUploadingAttachment) && 'opacity-70'
+                          isUploadingAttachment && 'opacity-70'
                         )}
                         onDragOver={handleEditAttachmentDragOver}
                         onDragLeave={handleEditAttachmentDragLeave}
@@ -2828,7 +3016,7 @@ export default function TaskDetail() {
                           onChange={handleEditAttachmentUpload}
                           className="hidden"
                           id="edit-attachment-upload"
-                          disabled={approvalLockedForStaff || isUploadingAttachment}
+                          disabled={isUploadingAttachment}
                         />
                         <label
                           htmlFor="edit-attachment-upload"
@@ -3228,28 +3416,56 @@ export default function TaskDetail() {
                   <div className="rounded-lg border border-dashed border-border p-4">
                     <p className="text-sm font-medium text-foreground mb-3">Add Attachment</p>
                     <div className="flex flex-wrap items-center gap-3">
+                      <input
+                        ref={addAttachmentInputRef}
+                        type="file"
+                        multiple
+                        onChange={handleAddFileUpload}
+                        className="hidden"
+                        disabled={isUploadingAttachment}
+                      />
                       <Input
                         placeholder="file_name.pdf"
                         value={newFileName}
                         onChange={(event) => setNewFileName(event.target.value)}
                         className="flex-1 min-w-[180px] select-text"
-                        disabled={approvalLockedForStaff || staffChangeLimitReached}
+                        disabled={isUploadingAttachment}
                       />
                       <Select
-                        value={newFileType}
-                        onValueChange={(v) => setNewFileType(v as 'input' | 'output')}
-                        disabled={approvalLockedForStaff || staffChangeLimitReached}
+                        value={newFileCategory}
+                        onValueChange={(v) => {
+                          const nextCategory = v as 'reference' | 'others';
+                          setNewFileCategory(nextCategory);
+                          if (nextCategory !== 'others') {
+                            setNewFileDetails('');
+                          }
+                        }}
+                        disabled={isUploadingAttachment}
                       >
                         <SelectTrigger className="w-[140px]">
                           <SelectValue placeholder="Type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="input">Reference</SelectItem>
-                          <SelectItem value="output">Deliverable</SelectItem>
+                          <SelectItem value="reference">Reference</SelectItem>
+                          <SelectItem value="others">Others</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Button onClick={handleAddFile} disabled={approvalLockedForStaff || staffChangeLimitReached}>
-                        Add File
+                      {newFileCategory === 'others' && (
+                        <Input
+                          placeholder="Type file details"
+                          value={newFileDetails}
+                          onChange={(event) => setNewFileDetails(event.target.value)}
+                          className="min-w-[180px] select-text"
+                          disabled={isUploadingAttachment}
+                        />
+                      )}
+                      <Button
+                        onClick={handleAddFile}
+                        disabled={isUploadingAttachment}
+                      >
+                        {isUploadingAttachment
+                          ? `Uploading... ${attachmentUploadProgress ?? 0}%`
+                          : 'Add File'}
                       </Button>
                     </div>
                   </div>
@@ -3433,6 +3649,33 @@ export default function TaskDetail() {
                 </>
               )}
             </div>
+
+            {user?.role === 'treasurer' && (
+              <>
+                {renderChangeHistoryPanel()}
+                {isTreasurerReviewMode && (
+                  <div className="mt-2 flex flex-wrap items-center justify-end gap-2 animate-slide-up">
+                    <Button
+                      onClick={() => handleApprovalDecision('approved')}
+                      disabled={isViewOnlyTask}
+                      className="h-9 gap-2 rounded-full px-4 border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-none hover:bg-primary/85 dark:border-transparent"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Approve
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleApprovalDecision('rejected')}
+                      disabled={isViewOnlyTask}
+                      className="h-9 gap-2 rounded-full px-4 border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Reject
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
 
             {/* Internal Chat */}
             <div className={`${glassPanelClass} p-6 animate-slide-up`}>
@@ -3860,54 +4103,7 @@ export default function TaskDetail() {
               </div>
             )}
 
-            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-foreground">Change History</h2>
-                <History className="h-4 w-4 text-muted-foreground" />
-              </div>
-              {changeHistory.length > 0 ? (
-                <div className="space-y-3 max-h-[420px] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin">
-                  {changeHistory.map((entry) => (
-                    <div
-                      key={entry.id}
-                      id={`change-${entry.id}`}
-                      className={cn(
-                        changeHistoryCardClass,
-                        'p-2.5 transition-colors',
-                        entry.id === highlightChangeId && 'border-primary/40 bg-primary/10'
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-foreground leading-snug break-words">
-                            {entry.userName} updated {formatChangeField(entry.field)}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1 break-words">
-                            {entry.oldValue ? `From "${entry.oldValue}" to "${entry.newValue}"` : entry.newValue}
-                          </p>
-                          {entry.note && (
-                            <p className="text-xs text-muted-foreground mt-1 break-words">{entry.note}</p>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          {formatDistanceToNow(entry.createdAt, { addSuffix: true })}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">
-                          {entry.userRole}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {entry.type.replace('_', ' ')}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No updates recorded yet.</p>
-              )}
-            </div>
+            {user?.role !== 'treasurer' && renderChangeHistoryPanel()}
           </div>
         </div>
       </div>

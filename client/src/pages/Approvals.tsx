@@ -291,8 +291,8 @@ export default function Approvals() {
                   <div className="pointer-events-none absolute -left-12 -bottom-14 h-40 w-40 rounded-full bg-[#EAF1FF]/80 blur-3xl dark:bg-[#2A49A6]/20" />
                   <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-white/50 dark:ring-white/5" />
                   <div className="relative min-w-0">
-                    <div className="absolute right-0 top-0 inline-flex w-fit items-center gap-2.5 rounded-full border border-border bg-card/90 px-2.5 py-2">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#C9D7FF] bg-[#F4F8FF] text-[#1E2A5A] text-sm font-semibold dark:border-[#4D6BAF] dark:bg-[#0B1738] dark:text-slate-100">
+                    <div className="absolute right-0 top-0 inline-flex w-fit items-center gap-2.5 rounded-2xl bg-gradient-to-r from-white/88 via-[#F5F8FF]/86 to-[#EAF2FF]/82 supports-[backdrop-filter]:bg-[#F5F8FF]/70 backdrop-blur-xl px-3 py-2 shadow-none dark:bg-card/90 dark:backdrop-blur-none">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-white/95 to-[#E6EEFF]/90 text-[#24366C] text-sm font-semibold dark:bg-[#0B1738] dark:text-slate-100">
                         {requesterInitials}
                       </div>
                       <div className="pr-1 whitespace-nowrap">
@@ -362,14 +362,14 @@ export default function Approvals() {
                       </Button>
                     </div>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       asChild
-                      className="h-9 gap-2 rounded-xl px-3 text-muted-foreground hover:bg-muted/50 hover:text-foreground dark:text-[#A8BAE3] dark:hover:bg-[#173267]/70 dark:hover:text-slate-100"
+                      className="h-9 gap-2 rounded-xl border-border bg-card/85 px-3 text-foreground hover:bg-muted/60 dark:border-[#4B6AA9] dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
                     >
                       <Link to={`/task/${task.id}`} state={{ task }}>
                         <Eye className="h-4 w-4" />
-                        Details
+                        Review Details
                       </Link>
                     </Button>
                   </div>
