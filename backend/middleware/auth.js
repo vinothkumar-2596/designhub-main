@@ -4,6 +4,7 @@ const getJwtSecret = () => process.env.JWT_SECRET || "dev-secret";
 
 const PUBLIC_ROUTES = [
   { method: "POST", path: "/api/auth/login" },
+  { method: "POST", path: "/api/auth/signup" },
   { method: "POST", path: "/api/auth/refresh" },
   { method: "GET", path: "/api/auth/google/start" },
   { method: "GET", path: "/api/auth/google/callback" },

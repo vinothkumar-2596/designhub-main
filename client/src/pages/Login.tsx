@@ -264,7 +264,13 @@ export default function Login() {
       toast.success('Account created');
       navigate(safeRedirect);
     } catch (error) {
-      toast.error('Signup failed');
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : 'Signup failed';
+      toast.error('Signup failed', {
+        description: message,
+      });
     } finally {
       setIsLoading(false);
       setIsSignupOpen(false);

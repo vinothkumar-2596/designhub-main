@@ -27,8 +27,36 @@ router.use(requireRole(TASK_ROLES));
 const getUserId = (req) => (req.user?._id ? req.user._id.toString() : "");
 const normalizeValue = (value) => (value ? String(value).trim().toLowerCase() : "");
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const normalizeId = (value) => (value ? String(value) : "");
+const EMPTY_ID_VALUES = new Set([
+  "",
+  "null",
+  "undefined",
+  "none",
+  "na",
+  "n/a",
+  "unassigned",
+  "false"
+]);
+const normalizeId = (value) => {
+  if (value === undefined || value === null) return "";
+  const normalized = String(value).trim();
+  if (!normalized) return "";
+  if (EMPTY_ID_VALUES.has(normalized.toLowerCase())) return "";
+  return normalized;
+};
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const isObjectIdLike = (value) => mongoose.Types.ObjectId.isValid(String(value || ""));
+const resolveAssignedIdentifier = (task) => {
+  const assignedToId = normalizeId(task?.assignedToId);
+  if (assignedToId) return assignedToId;
+  const legacyAssigned = normalizeId(task?.assignedTo);
+  if (!legacyAssigned) return "";
+  // Ignore legacy name-like values carried in old assignedTo fields.
+  if (isObjectIdLike(legacyAssigned) || EMAIL_REGEX.test(legacyAssigned)) {
+    return legacyAssigned;
+  }
+  return "";
+};
 const normalizeEmailList = (value) => {
   if (!Array.isArray(value)) return [];
   return Array.from(
@@ -301,12 +329,17 @@ const isTaskAssignedByUser = (task, user) => {
 };
 
 const resolveAssignedDesignerEmail = async (task) => {
-  const assignedId = normalizeId(task?.assignedToId || task?.assignedTo);
+  const assignedId = resolveAssignedIdentifier(task);
   if (assignedId) {
-    const assignedUser = await User.findById(assignedId).select("email");
-    const assignedEmail = normalizeValue(assignedUser?.email);
-    if (EMAIL_REGEX.test(assignedEmail)) {
-      return assignedEmail;
+    if (EMAIL_REGEX.test(assignedId)) {
+      return normalizeValue(assignedId);
+    }
+    if (isObjectIdLike(assignedId)) {
+      const assignedUser = await User.findById(assignedId).select("email");
+      const assignedEmail = normalizeValue(assignedUser?.email);
+      if (EMAIL_REGEX.test(assignedEmail)) {
+        return assignedEmail;
+      }
     }
   }
   const assignedName = normalizeValue(task?.assignedToName);
@@ -320,6 +353,23 @@ const resolveAssignedDesignerEmail = async (task) => {
   return "";
 };
 
+const isTaskEffectivelyUnassigned = async (task) => {
+  const assignedId = normalizeId(task?.assignedToId);
+  if (!assignedId) return true;
+  if (EMAIL_REGEX.test(assignedId)) {
+    const assignedEmail = normalizeValue(assignedId);
+    const assignedUser = await User.findOne({ email: assignedEmail }).select("role isActive");
+    const assignedRole = normalizeTaskRole(assignedUser?.role);
+    return !assignedUser || assignedUser.isActive === false || assignedRole !== "designer";
+  }
+  if (!isObjectIdLike(assignedId)) {
+    return true;
+  }
+  const assignedUser = await User.findById(assignedId).select("role isActive");
+  const assignedRole = normalizeTaskRole(assignedUser?.role);
+  return !assignedUser || assignedUser.isActive === false || assignedRole !== "designer";
+};
+
 const resolveTaskAccessContext = async (task, user) => {
   const fallback = {
     mode: "none",
@@ -327,26 +377,52 @@ const resolveTaskAccessContext = async (task, user) => {
     ccEmails: []
   };
   if (!user) return fallback;
-  const role = normalizeValue(user.role);
+  const userRole = normalizeTaskRole(user.role);
   const userId = normalizeId(user._id?.toString?.() || user._id);
   const userEmail = normalizeValue(user.email);
   const ccEmails = extractTaskCcEmails(task);
-  if (isManagerRole(role)) {
+  const assignedDesignerEmail = await resolveAssignedDesignerEmail(task);
+  const assignedId = resolveAssignedIdentifier(task);
+  let effectiveAssignedId = assignedId;
+  if (effectiveAssignedId && isObjectIdLike(effectiveAssignedId)) {
+    const assignedUser = await User.findById(effectiveAssignedId).select("role isActive");
+    const assignedRole = normalizeTaskRole(assignedUser?.role);
+    if (!assignedUser || assignedUser.isActive === false || assignedRole !== "designer") {
+      effectiveAssignedId = "";
+    }
+  }
+  if (isManagerRole(userRole)) {
     return {
       mode: "view_only",
-      assignedDesignerEmail: await resolveAssignedDesignerEmail(task),
+      assignedDesignerEmail,
       ccEmails
     };
   }
-  const assignedId = normalizeId(task?.assignedToId || task?.assignedTo);
-  if (assignedId && userId && assignedId === userId) {
+  const hasPrimaryTaskAccess = canAccessTask(task, user);
+
+  // Authenticated users who already own/are assigned to the task should keep full access.
+  if (hasPrimaryTaskAccess) {
     return {
       mode: "full",
-      assignedDesignerEmail: userEmail || await resolveAssignedDesignerEmail(task),
+      assignedDesignerEmail,
       ccEmails
     };
   }
-  const assignedDesignerEmail = await resolveAssignedDesignerEmail(task);
+  // Designers can work from the unassigned queue and self-assign via change updates.
+  if (userRole === "designer" && !effectiveAssignedId) {
+    return {
+      mode: "full",
+      assignedDesignerEmail: userEmail || assignedDesignerEmail,
+      ccEmails
+    };
+  }
+  if (effectiveAssignedId && userId && effectiveAssignedId === userId) {
+    return {
+      mode: "full",
+      assignedDesignerEmail: userEmail || assignedDesignerEmail,
+      ccEmails
+    };
+  }
   if (userEmail && assignedDesignerEmail && userEmail === assignedDesignerEmail) {
     return {
       mode: "full",
@@ -453,7 +529,7 @@ const canAccessTask = (task, user) => {
   }
   if (userRole === "designer") {
     const assignedName = normalizeValue(task?.assignedToName);
-    const assignedId = normalizeId(task?.assignedToId || task?.assignedTo);
+    const assignedId = resolveAssignedIdentifier(task);
     const userName = normalizeValue(user.name);
     const userEmail = normalizeValue(user.email);
     const emailPrefix = userEmail.split("@")[0];
@@ -464,8 +540,11 @@ const canAccessTask = (task, user) => {
         assignedName.includes(userName) ||
         userName.includes(assignedName));
     const emailMatches = assignedName && emailPrefix && assignedName.includes(emailPrefix);
+    const assignedEmailMatches =
+      assignedId && EMAIL_REGEX.test(assignedId) && userEmail && normalizeValue(assignedId) === userEmail;
     return Boolean(
       (assignedId && assignedId === userId) ||
+      assignedEmailMatches ||
       nameMatches ||
       emailMatches
     );
@@ -491,7 +570,7 @@ const ensureTaskAccess = async (req, res, next) => {
       return res.status(404).json({ error: "Task not found." });
     }
     const userRole = normalizeTaskRole(req.user?.role);
-    const isUnassigned = !normalizeId(task.assignedToId);
+    const isUnassigned = await isTaskEffectivelyUnassigned(task);
     const isCommentWrite =
       req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/comments");
     const isChangeWrite =
@@ -500,6 +579,14 @@ const ensureTaskAccess = async (req, res, next) => {
       req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/assign-designer");
     const isLegacyAssignWrite =
       req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/assign");
+    const isFinalDeliverablesWrite =
+      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/final-deliverables");
+    const isFinalDeliverableNoteWrite =
+      req.method === "PATCH" && typeof req.path === "string" && req.path.endsWith("/note");
+    const isAcceptWrite =
+      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/accept");
+    const isCommentsSeenWrite =
+      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/comments/seen");
     const usesAssignedAccessRules = hasAssignedDesignerAccessMetadata(task);
 
     if (usesAssignedAccessRules) {
@@ -556,8 +643,25 @@ const ensureTaskAccess = async (req, res, next) => {
       req.task = task;
       return next();
     }
-    if (userRole === "designer" && isReadOnly && isUnassigned) {
+    if (
+      userRole === "designer" &&
+      isUnassigned &&
+      (isReadOnly ||
+        isCommentWrite ||
+        isChangeWrite ||
+        isAssignDesignerWrite ||
+        isFinalDeliverablesWrite ||
+        isFinalDeliverableNoteWrite ||
+        isAcceptWrite ||
+        isCommentsSeenWrite)
+    ) {
       req.task = task;
+      req.taskAccessMode = "full";
+      req.taskAccessContext = {
+        mode: "full",
+        assignedDesignerEmail: normalizeValue(req.user?.email),
+        ccEmails: extractTaskCcEmails(task)
+      };
       return next();
     }
     if (userRole === "staff" && isChangeWrite) {
@@ -577,18 +681,6 @@ const ensureTaskAccess = async (req, res, next) => {
         req.task = task;
         return next();
       }
-    }
-    if (userRole === "designer" && isUnassigned && isCommentWrite) {
-      req.task = task;
-      return next();
-    }
-    if (userRole === "designer" && isUnassigned && isChangeWrite) {
-      req.task = task;
-      return next();
-    }
-    if (userRole === "designer" && isUnassigned && isAssignDesignerWrite) {
-      req.task = task;
-      return next();
     }
     if (!canAccessTask(task, req.user)) {
       if (isReadOnly) {
@@ -618,7 +710,6 @@ router.get("/", globalLimiter, async (req, res) => {
     const userId = getUserId(req);
     const userEmail = normalizeValue(req.user?.email);
     const userName = normalizeValue(req.user?.name);
-    const emailPrefix = userEmail.split("@")[0];
 
     if (status) query.status = status;
     if (category) query.category = category;
@@ -669,67 +760,7 @@ router.get("/", globalLimiter, async (req, res) => {
       }
       query.$or = orClauses;
     } else if (userRole === "designer") {
-      const orClauses = [{ assignedToId: userId }];
-      const userObjectId = toObjectId(userId);
-      if (userObjectId) {
-        orClauses.push({ assignedToId: userObjectId });
-      }
-      const idUnsetClause = { $or: [{ assignedToId: "" }, { assignedToId: null }, { assignedToId: { $exists: false } }] };
-
-      if (userName) {
-        orClauses.push({
-          $and: [
-            idUnsetClause,
-            { assignedToName: new RegExp(escapeRegExp(userName), "i") }
-          ]
-        });
-      }
-      if (emailPrefix) {
-        orClauses.push({
-          $and: [
-            idUnsetClause,
-            { assignedToName: new RegExp(escapeRegExp(emailPrefix), "i") }
-          ]
-        });
-      }
-      if (userEmail) {
-        orClauses.push({
-          changeHistory: {
-            $elemMatch: {
-              field: "cc_emails",
-              newValue: new RegExp(escapeRegExp(userEmail), "i")
-            }
-          }
-        });
-      }
-      if (userId) {
-        orClauses.push({
-          changeHistory: {
-            $elemMatch: {
-              field: "assigned_designer",
-              userId
-            }
-          }
-        });
-      }
-      if (userEmail) {
-        orClauses.push({
-          changeHistory: {
-            $elemMatch: {
-              field: "assigned_designer",
-              userName: new RegExp(escapeRegExp(userEmail), "i")
-            }
-          }
-        });
-      }
-      orClauses.push({
-        $and: [
-          idUnsetClause,
-          { $or: [{ assignedToName: "" }, { assignedToName: null }, { assignedToName: { $exists: false } }] },
-        ],
-      });
-      orClauses.push(idUnsetClause);
-      query.$or = orClauses;
+      // Designers can see assigned tasks and the unassigned queue. Apply detailed access filtering after fetch.
     } else if (userRole !== "treasurer" && userRole !== "admin") {
       return res.status(403).json({ error: "Forbidden." });
     }
@@ -738,14 +769,23 @@ router.get("/", globalLimiter, async (req, res) => {
     const tasks = await Task.find(query).sort({ createdAt: -1 }).limit(safeLimit);
     const filteredTasks =
       userRole === "designer"
-        ? tasks.filter((task) => {
-          if (!hasAssignedDesignerAccessMetadata(task)) return true;
-          const assignedId = normalizeId(task?.assignedToId || task?.assignedTo);
-          if (assignedId && userId && assignedId === userId) return true;
-          const ccEmails = extractTaskCcEmails(task);
-          if (isTaskAssignedByUser(task, req.user)) return true;
-          return userEmail ? ccEmails.includes(userEmail) : false;
-        })
+        ? (
+          await Promise.all(
+            tasks.map(async (task) => {
+              if (!hasAssignedDesignerAccessMetadata(task)) return task;
+              if (await isTaskEffectivelyUnassigned(task)) return task;
+              const assignedId = resolveAssignedIdentifier(task);
+              if (assignedId && userId && assignedId === userId) return task;
+              if (assignedId && EMAIL_REGEX.test(assignedId) && userEmail && normalizeValue(assignedId) === userEmail) {
+                return task;
+              }
+              const ccEmails = extractTaskCcEmails(task);
+              if (isTaskAssignedByUser(task, req.user)) return task;
+              if (userEmail && ccEmails.includes(userEmail)) return task;
+              return null;
+            })
+          )
+        ).filter(Boolean)
         : tasks;
     res.json(filteredTasks);
   } catch (error) {
@@ -756,8 +796,8 @@ router.get("/", globalLimiter, async (req, res) => {
 router.get("/designers", async (req, res) => {
   try {
     const role = normalizeTaskRole(req.user?.role);
-    if (!["designer", "admin"].includes(role)) {
-      return res.status(403).json({ error: "Only designer or admin accounts can view designers." });
+    if (!["designer", "treasurer", "admin"].includes(role)) {
+      return res.status(403).json({ error: "Only designer, treasurer, or admin accounts can view designers." });
     }
 
     const designers = await User.find({
@@ -809,6 +849,23 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
       requesterEmail,
       changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
     };
+    if (!payload.deadline) {
+      return res.status(400).json({ error: "Deadline is required." });
+    }
+    const parsedDeadline = new Date(payload.deadline);
+    if (Number.isNaN(parsedDeadline.getTime())) {
+      return res.status(400).json({ error: "Invalid deadline." });
+    }
+    payload.deadline = parsedDeadline;
+    if (payload.isEmergency) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const deadlineStart = new Date(parsedDeadline);
+      deadlineStart.setHours(0, 0, 0, 0);
+      if (deadlineStart < todayStart) {
+        return res.status(400).json({ error: "Emergency deadline cannot be before today." });
+      }
+    }
     const resolvedAssignment = await resolveAssignedUser({
       assignedToId: payload.assignedToId,
       assignedTo: payload.assignedTo,
@@ -1067,6 +1124,77 @@ router.get("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
     res.json(versions);
   } catch (error) {
     res.status(400).json({ error: "Invalid task id." });
+  }
+});
+
+router.patch("/:id/final-deliverables/:versionId/note", ensureTaskAccess, async (req, res) => {
+  try {
+    const userRole = req.user?.role || "";
+    if (userRole !== "designer" && userRole !== "admin" && userRole !== "staff") {
+      return res.status(403).json({ error: "Only designers or staff can update final deliverable notes." });
+    }
+    const taskId = req.params.id;
+    const versionId = String(req.params.versionId || "").trim();
+    const note = req.body?.note ? String(req.body.note).trim() : "";
+    if (!versionId) {
+      return res.status(400).json({ error: "Version id is required." });
+    }
+
+    let task = req.task;
+    task = await ensureFinalDeliverableVersions(task);
+    const versions = Array.isArray(task.finalDeliverableVersions) ? task.finalDeliverableVersions : [];
+    const targetVersion = versions.find((version) => String(version?._id || version?.id || "") === versionId);
+    if (!targetVersion) {
+      return res.status(404).json({ error: "Final deliverable version not found." });
+    }
+
+    const oldNote = String(targetVersion.note || "");
+    if (oldNote === note) {
+      const payload = typeof task.toJSON === "function" ? task.toJSON() : task;
+      payload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
+      return res.json(payload);
+    }
+
+    targetVersion.note = note;
+    const changedAt = new Date();
+    const userId = getUserId(req);
+    const resolvedUserName = req.user?.name || "";
+    task.changeHistory.push({
+      type: "update",
+      field: "final_deliverable_note",
+      oldValue: oldNote,
+      newValue: note,
+      note: `Updated final deliverable note (v${targetVersion.version || "?"})`,
+      userId: userId || "",
+      userName: resolvedUserName || "",
+      userRole: userRole || "",
+      createdAt: changedAt
+    });
+    task.markModified("finalDeliverableVersions");
+    task.markModified("changeHistory");
+    task.updatedAt = changedAt;
+    await task.save();
+
+    req.auditTargetId = task.id || task._id?.toString?.() || taskId;
+
+    const io = getSocket();
+    if (io) {
+      const payloadTask = typeof task.toJSON === "function" ? task.toJSON() : task;
+      payloadTask.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
+      const updatedTaskId = payloadTask?.id || task.id || task._id?.toString?.();
+      const updatePayload = {
+        taskId: updatedTaskId,
+        task: payloadTask
+      };
+      io.to(updatedTaskId).emit("task:updated", updatePayload);
+    }
+
+    const responsePayload = typeof task.toJSON === "function" ? task.toJSON() : task;
+    responsePayload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
+    res.json(responsePayload);
+  } catch (error) {
+    console.error("Final deliverable note update error:", error?.message || error);
+    res.status(400).json({ error: "Failed to update final deliverable note." });
   }
 });
 
@@ -1581,8 +1709,8 @@ router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
 router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
   try {
     const role = normalizeTaskRole(req.user?.role);
-    if (!["designer", "admin"].includes(role)) {
-      return res.status(403).json({ error: "Only designer or admin accounts can assign designers." });
+    if (!["designer", "treasurer", "admin"].includes(role)) {
+      return res.status(403).json({ error: "Only designer, treasurer, or admin accounts can assign designers." });
     }
 
     const assignedDesignerRaw = req.body?.assigned_designer_id;
@@ -1936,6 +2064,27 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       userRole !== "admin"
     ) {
       return res.status(403).json({ error: "Only designers can complete tasks." });
+    }
+    const emergencyDecisionChange = changes.find(
+      (change) => normalizeValue(change?.field) === "emergency_approval"
+    );
+    if (emergencyDecisionChange) {
+      const decisionValue = normalizeValue(emergencyDecisionChange?.newValue);
+      if (decisionValue === "approved" || decisionValue === "rejected") {
+        if (userRole !== "designer" && userRole !== "admin") {
+          return res.status(403).json({ error: "Only designers can decide emergency overrides." });
+        }
+        const decisionNote = String(emergencyDecisionChange?.note || "").trim();
+        if (!decisionNote) {
+          return res.status(400).json({ error: "Emergency approval reason is required." });
+        }
+      }
+    }
+    const hasFileRemovalChange = changes.some(
+      (change) => change?.type === "file_removed" && change?.field === "files"
+    );
+    if (hasFileRemovalChange && userRole !== "designer") {
+      return res.status(403).json({ error: "Only designers can remove files." });
     }
 
     const task = req.task;

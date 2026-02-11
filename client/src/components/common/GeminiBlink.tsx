@@ -19,9 +19,9 @@ export function GeminiBlink({ onClick, className = '' }: GeminiBlinkProps) {
                     <Button
                         onClick={onClick}
                         variant="ghost"
-                        className={`relative h-9 rounded-full px-3 bg-primary/10 hover:bg-primary/20 dark:bg-white/10 dark:hover:bg-white/15 transition-colors ${className}`}
+                        className={`relative inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-full px-3 bg-primary/10 hover:bg-primary/20 dark:bg-white/10 dark:hover:bg-white/15 transition-colors ${className}`}
                     >
-                        <div className="relative flex items-center justify-center mr-2">
+                        <div className="relative flex items-center justify-center">
                             <span className="relative flex h-5 w-5">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/40 dark:bg-white/30 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-5 w-5 items-center justify-center">
@@ -50,7 +50,7 @@ export function GeminiBlink({ onClick, className = '' }: GeminiBlinkProps) {
                                 </span>
                             </span>
                         </div>
-                        <span className="font-semibold text-primary dark:text-white">AI Buddy</span>
+                        <span className="font-semibold tracking-normal text-primary dark:text-white">AI Buddy</span>
                         <span className="sr-only">Open Task Buddy AI</span>
                     </Button>
                 </TooltipTrigger>

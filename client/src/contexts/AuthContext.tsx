@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, UserRole } from '@/types';
-import { API_URL, authFetch, AUTH_SESSION_EXPIRED_EVENT } from '@/lib/api';
+import { API_URL, AUTH_SESSION_EXPIRED_EVENT } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -17,6 +17,40 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const USER_KEY = 'auth_user';
 const ROLE_KEY = 'auth_role';
 const TOKEN_KEY = 'auth_token';
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+const normalizeHost = (host: string) =>
+  LOOPBACK_HOSTS.has(host.toLowerCase()) ? 'localhost' : host.toLowerCase();
+
+const resolveOrigin = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+};
+
+const sameLoopbackOrigin = (left: string, right: string) => {
+  try {
+    const leftUrl = new URL(left);
+    const rightUrl = new URL(right);
+    const normalizePort = (url: URL) =>
+      url.port || (url.protocol === 'https:' ? '443' : url.protocol === 'http:' ? '80' : '');
+
+    return (
+      leftUrl.protocol === rightUrl.protocol &&
+      normalizePort(leftUrl) === normalizePort(rightUrl) &&
+      normalizeHost(leftUrl.hostname) === normalizeHost(rightUrl.hostname)
+    );
+  } catch {
+    return false;
+  }
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
@@ -60,7 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // ignore invalid API_URL
         }
       }
-      if (!allowedOrigins.includes(event.origin)) return;
+      const trustedOrigin =
+        allowedOrigins.includes(event.origin) ||
+        sameLoopbackOrigin(event.origin, window.location.origin);
+      if (!trustedOrigin) return;
       if (!event.data || typeof event.data !== 'object') return;
       if (event.data.type !== 'google-auth') return;
       const token = event.data.token as string | undefined;
@@ -90,11 +127,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const url = new URL(window.location.href);
     const token = url.searchParams.get('token');
-    if (!token || !API_URL) return;
+    const provider = url.searchParams.get('provider');
+    const isGoogleCallback = provider === 'google' && url.pathname === '/login';
+    if (!token || !API_URL || !isGoogleCallback) return;
+
+    const openerOrigin =
+      resolveOrigin(url.searchParams.get('openerOrigin')) ?? window.location.origin;
 
     if (window.opener && !window.opener.closed) {
       try {
-        window.opener.postMessage({ type: 'google-auth', token }, window.location.origin);
+        window.opener.postMessage({ type: 'google-auth', token }, openerOrigin);
       } catch {
         // no-op: fall back to handling in the current window
       }
@@ -103,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(TOKEN_KEY, token);
     url.searchParams.delete('token');
     url.searchParams.delete('provider');
+    url.searchParams.delete('openerOrigin');
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 
     fetch(`${API_URL}/api/auth/me`, {
@@ -120,9 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(TOKEN_KEY);
       });
 
-    if (window.opener && !window.opener.closed) {
-      window.close();
-    }
+    window.close();
   }, []);
 
   useEffect(() => {
@@ -152,10 +193,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, role }),
     });
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error('Login failed');
+      const message =
+        typeof data?.error === 'string' && data.error.trim()
+          ? data.error.trim()
+          : 'Login failed';
+      throw new Error(message);
     }
-    const data = await response.json();
     if (data?.token && data?.user) {
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.user));
@@ -168,15 +213,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!API_URL) {
       throw new Error('API URL is not configured');
     }
-    const response = await authFetch(`${API_URL}/api/auth/signup`, {
+    const response = await fetch(`${API_URL}/api/auth/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, role }),
     });
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error('Signup failed');
+      const message =
+        typeof data?.error === 'string' && data.error.trim()
+          ? data.error.trim()
+          : 'Signup failed';
+      throw new Error(message);
     }
-    const data = await response.json();
     if (data?.token && data?.user) {
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.user));
@@ -189,7 +238,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!API_URL) {
       throw new Error('API URL is not configured');
     }
-    const response = await fetch(`${API_URL}/api/auth/google/start?role=${role}`);
+    const query = new URLSearchParams({
+      role,
+      origin: window.location.origin,
+    });
+    const response = await fetch(`${API_URL}/api/auth/google/start?${query.toString()}`);
     if (!response.ok) {
       throw new Error('Google login not configured');
     }

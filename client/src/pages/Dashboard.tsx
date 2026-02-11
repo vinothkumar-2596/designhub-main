@@ -174,7 +174,9 @@ export default function Dashboard() {
   }
   const currentUserRole = String(user.role || '').toLowerCase();
   const canAssignDesigner =
-    currentUserRole === 'designer' || currentUserRole === 'admin';
+    currentUserRole === 'designer' ||
+    currentUserRole === 'treasurer' ||
+    currentUserRole === 'admin';
 
   const hydrateTask = (raw: typeof mockTasks[number]) => {
     if (!raw) return raw;
@@ -382,7 +384,8 @@ export default function Dashboard() {
       const normalizedMessage = message.toLowerCase();
       if (
         normalizedMessage.includes('only designers can assign designers') ||
-        normalizedMessage.includes('only designer or admin accounts can assign designers')
+        normalizedMessage.includes('only designer or admin accounts can assign designers') ||
+        normalizedMessage.includes('only designer, treasurer, or admin accounts can assign designers')
       ) {
         toast.error(
           'Your signed-in account is not authorized to assign designers. Demo role switch changes view only.'

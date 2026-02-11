@@ -2,11 +2,28 @@ import type { Task, User } from '@/types';
 
 const normalizeValue = (value?: string) => (value ? String(value).trim().toLowerCase() : '');
 const assignmentMetaFields = new Set(['assigned_designer', 'task_status', 'cc_emails']);
+const emptyAssignmentValues = new Set(['', 'null', 'undefined', 'none', 'na', 'n/a', 'unassigned', 'false']);
+const looksLikeObjectId = (value: string) => /^[a-f0-9]{24}$/i.test(value);
+const looksLikeEmail = (value: string) => value.includes('@');
 
-const getAssignedToId = (task: Task) =>
-  (task as { assignedTo?: string; assignedToId?: string }).assignedTo ||
-  (task as { assignedToId?: string }).assignedToId ||
-  '';
+const normalizeAssignmentRef = (value?: string) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+  if (emptyAssignmentValues.has(normalized.toLowerCase())) return '';
+  return normalized;
+};
+
+const getAssignedToId = (task: Task) => {
+  const assignedToId = normalizeAssignmentRef((task as { assignedToId?: string }).assignedToId);
+  if (assignedToId) return assignedToId;
+  const legacyAssigned = normalizeAssignmentRef((task as { assignedTo?: string }).assignedTo);
+  if (!legacyAssigned) return '';
+  // Ignore legacy name-like values that were stored in assignedTo.
+  if (looksLikeObjectId(legacyAssigned) || looksLikeEmail(legacyAssigned)) {
+    return legacyAssigned;
+  }
+  return '';
+};
 
 const parseCcEmails = (value: string) => {
   if (!value) return [];
@@ -74,6 +91,9 @@ const isTaskAssignedByUser = (task: Task, user: User) => {
 const isDesignerTask = (task: Task, user: User) => {
   const assignedId = getAssignedToId(task);
   if (assignedId && assignedId === user.id) return true;
+  if (assignedId && looksLikeEmail(assignedId) && normalizeValue(assignedId) === normalizeValue(user.email)) {
+    return true;
+  }
 
   const assignedName = normalizeValue(task.assignedToName);
   const isUnassigned = !assignedId;
@@ -113,6 +133,7 @@ export const isTaskVisibleToUser = (task: Task, user?: User | null) => {
   }
 
   if (taskUsesAssignedAccess) {
+    if (userRole === 'designer' && !assignedId) return true;
     if (assignedId && assignedId === user.id) return true;
     if (userEmail && ccEmails.includes(userEmail)) return true;
     if (isTaskAssignedByUser(task, user)) return true;

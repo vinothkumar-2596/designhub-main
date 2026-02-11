@@ -897,7 +897,7 @@ export function DashboardLayout({
       })()
       : 'Currently viewing';
     return (
-      <div className="flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-slate-900/70 dark:border-white/10 dark:text-white px-3 py-1.5 shadow-sm">
+      <div className="hidden sm:flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-slate-900/70 dark:border-white/10 dark:text-white px-3 py-1.5 shadow-sm">
         <span
           className={
             (isTyping
@@ -1536,8 +1536,8 @@ function DashboardShell({
               <div className="relative z-10">
                 <div className="relative z-20">
                   <div className="shrink-0 border-b border-[#D9E6FF] bg-white/60 dark:bg-card/70 dark:border-border backdrop-blur-md px-4 md:px-6 py-3">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div className="relative w-full max-w-[220px] sm:max-w-[280px] md:max-w-md" ref={searchContainerRef}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="relative min-w-[150px] flex-1 max-w-[220px] sm:max-w-[280px] md:max-w-md" ref={searchContainerRef}>
                         <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-2 shadow-sm">
                           <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
                           <div className="relative flex-1">
@@ -1640,7 +1640,7 @@ function DashboardShell({
                           </GlassCard>
                         )}
                       </div>
-                      <div className="flex w-full items-center justify-end gap-2 md:w-auto">
+                      <div className="flex shrink-0 items-center justify-end gap-2">
                         {headerActions}
                       </div>
                     </div>

@@ -72,12 +72,6 @@ import { upsertLocalTask } from '@/lib/taskStorage';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 import type { TaskDraft } from '@/lib/ai';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 
 interface UploadedFile {
   id: string;
@@ -444,6 +438,7 @@ export default function NewRequest() {
   const apiUrl = API_URL;
 
   // Minimum deadline is 3 days from now
+  const todayDate = startOfDay(new Date());
   const minDeadlineDate = startOfDay(addDays(new Date(), 3));
   const designerId = getDefaultDesignerId(scheduleTasks);
   const invalidRanges = useMemo(
@@ -460,6 +455,9 @@ export default function NewRequest() {
     );
   const getNextAvailableDeadline = (baseDate: Date) => {
     let candidate = startOfDay(baseDate);
+    if (isBefore(candidate, todayDate)) {
+      candidate = todayDate;
+    }
     if (!isEmergency && isBefore(candidate, minDeadlineDate)) {
       candidate = minDeadlineDate;
     }
@@ -547,16 +545,17 @@ export default function NewRequest() {
   }, [defaultsApplied, category, urgency, deadline]);
 
   useEffect(() => {
-    if (hasDeadlineInteracted || !deadline || isEmergency) return;
+    if (hasDeadlineInteracted || !deadline) return;
     const normalized = startOfDay(deadline);
+    const isPastDate = isBefore(normalized, todayDate);
     const requiresMinLead = isBefore(normalized, minDeadlineDate);
-    const blockedDate = isDateBlocked(normalized);
-    if (!requiresMinLead && !blockedDate) return;
+    const blockedDate = !isEmergency && isDateBlocked(normalized);
+    if (!isPastDate && (!requiresMinLead || isEmergency) && !blockedDate) return;
     const corrected = getNextAvailableDeadline(normalized);
     if (corrected.getTime() !== normalized.getTime()) {
       setDeadline(corrected);
     }
-  }, [deadline, hasDeadlineInteracted, isEmergency, minDeadlineDate, invalidRanges]);
+  }, [deadline, hasDeadlineInteracted, isEmergency, minDeadlineDate, invalidRanges, todayDate]);
 
   const updateFile = (id: string, updates: Partial<UploadedFile>) => {
     setFiles((prev) =>
@@ -759,9 +758,12 @@ export default function NewRequest() {
   const isFormValid = () => {
     const hasUploadsInProgress = files.some((file) => file.uploading);
     const hasUploadErrors = files.some((file) => file.error);
-    const deadlineValid =
-      deadline &&
-      (isEmergency || !isBefore(startOfDay(deadline), minDeadlineDate));
+    const normalizedDeadline = deadline ? startOfDay(deadline) : null;
+    const deadlineValid = Boolean(
+      normalizedDeadline &&
+      !isBefore(normalizedDeadline, todayDate) &&
+      (isEmergency || !isBefore(normalizedDeadline, minDeadlineDate))
+    );
     return (
       title.trim() &&
       description.trim() &&
@@ -774,6 +776,11 @@ export default function NewRequest() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (deadline && isBefore(startOfDay(deadline), todayDate)) {
+      toast.error('Deadline cannot be before today.');
+      return;
+    }
 
     if (!isFormValid()) {
       toast.error('Please complete all required fields', {
@@ -1079,24 +1086,19 @@ export default function NewRequest() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={handleEmailDesignRequest}
-                    className="h-9 w-9 rounded-full bg-primary/10 text-primary hover:bg-primary/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/15 shadow-[0_10px_24px_-18px_hsl(var(--primary)/0.65)]"
-                    aria-label="Email Design Request"
-                  >
-                    <Mail className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="end">
-                  <p>Email Design Request</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <div className="relative group">
+              <span className="pointer-events-none absolute -top-9 right-0 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 group-hover:-translate-y-0.5">
+                Email Design Request
+              </span>
+              <button
+                type="button"
+                onClick={handleEmailDesignRequest}
+                aria-label="Email Design Request"
+                className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+              >
+                <Mail className="h-4 w-4" />
+              </button>
+            </div>
             <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} />
           </div>
         </div>
@@ -1266,10 +1268,10 @@ export default function NewRequest() {
               <Switch checked={isEmergency} onCheckedChange={setIsEmergency} />
             </div>
             {isEmergency && (
-              <p className="text-xs text-status-urgent">
-                Emergency requests can bypass blocked dates but must be approved.
-              </p>
-            )}
+                <p className="text-xs text-status-urgent">
+                Emergency requests can bypass blocked dates and 3-day minimum, but not past dates.
+                </p>
+              )}
 
             {/* Deadline */}
             <div className="space-y-2">
@@ -1282,9 +1284,13 @@ export default function NewRequest() {
                     value={deadline}
                     onChange={(newValue) => {
                       setHasDeadlineInteracted(true);
-                      setDeadline(newValue);
+                      if (!newValue) {
+                        setDeadline(newValue);
+                        return;
+                      }
+                      setDeadline(getNextAvailableDeadline(newValue));
                     }}
-                    minDate={isEmergency ? undefined : minDeadlineDate}
+                    minDate={isEmergency ? todayDate : minDeadlineDate}
                     shouldDisableDate={isDateBlocked}
                     slotProps={{
                       textField: {
@@ -1339,7 +1345,7 @@ export default function NewRequest() {
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {isEmergency
-                  ? 'Emergency requests can bypass the 3-day minimum'
+                  ? 'Emergency requests can bypass the 3-day minimum (today onward only)'
                   : 'Minimum 3 days from today'}
               </p>
             </div>

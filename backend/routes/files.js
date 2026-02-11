@@ -167,11 +167,14 @@ router.post("/metadata", async (req, res) => {
     const drive = getDriveClient();
     const response = await drive.files.get({
       fileId,
-      fields: "id,size,thumbnailLink",
+      fields: "id,name,mimeType,size,thumbnailLink",
+      supportsAllDrives: true,
     });
     const sizeValue = response?.data?.size ? Number(response.data.size) : undefined;
     res.json({
       id: response?.data?.id,
+      name: response?.data?.name,
+      mimeType: response?.data?.mimeType,
       size: Number.isNaN(sizeValue) ? undefined : sizeValue,
       thumbnailLink: response?.data?.thumbnailLink,
     });

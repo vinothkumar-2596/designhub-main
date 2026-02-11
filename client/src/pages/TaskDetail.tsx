@@ -43,8 +43,8 @@ import {
   Check,
   ChevronDown,
   X,
-  Eye,
   ExternalLink,
+  Folder,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -98,6 +98,11 @@ const normalizeTaskStatus = (value?: string): DisplayTaskStatus => {
   if (normalized === 'completed') return 'completed';
   return 'pending';
 };
+const getStatusSelectValue = (value?: string): TaskStatus | '' => {
+  const normalized = normalizeTaskStatus(value);
+  if (normalized === 'assigned' || normalized === 'accepted') return '';
+  return normalized;
+};
 
 const categoryLabels: Record<string, string> = {
   banner: 'Banner',
@@ -135,6 +140,38 @@ const normalizeTaskAccessMode = (value?: string): TaskAccessMode | null => {
   return null;
 };
 const normalizeEmail = (value?: string) => String(value || '').trim().toLowerCase();
+const emptyAssignmentValues = new Set([
+  '',
+  'null',
+  'undefined',
+  'none',
+  'na',
+  'n/a',
+  'unassigned',
+  'false',
+]);
+const looksLikeObjectId = (value: string) => /^[a-f0-9]{24}$/i.test(value);
+const looksLikeEmail = (value: string) => value.includes('@');
+const normalizeAssignmentRef = (value?: string) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+  if (emptyAssignmentValues.has(normalized.toLowerCase())) return '';
+  return normalized;
+};
+const resolveTaskAssignedId = (task?: typeof mockTasks[number]) => {
+  const assignedToId = normalizeAssignmentRef(
+    (task as { assignedToId?: string } | undefined)?.assignedToId
+  );
+  if (assignedToId) return assignedToId;
+  const legacyAssigned = normalizeAssignmentRef(
+    (task as { assignedTo?: string } | undefined)?.assignedTo
+  );
+  if (!legacyAssigned) return '';
+  if (looksLikeObjectId(legacyAssigned) || looksLikeEmail(legacyAssigned)) {
+    return legacyAssigned;
+  }
+  return '';
+};
 const resolveTaskCcEmails = (task?: typeof mockTasks[number]) => {
   const raw =
     (task as { ccEmails?: string[]; cc_emails?: string[] } | undefined)?.ccEmails ||
@@ -181,7 +218,9 @@ export default function TaskDetail() {
   const [typingUsers, setTypingUsers] = useState<Record<string, { name: string; role: UserRole }>>(
     {}
   );
-  const [newStatus, setNewStatus] = useState<TaskStatus | ''>('');
+  const [newStatus, setNewStatus] = useState<TaskStatus | ''>(
+    getStatusSelectValue(initialTask?.status)
+  );
   const [changeCount, setChangeCount] = useState(initialTask?.changeCount ?? 0);
   const initialApprovalStatus: ApprovalStatus | undefined =
     initialTask?.approvalStatus ?? ((initialTask?.changeCount ?? 0) >= 3 ? 'pending' : undefined);
@@ -210,8 +249,10 @@ export default function TaskDetail() {
   const [finalVersionNote, setFinalVersionNote] = useState('');
   const [selectedFinalVersionId, setSelectedFinalVersionId] = useState('');
   const [isAddingFinalLink, setIsAddingFinalLink] = useState(false);
+  const [isUpdatingFinalVersionNote, setIsUpdatingFinalVersionNote] = useState(false);
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [isAcceptingTask, setIsAcceptingTask] = useState(false);
+  const [emergencyDecisionReason, setEmergencyDecisionReason] = useState('');
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const sizeFetchRef = useRef(new Set<string>());
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
@@ -291,6 +332,11 @@ export default function TaskDetail() {
       setCompareRightId(designVersions[designVersions.length - 1].id);
     }
   }, [compareLeftId, compareRightId, designVersions]);
+
+  useEffect(() => {
+    const syncedStatus = getStatusSelectValue(taskState?.status);
+    setNewStatus((current) => (current === syncedStatus ? current : syncedStatus));
+  }, [taskState?.id, taskState?.status]);
 
   const hydrateTask = (raw: typeof taskState) => {
     if (!raw) return raw;
@@ -563,12 +609,13 @@ export default function TaskDetail() {
     );
     const explicitViewOnly =
       (taskState as { viewOnly?: boolean }).viewOnly === true;
-    const assignedId = String(
-      (taskState as { assignedToId?: string; assignedTo?: string }).assignedToId ||
-      (taskState as { assignedTo?: string }).assignedTo ||
-      ''
+    const assignedId = resolveTaskAssignedId(taskState);
+    const assignedEmail = normalizeEmail(assignedId);
+    const isAssignedToUser = Boolean(
+      assignedId &&
+      ((user?.id && assignedId === user.id) ||
+        (looksLikeEmail(assignedId) && assignedEmail === normalizeEmail(user?.email)))
     );
-    const isAssignedToUser = Boolean(assignedId && user?.id && assignedId === user.id);
     const ccMatch = resolveTaskCcEmails(taskState).includes(normalizeEmail(user?.email));
     const isViewOnlyMode = mode
       ? mode === 'view_only' || explicitViewOnly
@@ -799,6 +846,7 @@ export default function TaskDetail() {
     return result;
   };
   const normalizedTaskStatus = normalizeTaskStatus(taskState.status);
+  const currentStatusSelection = getStatusSelectValue(taskState.status);
   const status = statusConfig[normalizedTaskStatus];
   const isOverdue = isPast(taskState.deadline) && normalizedTaskStatus !== 'completed';
   const backendAccessMode = normalizeTaskAccessMode(
@@ -808,12 +856,13 @@ export default function TaskDetail() {
     (taskState as { viewOnly?: boolean }).viewOnly === true;
   const normalizedUserEmail = normalizeEmail(user?.email);
   const userId = String(user?.id || '');
-  const assignedToId = String(
-    (taskState as { assignedToId?: string; assignedTo?: string }).assignedToId ||
-    (taskState as { assignedTo?: string }).assignedTo ||
-    ''
+  const assignedToId = resolveTaskAssignedId(taskState);
+  const assignedToEmail = normalizeEmail(assignedToId);
+  const isAssignedToCurrentUser = Boolean(
+    assignedToId &&
+    ((userId && assignedToId === userId) ||
+      (looksLikeEmail(assignedToId) && assignedToEmail === normalizedUserEmail))
   );
-  const isAssignedToCurrentUser = Boolean(assignedToId && userId && assignedToId === userId);
   const taskCcEmails = resolveTaskCcEmails(taskState);
   const isCcViewer = Boolean(
     normalizedUserEmail && taskCcEmails.includes(normalizedUserEmail)
@@ -830,6 +879,7 @@ export default function TaskDetail() {
   const canApproveDeadline = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canManageVersions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canComment = !isViewOnlyTask;
+  const canRemoveFiles = canDesignerActions;
   const minDeadlineDate = addWorkingDays(new Date(), 3);
   const emergencyStatus =
     taskState.isEmergency || taskState.emergencyApprovalStatus
@@ -847,6 +897,16 @@ export default function TaskDetail() {
       : emergencyStatus === 'rejected'
         ? 'Emergency Rejected'
         : 'Emergency Pending';
+  const latestEmergencyDecisionNote = useMemo(() => {
+    const history = Array.isArray(taskState?.changeHistory) ? taskState.changeHistory : [];
+    for (let index = 0; index < history.length; index += 1) {
+      const entry = history[index];
+      if (entry?.field !== 'emergency_approval') continue;
+      const note = String(entry?.note || '').trim();
+      if (note) return note;
+    }
+    return '';
+  }, [taskState?.changeHistory]);
   const inputFiles = taskState.files.filter((f) => f.type === 'input');
   const outputFiles = taskState.files.filter((f) => f.type === 'output');
   const finalDeliverableVersions = useMemo<FinalDeliverableVersion[]>(() => {
@@ -903,6 +963,11 @@ export default function TaskDetail() {
   const activeFinalVersion =
     sortedFinalDeliverableVersions.find((version) => version.id === selectedFinalVersionId) ||
     sortedFinalDeliverableVersions[0];
+  useEffect(() => {
+    if (!activeFinalVersion) return;
+    setFinalVersionNote(String(activeFinalVersion.note || ''));
+  }, [activeFinalVersion?.id]);
+  const activeFinalVersionNote = String(activeFinalVersion?.note || '').trim();
   const finalDeliverableFiles = activeFinalVersion?.files ?? [];
   const hasFinalDeliverables = sortedFinalDeliverableVersions.length > 0;
   const latestFinalUploadAt = useMemo(() => {
@@ -915,6 +980,8 @@ export default function TaskDetail() {
     normalizedTaskStatus !== 'completed' &&
     hasFinalDeliverables &&
     !isUploadingFinal;
+  const currentSelectedVersionNote = activeFinalVersionNote;
+  const isFinalVersionNoteDirty = finalVersionNote.trim() !== currentSelectedVersionNote;
   const canAcceptTask =
     canDesignerActions &&
     isAssignedToCurrentUser &&
@@ -936,8 +1003,14 @@ export default function TaskDetail() {
         : `${finalUploadTotals.done || finalUploadItems.length} upload${(finalUploadTotals.done || finalUploadItems.length) === 1 ? '' : 's'} complete`;
 
   const getVersionLabel = (version: DesignVersion) => `V${version.version}`;
+  const formatVersionTimestamp = (value?: Date | string) => {
+    if (!value) return 'Unknown time';
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) return 'Unknown time';
+    return format(parsed, 'MMM d, yyyy · hh:mm:ss a');
+  };
   const getFinalVersionLabel = (version: FinalDeliverableVersion) =>
-    `V${version.version}`;
+    `V${version.version} · ${formatVersionTimestamp(version.uploadedAt)}`;
   const isImageVersion = (version?: DesignVersion) => {
     if (!version?.name) return false;
     const ext = version.name.split('.').pop()?.toLowerCase() ?? '';
@@ -952,6 +1025,82 @@ export default function TaskDetail() {
     if (segments.length < 2) return 'LINK';
     const ext = segments.pop();
     return ext ? ext.toUpperCase() : 'FILE';
+  };
+  const getDriveLinkMeta = (url: string) => {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      const isGoogleDriveHost =
+        host === 'drive.google.com' ||
+        host.endsWith('.drive.google.com') ||
+        host === 'docs.google.com' ||
+        host.endsWith('.docs.google.com');
+      if (!isGoogleDriveHost) {
+        return { isGoogleDrive: false as const, itemType: 'external' as const, itemId: '' };
+      }
+
+      const path = parsed.pathname;
+      const queryId = parsed.searchParams.get('id');
+      if (queryId) {
+        return { isGoogleDrive: true as const, itemType: 'file' as const, itemId: queryId };
+      }
+      const folderMatch = path.match(/\/(?:drive\/(?:u\/\d+\/)?folders|folders)\/([^/?#]+)/);
+      if (folderMatch?.[1]) {
+        return { isGoogleDrive: true as const, itemType: 'folder' as const, itemId: folderMatch[1] };
+      }
+      const fileMatch = path.match(/\/file\/d\/([^/?#]+)/);
+      if (fileMatch?.[1]) {
+        return { isGoogleDrive: true as const, itemType: 'file' as const, itemId: fileMatch[1] };
+      }
+      const docMatch = path.match(/\/document(?:\/u\/\d+)?\/d\/([^/?#]+)/);
+      if (docMatch?.[1]) {
+        return { isGoogleDrive: true as const, itemType: 'doc' as const, itemId: docMatch[1] };
+      }
+      const sheetMatch = path.match(/\/spreadsheets(?:\/u\/\d+)?\/d\/([^/?#]+)/);
+      if (sheetMatch?.[1]) {
+        return { isGoogleDrive: true as const, itemType: 'sheet' as const, itemId: sheetMatch[1] };
+      }
+      const slideMatch = path.match(/\/presentation(?:\/u\/\d+)?\/d\/([^/?#]+)/);
+      if (slideMatch?.[1]) {
+        return { isGoogleDrive: true as const, itemType: 'slide' as const, itemId: slideMatch[1] };
+      }
+      const formMatch = path.match(/\/forms(?:\/u\/\d+)?\/d\/([^/?#]+)/);
+      if (formMatch?.[1]) {
+        return { isGoogleDrive: true as const, itemType: 'form' as const, itemId: formMatch[1] };
+      }
+      return { isGoogleDrive: true as const, itemType: 'drive' as const, itemId: '' };
+    } catch {
+      return { isGoogleDrive: false as const, itemType: 'external' as const, itemId: '' };
+    }
+  };
+  const inferDriveItemNameFromUrl = (url: string) => {
+    const meta = getDriveLinkMeta(url);
+    if (!meta.isGoogleDrive) return 'Shared link';
+    if (meta.itemType === 'folder') return 'Google Drive folder';
+    if (meta.itemType === 'doc') return 'Google Doc';
+    if (meta.itemType === 'sheet') return 'Google Sheet';
+    if (meta.itemType === 'slide') return 'Google Slides';
+    if (meta.itemType === 'form') return 'Google Form';
+    if (meta.itemType === 'file') return 'Google Drive file';
+    return 'Google Drive item';
+  };
+  const sanitizeLinkDisplayName = (name: string, url: string) => {
+    const raw = String(name || '').trim();
+    if (!raw) return inferDriveItemNameFromUrl(url);
+    // Avoid showing id-like placeholders such as "1" as the visible title.
+    if (/^[0-9]{1,4}$/.test(raw)) return inferDriveItemNameFromUrl(url);
+    if (/^[A-Za-z0-9_-]{16,}$/.test(raw)) return inferDriveItemNameFromUrl(url);
+    return raw;
+  };
+  const getLinkSubLabel = (url: string) => {
+    const meta = getDriveLinkMeta(url);
+    if (!meta.isGoogleDrive) return 'External link';
+    if (meta.itemType === 'folder') return 'Google Drive Folder';
+    if (meta.itemType === 'doc') return 'Google Docs';
+    if (meta.itemType === 'sheet') return 'Google Sheets';
+    if (meta.itemType === 'slide') return 'Google Slides';
+    if (meta.itemType === 'form') return 'Google Forms';
+    return 'Google Drive';
   };
   const formatFileSize = (bytes?: number | string) => {
     if (bytes === undefined) return '';
@@ -1009,6 +1158,8 @@ export default function TaskDetail() {
   const isLinkOnlyFile = (file: (typeof taskState)['files'][number]) => {
     return String(file.mime || '').toLowerCase() === 'link';
   };
+  const isGoogleDriveLinkFile = (file: (typeof taskState)['files'][number]) =>
+    Boolean(file.url && getDriveLinkMeta(file.url).isGoogleDrive);
   const shouldUseLinkIcon = (file: (typeof taskState)['files'][number]) => {
     if (!file.url) return false;
     if (isLinkOnlyFile(file)) return true;
@@ -1030,7 +1181,7 @@ export default function TaskDetail() {
   };
   const toOutputFile = (file: FinalDeliverableFile, index: number) => ({
     id: file.id || `final-file-${index}`,
-    name: file.name,
+    name: file.name || inferDriveItemNameFromUrl(file.url || ''),
     url: file.url,
     type: 'output' as const,
     uploadedAt: file.uploadedAt,
@@ -1072,7 +1223,7 @@ export default function TaskDetail() {
 
   const ensureWritableTask = () => {
     if (isViewOnlyTask || !hasFullTaskAccess) {
-      toast.error('View-only mode enabled for this task.');
+      toast.error('Action unavailable for this task.');
       return false;
     }
     return true;
@@ -1327,7 +1478,7 @@ export default function TaskDetail() {
   ) => {
     if (!content.trim() || !taskState) return;
     if (!canComment) {
-      toast.error('View-only mode: commenting is disabled.');
+      toast.error('Comments are disabled for this task.');
       return;
     }
     const trimmed = content.trim();
@@ -1416,6 +1567,7 @@ export default function TaskDetail() {
   };
 
   const handleStatusChange = (status: TaskStatus) => {
+    if (status === getStatusSelectValue(taskState?.status)) return;
     const isCompletion = status === 'completed';
     recordChanges(
       [
@@ -1429,7 +1581,7 @@ export default function TaskDetail() {
       ],
       { status }
     );
-    setNewStatus('');
+    setNewStatus(status);
   };
 
   const handleAcceptTask = async () => {
@@ -1512,16 +1664,23 @@ export default function TaskDetail() {
     if (!taskState) return;
     if (!user) return;
     if (!ensureWritableTask()) return;
+    const reason = emergencyDecisionReason.trim();
+    if (!reason) {
+      toast.error('Add a reason before submitting emergency decision.');
+      return;
+    }
     setIsEmergencyUpdating(true);
     const now = new Date();
     const prevStatus = emergencyStatus ?? 'pending';
+    const decisionLabel = decision === 'approved' ? 'Approved' : 'Rejected';
+    const note = `Emergency ${decisionLabel.toLowerCase()} by ${user.name || 'Designer'}: ${reason}`;
     const entry: TaskChange = {
       id: `ch-${Date.now()}-0`,
       type: 'status',
       field: 'emergency_approval',
       oldValue: prevStatus,
-      newValue: decision === 'approved' ? 'Approved' : 'Rejected',
-      note: `Emergency ${decision} by ${user.name || 'Designer'}`,
+      newValue: decisionLabel,
+      note,
       userId: user.id,
       userName: user.name || 'Designer',
       userRole: user.role || 'designer',
@@ -1546,34 +1705,56 @@ export default function TaskDetail() {
 
     try {
       if (apiUrl) {
-        const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}`, {
-          method: 'PATCH',
+        const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/changes`, {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(apiUpdates),
+          body: JSON.stringify({
+            updates: apiUpdates,
+            changes: [
+              {
+                type: entry.type,
+                field: entry.field,
+                oldValue: entry.oldValue,
+                newValue: entry.newValue,
+                note: entry.note,
+              },
+            ],
+            userId: user.id,
+            userName: user.name || '',
+            userRole: user.role || '',
+          }),
         });
         if (!response.ok) {
-          throw new Error('Failed to update emergency status');
+          let errorMessage = 'Failed to update emergency status';
+          try {
+            const errData = await response.json();
+            if (errData?.error) {
+              errorMessage = errData.error;
+            }
+          } catch {
+            // ignore parse errors
+          }
+          throw new Error(errorMessage);
         }
         const updated = await response.json();
-        const hydrated = hydrateTask({
-          ...updated,
-          changeHistory: nextTask.changeHistory,
-        });
+        const hydrated = hydrateTask(updated);
         setTaskState(hydrated);
         setChangeHistory(hydrated?.changeHistory ?? []);
+        setChangeCount(hydrated?.changeCount ?? changeCount + 1);
+        setApprovalStatus(hydrated?.approvalStatus);
         persistTask(hydrated);
       } else {
         setTaskState(nextTask);
         setChangeHistory(nextTask.changeHistory);
+        setChangeCount((prev) => prev + 1);
         persistTask(nextTask);
-      }
-
-      if (taskState.requesterId) {
-        pushScheduleNotification(
-          taskState.requesterId,
-          taskState.id,
-          `Emergency request ${decision} for "${taskState.title}".`
-        );
+        if (taskState.requesterId) {
+          pushScheduleNotification(
+            taskState.requesterId,
+            taskState.id,
+            `Emergency request ${decision} for "${taskState.title}". Reason: ${reason}`
+          );
+        }
       }
 
       toast.success(
@@ -1581,8 +1762,13 @@ export default function TaskDetail() {
           ? 'Emergency request approved.'
           : 'Emergency request rejected.'
       );
+      setEmergencyDecisionReason('');
     } catch (error) {
-      toast.error('Failed to update emergency status.');
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to update emergency status.';
+      toast.error(message);
     } finally {
       setIsEmergencyUpdating(false);
     }
@@ -1717,6 +1903,10 @@ export default function TaskDetail() {
   };
 
   const handleRemoveFile = (fileId: string, fileName: string) => {
+    if (!canRemoveFiles) {
+      toast.error('Only designers can remove files.');
+      return;
+    }
     if (approvalLockedForStaff) {
       toast.message('Approval pending. Changes are locked.');
       return;
@@ -1861,12 +2051,13 @@ export default function TaskDetail() {
         } else if (hasFailure) {
           toast.error('File upload failed');
         } else if (uploadedFiles.length > 0) {
+          const noteForUpload = finalVersionNote.trim();
           const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/final-deliverables`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               files: uploadedFiles,
-              note: finalVersionNote.trim(),
+              note: noteForUpload,
             }),
           });
           const data = await response.json().catch(() => ({}));
@@ -1880,7 +2071,9 @@ export default function TaskDetail() {
           if (hydrated?.finalDeliverableVersions?.length) {
             setSelectedFinalVersionId(hydrated.finalDeliverableVersions[0].id);
           }
-          setFinalVersionNote('');
+          setFinalVersionNote((current) =>
+            current.trim() === noteForUpload ? '' : current
+          );
           toast.success('Final files uploaded.');
         }
       }
@@ -1940,6 +2133,43 @@ export default function TaskDetail() {
     setShowFinalUploadList(true);
   };
 
+  const handleUpdateFinalVersionNote = async () => {
+    if (!ensureWritableTask()) return;
+    if (!taskState || !apiUrl) return;
+    const versionId = String(activeFinalVersion?.id || '');
+    if (!versionId) {
+      toast.error('No final version selected.');
+      return;
+    }
+    const nextNote = finalVersionNote.trim();
+    if (nextNote === currentSelectedVersionNote) {
+      toast.message('No note changes to update.');
+      return;
+    }
+    setIsUpdatingFinalVersionNote(true);
+    try {
+      const response = await authFetch(
+        `${apiUrl}/api/tasks/${taskState.id}/final-deliverables/${versionId}/note`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: nextNote }),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update version note');
+      }
+      const hydrated = hydrateTask(data);
+      setTaskState(hydrated);
+      toast.success('Version note updated.');
+    } catch (error) {
+      toast.error('Failed to update version note.');
+    } finally {
+      setIsUpdatingFinalVersionNote(false);
+    }
+  };
+
   const handleAddFinalLink = async () => {
     if (!ensureWritableTask()) return;
     if (!finalLinkUrl.trim()) {
@@ -1963,12 +2193,24 @@ export default function TaskDetail() {
     }
     let inferredName = finalLinkName.trim();
     if (!inferredName) {
-      try {
-        const parsed = new URL(trimmedUrl);
-        const lastSegment = parsed.pathname.split('/').filter(Boolean).pop();
-        inferredName = lastSegment ? decodeURIComponent(lastSegment) : 'Shared file';
-      } catch {
-        inferredName = 'Shared file';
+      inferredName = inferDriveItemNameFromUrl(trimmedUrl);
+      const driveMeta = getDriveLinkMeta(trimmedUrl);
+      if (driveMeta.itemId && apiUrl) {
+        try {
+          const metaResponse = await authFetch(`${apiUrl}/api/files/metadata`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileId: driveMeta.itemId }),
+          });
+          if (metaResponse.ok) {
+            const metaData = await metaResponse.json();
+            if (typeof metaData?.name === 'string' && metaData.name.trim()) {
+              inferredName = metaData.name.trim();
+            }
+          }
+        } catch {
+          // keep inferred fallback when metadata cannot be resolved
+        }
       }
     }
 
@@ -2361,12 +2603,6 @@ export default function TaskDetail() {
               </span>
               Changes: {changeCount}
             </Badge>
-            {isViewOnlyTask && (
-              <Badge variant="secondary" className={badgeGlassClass}>
-                <Eye className="mr-1.5 h-3 w-3" />
-                View Only
-              </Badge>
-            )}
             {approvalStatus && (
               <Badge
                 variant={
@@ -2585,7 +2821,7 @@ export default function TaskDetail() {
                   </Select>
                   <Button
                     onClick={() => newStatus && handleStatusChange(newStatus)}
-                    disabled={!newStatus}
+                    disabled={!newStatus || newStatus === currentStatusSelection}
                   >
                     Update
                   </Button>
@@ -2664,7 +2900,7 @@ export default function TaskDetail() {
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          {canEditTask && (
+                          {canRemoveFiles && (
                             <Button
                               variant="ghost"
                               size="icon-sm"
@@ -2724,39 +2960,64 @@ export default function TaskDetail() {
                         <SelectContent>
                           {sortedFinalDeliverableVersions.map((version) => (
                             <SelectItem key={version.id} value={version.id}>
-                              {getFinalVersionLabel(version)} · {format(version.uploadedAt, 'MMM d, yyyy')}
+                              {getFinalVersionLabel(version)}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  {activeFinalVersion?.note && (
-                    <p className="mb-3 text-xs text-muted-foreground">
-                      {activeFinalVersion.note}
-                    </p>
+                  {activeFinalVersionNote && (
+                    <div className="mb-3 rounded-lg border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 px-3 py-2 dark:border-border/70 dark:bg-card/70">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Version note
+                      </p>
+                      <p className="mt-1 text-sm text-foreground/90 dark:text-slate-200">
+                        {activeFinalVersionNote}
+                      </p>
+                    </div>
                   )}
                   <div className="space-y-2">
                     {finalDeliverableFiles.map((file, index) => {
                       const displayFile = toOutputFile(file, index);
+                      const isLinkCard = isLinkOnlyFile(displayFile) && isGoogleDriveLinkFile(displayFile);
+                      const displayName = isLinkCard
+                        ? sanitizeLinkDisplayName(displayFile.name, displayFile.url || '')
+                        : toTitleCaseFileName(displayFile.name);
                       return (
                         <div key={displayFile.id} className={fileRowClass}>
-                          <div className="flex min-w-0 items-center gap-3">
-                            {renderFilePreview(displayFile)}
-                            <div className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-medium">
-                                {toTitleCaseFileName(displayFile.name)}
-                              </span>
-                              <span className="mt-0.5 block text-xs text-muted-foreground">
-                                {(() => {
-                                  const sizeLabel = formatFileSize(displayFile.size);
-                                  return sizeLabel || '';
-                                })()}
-                              </span>
+                          {isLinkCard ? (
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#CFDBF8]/65 bg-gradient-to-br from-[#EEF4FF]/90 to-[#DCE8FF]/75 dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-800/90 dark:to-slate-700/70">
+                                <Folder className="h-5 w-5 text-[#4A5EA1] dark:text-slate-200" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-semibold text-foreground">
+                                  {displayName}
+                                </span>
+                                <span className="mt-0.5 block text-xs text-muted-foreground">
+                                  {getLinkSubLabel(displayFile.url || '')}
+                                </span>
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="flex min-w-0 items-center gap-3">
+                              {renderFilePreview(displayFile)}
+                              <div className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium">
+                                  {displayName}
+                                </span>
+                                <span className="mt-0.5 block text-xs text-muted-foreground">
+                                  {(() => {
+                                    const sizeLabel = formatFileSize(displayFile.size);
+                                    return sizeLabel || '';
+                                  })()}
+                                </span>
+                              </div>
+                            </div>
+                          )}
                           <div className="flex shrink-0 items-center gap-2">
-                            {canEditTask && (
+                            {canRemoveFiles && (
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
@@ -2806,6 +3067,14 @@ export default function TaskDetail() {
                         ? `Last updated ${format(new Date(latestFinalUploadAt), 'MMM d, yyyy')}.`
                         : 'Designer has shared final files. Please review the files above.'}
                     </p>
+                    {activeFinalVersionNote && (
+                      <div className="mt-3 rounded-md border border-[#D9E6FF]/60 bg-white/75 px-3 py-2 text-sm text-foreground/90 dark:border-border/70 dark:bg-card/75 dark:text-slate-200">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          Version note:
+                        </span>{' '}
+                        {activeFinalVersionNote}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-border p-4">
@@ -2860,8 +3129,24 @@ export default function TaskDetail() {
                           rows={2}
                           className="mt-2 bg-white/90 dark:bg-card/90 dark:border-border dark:text-slate-100 dark:placeholder:text-slate-400"
                           placeholder="Summarize changes in this version..."
-                          disabled={isUploadingFinal}
                         />
+                        <div className="mt-2 flex justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleUpdateFinalVersionNote}
+                            disabled={
+                              isUploadingFinal ||
+                              isUpdatingFinalVersionNote ||
+                              !hasFinalDeliverables ||
+                              !activeFinalVersion?.id ||
+                              !isFinalVersionNoteDirty
+                            }
+                            className="h-8 rounded-full px-4 text-xs"
+                          >
+                            {isUpdatingFinalVersionNote ? 'Updating...' : 'Update note'}
+                          </Button>
+                        </div>
                       </div>
                       <input
                         type="file"
@@ -2960,7 +3245,7 @@ export default function TaskDetail() {
                         </p>
                         <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1.6fr_auto]">
                           <Input
-                            placeholder="File name"
+                            placeholder="Drive item name (optional)"
                             value={finalLinkName}
                             onChange={(event) => setFinalLinkName(event.target.value)}
                             className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4 dark:border-border dark:bg-card/95 dark:text-slate-100 dark:placeholder:text-slate-400"
@@ -3020,11 +3305,7 @@ export default function TaskDetail() {
 
               <div className="flex gap-3">
                 <Textarea
-                  placeholder={
-                    canComment
-                      ? getMentionPlaceholder(user?.role)
-                      : 'View-only access enabled for this task.'
-                  }
+                  placeholder={canComment ? getMentionPlaceholder(user?.role) : ''}
                   value={newComment}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -3059,11 +3340,6 @@ export default function TaskDetail() {
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
-              {isViewOnlyTask && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  View-only mode: comments are disabled for this task.
-                </p>
-              )}
               {Object.keys(typingUsers).length > 0 && (
                 <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/80 px-3 py-1 text-[11px] font-semibold text-muted-foreground">
                   <span>
@@ -3267,23 +3543,38 @@ export default function TaskDetail() {
                     {format(taskState.emergencyApprovedAt, 'MMM d, yyyy')}
                   </p>
                 )}
+                {latestEmergencyDecisionNote && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Reason: {latestEmergencyDecisionNote}
+                  </p>
+                )}
                 {canDesignerActions && emergencyStatus === 'pending' && (
-                  <div className="mt-4 flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleEmergencyDecision('approved')}
+                  <div className="mt-4 space-y-2">
+                    <Textarea
+                      value={emergencyDecisionReason}
+                      onChange={(event) => setEmergencyDecisionReason(event.target.value)}
+                      rows={2}
+                      placeholder="Reason for approve/reject (required)"
+                      className="select-text"
                       disabled={isEmergencyUpdating}
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEmergencyDecision('rejected')}
-                      disabled={isEmergencyUpdating}
-                    >
-                      Reject
-                    </Button>
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleEmergencyDecision('approved')}
+                        disabled={isEmergencyUpdating || !emergencyDecisionReason.trim()}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEmergencyDecision('rejected')}
+                        disabled={isEmergencyUpdating || !emergencyDecisionReason.trim()}
+                      >
+                        Reject
+                      </Button>
+                    </div>
                   </div>
                 )}
 

@@ -9,13 +9,11 @@ import { initSocket } from './socket.js';
 import { attachClientMeta } from './middleware/clientMeta.js';
 import { requireAuth } from './middleware/auth.js';
 import { auditWriteActions } from './middleware/audit.js';
+import { bootstrapDemoUsers } from './lib/bootstrapDemoUsers.js';
 
 // Load environment variables (always resolve to backend/.env)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '.env') });
-
-// Mandatory Database Connection
-connectDB();
 
 const app = express();
 const server = http.createServer(app);
@@ -71,10 +69,21 @@ app.get('/', (req, res) => {
 });
 
 // Start Server
-server.listen(port, "0.0.0.0", () => {
-  console.log(`Antigravity API listening on port ${port}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+const startServer = async () => {
+  try {
+    await connectDB();
+    await bootstrapDemoUsers();
+    server.listen(port, "0.0.0.0", () => {
+      console.log(`Antigravity API listening on port ${port}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  } catch (error) {
+    console.error("Server startup failed:", error?.message || error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received');

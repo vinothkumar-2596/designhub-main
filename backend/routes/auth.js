@@ -84,6 +84,68 @@ const normalizeGoogleRole = (role) => {
   return normalized;
 };
 
+const normalizeSignupRole = (role) => {
+  const normalized = String(role || "").trim().toLowerCase();
+  const allowedRoles = new Set(["staff", "designer", "treasurer"]);
+  return allowedRoles.has(normalized) ? normalized : "staff";
+};
+
+const normalizeLoopbackHost = (host) => {
+  const value = String(host || "").toLowerCase();
+  if (value === "127.0.0.1" || value === "::1" || value === "[::1]") {
+    return "localhost";
+  }
+  return value;
+};
+
+const parseOrigin = (value) => {
+  try {
+    const parsed = new URL(String(value || ""));
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+};
+
+const getFrontendOrigin = () => {
+  const base = process.env.FRONTEND_URL || "http://localhost:8080";
+  return parseOrigin(base) || "http://localhost:8080";
+};
+
+const normalizeRequestedFrontendOrigin = (requestedOrigin) => {
+  const fallback = getFrontendOrigin();
+  const requested = parseOrigin(requestedOrigin);
+  if (!requested) return fallback;
+
+  const configuredOrigins = new Set([fallback]);
+  const extraOrigins = String(process.env.FRONTEND_ORIGINS || "")
+    .split(",")
+    .map((entry) => parseOrigin(entry.trim()))
+    .filter(Boolean);
+  for (const origin of extraOrigins) {
+    configuredOrigins.add(origin);
+  }
+  if (configuredOrigins.has(requested)) {
+    return requested;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const requestedUrl = new URL(requested);
+      if (normalizeLoopbackHost(requestedUrl.hostname) === "localhost") {
+        return requested;
+      }
+    } catch {
+      // ignore invalid request value
+    }
+  }
+
+  return fallback;
+};
+
 const buildResetUrl = (token) => {
   const base =
     process.env.RESET_PASSWORD_URL ||
@@ -291,7 +353,7 @@ router.post("/refresh", authLimiter, async (req, res) => {
   }
 });
 
-router.post("/signup", requireRole(["admin"]), async (req, res) => {
+router.post("/signup", authLimiter, async (req, res) => {
   try {
     const { email, password, role, name } = req.body;
 
@@ -299,7 +361,7 @@ router.post("/signup", requireRole(["admin"]), async (req, res) => {
       return res.status(400).json({ error: "Email and password are required." });
     }
 
-    const normalizedRole = normalizeRole(role);
+    const normalizedRole = normalizeSignupRole(role);
     const existing = await User.findOne({ email: email.toLowerCase().trim() });
     if (existing) {
       return res.status(409).json({ error: "Email already exists." });
@@ -466,8 +528,9 @@ router.post("/password/reset", async (req, res) => {
 router.get("/google/start", (req, res) => {
   try {
     const role = normalizeGoogleRole(req.query.role);
+    const frontendOrigin = normalizeRequestedFrontendOrigin(req.query.origin);
     const stateToken = jwt.sign(
-      { role, purpose: "google" },
+      { role, purpose: "google", frontendOrigin },
       getJwtSecret(),
       { expiresIn: "10m" }
     );
@@ -572,10 +635,11 @@ router.get("/google/callback", async (req, res) => {
       userAgent: req.userAgent || "",
       meta: { email: normalizedEmail, provider: "google" }
     });
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:8080";
-    const redirectUrl = new URL("/login", frontendUrl);
+    const frontendOrigin = normalizeRequestedFrontendOrigin(statePayload.frontendOrigin);
+    const redirectUrl = new URL("/login", frontendOrigin);
     redirectUrl.searchParams.set("token", token);
     redirectUrl.searchParams.set("provider", "google");
+    redirectUrl.searchParams.set("openerOrigin", frontendOrigin);
     res.redirect(redirectUrl.toString());
   } catch (error) {
     res.status(500).json({ error: "Google OAuth login failed." });
