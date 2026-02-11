@@ -382,7 +382,7 @@ export default function DesignerAvailability() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="rounded-2xl border border-[#D9E6FF] bg-white/70 backdrop-blur-xl p-6 shadow-card dark:border-slate-700/60 dark:bg-slate-900/60">
+        <div className="rounded-2xl border border-[#D9E6FF] bg-white/70 backdrop-blur-xl p-6 shadow-none dark:border-slate-700/60 dark:bg-slate-900/60">
           <div className="availability-top">
             <div>
               <p className="availability-top__kicker dark:text-slate-400">Availability</p>
@@ -392,7 +392,7 @@ export default function DesignerAvailability() {
               </p>
             </div>
             <div className="availability-top__actions">
-              <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/80">
+              <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-none dark:border-slate-700/60 dark:bg-slate-900/80">
                 <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
                 <input
                   value={query}

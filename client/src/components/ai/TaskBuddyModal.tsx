@@ -199,6 +199,10 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to get response';
             const lowerMessage = message.toLowerCase();
+            const isRateLimited =
+                lowerMessage.includes('quota') ||
+                lowerMessage.includes('rate limit') ||
+                lowerMessage.includes('1 minute');
             const isServiceUnavailable =
                 lowerMessage.includes('temporarily unavailable') ||
                 lowerMessage.includes('contact admin') ||
@@ -207,12 +211,12 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             if (!isServiceUnavailable) {
                 toast.error(message);
             }
-            if (message.toLowerCase().includes('quota')) {
+            if (isRateLimited) {
                 setQuotaBlocked(true);
                 const quotaMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
-                    content: "Usage limit exceeded. Draft pending—click Send to retry.",
+                    content: 'Rate limit reached. Please retry in 60 seconds.',
                     timestamp: new Date()
                 };
                 setMessages(prev => [...prev, quotaMessage]);
@@ -386,7 +390,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         "Draft a design request for a modern office branding",
         "Create a task for website homepage redesign",
         "Need a social media campaign graphic request",
-        "Write a brief for a new product packaging design"
+        "Create an event LED backdrop design request"
     ];
 
     return (
@@ -512,7 +516,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                         onClick={handleVoiceInput}
                                         size="icon"
                                         variant="ghost"
-                                        className={`h-10 w-10 rounded-full transition-all ${voiceState !== 'idle' ? 'bg-red-50 dark:bg-red-950/40 text-red-500 animate-pulse' : 'text-slate-400 dark:text-slate-500 hover:text-primary'}`}
+                                        className={`h-10 w-10 rounded-full transition-all ${voiceState !== 'idle' ? 'bg-red-50 dark:bg-red-950/40 text-red-500 animate-pulse' : 'text-slate-500 dark:text-slate-400 hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:hover:bg-slate-800/80 dark:hover:text-slate-100'}`}
                                         title="Enable wake word listening"
                                     >
                                         <Mic className="h-5 w-5" />
@@ -532,14 +536,6 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                 </div>
                             </div>
                         </div>
-                        <div className="ai-attach-hint">
-                            <button type="button" onClick={onOpenUploader} disabled={!onOpenUploader}>
-                                Attach content (Optional)
-                            </button>
-                            <small>
-                                Upload file to auto-fill draft automatically
-                            </small>
-                        </div>
                         <div className="text-center mt-3">
                             <p className="text-xs text-slate-400 dark:text-slate-500">
                                 This AI isn't used to train our models. Always verify critical details.
@@ -551,3 +547,4 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         </Dialog>
     );
 }
+

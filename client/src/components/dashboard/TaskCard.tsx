@@ -137,6 +137,7 @@ export function TaskCard({
       ? localStorage.getItem(viewedKey) === 'true'
       : false;
   const isHighlighted = Boolean(user) && !hasViewed;
+  const hasAssignAction = Boolean(showAssignDesignerButton && onAssignDesigner);
 
   const copyToClipboard = async (value: string) => {
     if (!value) return;
@@ -324,7 +325,7 @@ export function TaskCard({
         </div>
       </div>
 
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-4 border-t border-slate-50 dark:border-border">
+      <div className="mt-auto flex flex-col gap-3 pt-4 border-t border-slate-50 dark:border-border sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2">
         <div className="flex min-w-0 items-center gap-3">
           {task.files.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors dark:transition-none">
@@ -345,8 +346,13 @@ export function TaskCard({
           </div>
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2.5">
-          {showAssignDesignerButton && onAssignDesigner && (
+        <div
+          className={cn(
+            "w-full gap-2 lg:ml-auto lg:w-auto lg:shrink-0",
+            hasAssignAction ? "grid grid-cols-2" : "flex justify-start sm:justify-end"
+          )}
+        >
+          {hasAssignAction && (
             <Button
               type="button"
               variant="secondary"
@@ -357,7 +363,7 @@ export function TaskCard({
                   ? `Assigned to ${assignedDesignerLabel}`
                   : 'No designer assigned'
               }
-              className="h-9 whitespace-nowrap rounded-full px-4 text-sm font-medium leading-none text-secondary-foreground no-underline shadow-sm hover:text-secondary-foreground"
+              className="h-9 min-w-0 w-full justify-center whitespace-nowrap rounded-full px-2 text-sm font-medium leading-none text-secondary-foreground no-underline shadow-sm hover:text-secondary-foreground sm:px-3"
             >
               {hasAssignedDesigner ? 'Reassign' : 'Assign Designer'}
             </Button>
@@ -366,10 +372,13 @@ export function TaskCard({
             variant="outline"
             size="sm"
             asChild
-            className="h-9 whitespace-nowrap gap-1.5 rounded-full border border-[#D9E6FF] bg-[#F8FBFF] px-4 text-sm font-semibold leading-none text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white dark:transition-none group/btn"
+            className={cn(
+              "h-9 min-w-0 justify-center whitespace-nowrap gap-1.5 rounded-full border border-[#D9E6FF] bg-[#F8FBFF] px-2 text-sm font-semibold leading-none text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white dark:transition-none group/btn sm:px-3",
+              hasAssignAction ? "w-full" : "w-full sm:w-auto"
+            )}
           >
             <Link to={`/task/${taskId}`} state={{ task }}>
-              View Details
+              <span className="truncate">View Details</span>
               <ArrowRight className="h-3 w-3 transition-transform group-hover/btn:translate-x-0.5" />
             </Link>
           </Button>

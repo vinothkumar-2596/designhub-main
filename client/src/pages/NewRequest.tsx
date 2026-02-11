@@ -361,6 +361,22 @@ const createGmailComposeUrl = (to: string, subject: string, body: string) =>
   `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
     to
   )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+const INDIAN_MOBILE_REGEX = /^\+91[6-9]\d{9}$/;
+const INDIAN_PREFIX = '+91 ';
+const formatIndianPhoneInput = (value?: string) => {
+  const digitsOnly = String(value || '').replace(/\D/g, '');
+  const local = digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly;
+  const trimmed = local.slice(0, 10);
+  return `${INDIAN_PREFIX}${trimmed}`;
+};
+const normalizeIndianPhone = (value?: string) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits === '91') return '';
+  const local = digits.startsWith('91') ? digits.slice(2) : digits;
+  if (local.length !== 10) return '';
+  const normalized = `+91${local}`;
+  return INDIAN_MOBILE_REGEX.test(normalized) ? normalized : '';
+};
 
 function LinearProgressWithLabel(props: LinearProgressProps & { value: number }) {
   return (
@@ -399,7 +415,9 @@ export default function NewRequest() {
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [hasDeadlineInteracted, setHasDeadlineInteracted] = useState(false);
   const [isEmergency, setIsEmergency] = useState(false);
-  const [requesterPhone, setRequesterPhone] = useState(user?.phone || '');
+  const [requesterPhone, setRequesterPhone] = useState(
+    formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || '')
+  );
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
@@ -417,7 +435,7 @@ export default function NewRequest() {
       }
     }
     if (draft.whatsappNumbers && draft.whatsappNumbers.length > 0) {
-      setRequesterPhone(draft.whatsappNumbers.join(', '));
+      setRequesterPhone(formatIndianPhoneInput(draft.whatsappNumbers[0]));
     }
   };
   // Initialize from AI Buddy state if provided
@@ -519,7 +537,7 @@ export default function NewRequest() {
   }, []);
 
   useEffect(() => {
-    setRequesterPhone(user?.phone || '');
+    setRequesterPhone(formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || ''));
   }, [user]);
 
   useEffect(() => {
@@ -791,9 +809,13 @@ export default function NewRequest() {
 
     setIsSubmitting(true);
     let fallbackToMock = false;
-    const phoneInput = (requesterPhone.trim() || user?.phone || '').split(',').map(p => p.trim()).filter(Boolean);
-    const phoneValue = phoneInput[0] || '';
-    const secondaryPhones = phoneInput.slice(1);
+    const phoneValue =
+      normalizeIndianPhone(requesterPhone) || normalizeIndianPhone(user?.phone) || '';
+    if (requesterPhone.trim() && requesterPhone.trim() !== '+91' && !phoneValue) {
+      toast.error('Enter a valid Indian WhatsApp number (e.g., +919876543210).');
+      setIsSubmitting(false);
+      return;
+    }
     if (apiUrl) {
       try {
         const payload = {
@@ -810,7 +832,7 @@ export default function NewRequest() {
           requesterName: user?.name || '',
           requesterEmail: user?.email || '',
           requesterPhone: phoneValue || undefined,
-          secondaryPhones: secondaryPhones,
+          secondaryPhones: [],
           requesterDepartment: user?.department || '',
           designVersions: [],
           files: files.map((file) => ({
@@ -930,7 +952,7 @@ export default function NewRequest() {
         .replace(/\b\w/g, (char) => char.toUpperCase())
       : '';
     const deadlineLabel = deadline ? format(deadline, 'd MMMM yyyy') : '';
-    const phoneLabel = requesterPhone.trim();
+    const phoneLabel = normalizeIndianPhone(requesterPhone);
     const submittedOn = format(new Date(), 'd MMM yyyy, h:mm a');
 
     const hasPrimaryField =
@@ -1076,33 +1098,29 @@ export default function NewRequest() {
       <div className="max-w-3xl mx-auto space-y-6 pt-8">
         {/* Header */}
         <div className="animate-fade-in flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground premium-headline">New Design Request</h1>
-            <p className="text-muted-foreground mt-1 premium-body">
-              Submit a new design request to the team
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Request Workspace
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Attach screenshot / reference files in the email.
+            <h1 className="text-[2rem] leading-tight font-semibold tracking-tight text-foreground premium-headline">New Design Request</h1>
+            <p className="text-base text-muted-foreground premium-body">
+              Submit a new design request to the team
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative group">
-              <span className="pointer-events-none absolute -top-9 right-0 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 group-hover:-translate-y-0.5">
-                Email Design Request
-              </span>
-              <button
-                type="button"
-                onClick={handleEmailDesignRequest}
-                aria-label="Email Design Request"
-                className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
-              >
-                <Mail className="h-4 w-4" />
-              </button>
-            </div>
             <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} />
           </div>
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-end items-center gap-2">
+          <button
+            type="button"
+            onClick={handleEmailDesignRequest}
+            aria-label="Email Design Request"
+            className="group flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+            title="Email Design Request"
+          >
+            <Mail className="h-4 w-4" />
+          </button>
           <Button
             type="button"
             variant="ghost"
@@ -1309,15 +1327,15 @@ export default function NewRequest() {
                           '& .MuiPickersOutlinedInput-notchedOutline': {
                             borderColor: '#D9E6FF',
                           },
-                          '&:hover .MuiPickersOutlinedInput-notchedOutline': {
-                            borderColor: '#B7C8FF',
+                          '& .MuiPickersOutlinedInput-root:hover .MuiPickersOutlinedInput-notchedOutline': {
+                            borderColor: '#9FBCFF',
                           },
                           '& .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline':
                           {
-                            borderColor: '#B7C8FF',
+                            borderColor: '#9FBCFF',
                           },
                           '& .MuiPickersOutlinedInput-root.Mui-focused': {
-                            boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.18)',
+                            boxShadow: '0 0 0 3px rgba(159, 188, 255, 0.35)',
                           },
                           '& .MuiPickersInputBase-input': {
                             padding: '0 14px',
@@ -1355,14 +1373,26 @@ export default function NewRequest() {
               <Input
                 id="requester-phone"
                 type="tel"
-                placeholder="+18005551234"
+                inputMode="numeric"
+                maxLength={14}
+                placeholder="+91 9876543210"
                 value={requesterPhone}
-                onChange={(event) => setRequesterPhone(event.target.value)}
+                onChange={(event) => {
+                  setRequesterPhone(formatIndianPhoneInput(event.target.value));
+                }}
+                onFocus={() => {
+                  if (!requesterPhone.trim()) {
+                    setRequesterPhone(INDIAN_PREFIX);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Backspace' && requesterPhone.length <= 4) {
+                    event.preventDefault();
+                    setRequesterPhone(INDIAN_PREFIX);
+                  }
+                }}
                 className={`h-11 ${glassInputClass}`}
               />
-              <p className="text-xs text-muted-foreground">
-                Optional. Use commas for multiple numbers (e.g., +1234567890, +0987654321).
-              </p>
             </div>
 
           </div>

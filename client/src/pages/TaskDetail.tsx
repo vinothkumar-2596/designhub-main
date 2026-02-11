@@ -184,6 +184,14 @@ const resolveTaskCcEmails = (task?: typeof mockTasks[number]) => {
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 type UploadStatus = 'uploading' | 'done' | 'error';
 type UploadItem = { id: string; name: string; status: UploadStatus };
+type PendingFinalFile = {
+  name: string;
+  url: string;
+  size?: number;
+  mime?: string;
+  thumbnailUrl?: string;
+};
+const STAFF_EDIT_CHANGE_FIELDS = new Set(['description', 'staff_note', 'files']);
 
 const glassPanelClass =
   'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF]/35 ring-0 rounded-2xl shadow-none dark:bg-card dark:border-border/55 dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
@@ -241,8 +249,10 @@ export default function TaskDetail() {
   const [newFileType, setNewFileType] = useState<'input' | 'output'>('input');
   const [isUploadingFinal, setIsUploadingFinal] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null);
   const [finalUploadItems, setFinalUploadItems] = useState<UploadItem[]>([]);
   const [showFinalUploadList, setShowFinalUploadList] = useState(true);
+  const [pendingFinalFiles, setPendingFinalFiles] = useState<PendingFinalFile[]>([]);
   const [isEmergencyUpdating, setIsEmergencyUpdating] = useState(false);
   const [finalLinkName, setFinalLinkName] = useState('');
   const [finalLinkUrl, setFinalLinkUrl] = useState('');
@@ -253,6 +263,9 @@ export default function TaskDetail() {
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [isAcceptingTask, setIsAcceptingTask] = useState(false);
   const [emergencyDecisionReason, setEmergencyDecisionReason] = useState('');
+  const [showReferenceFileList, setShowReferenceFileList] = useState(true);
+  const [showFinalDeliverableList, setShowFinalDeliverableList] = useState(true);
+  const [isEditAttachmentDragging, setIsEditAttachmentDragging] = useState(false);
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const sizeFetchRef = useRef(new Set<string>());
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
@@ -273,12 +286,12 @@ export default function TaskDetail() {
     }, 0);
     return changeHistory.filter((entry) => {
       if (entry.userRole !== 'staff') return false;
-      if (entry.field === 'approval_status') return false;
-      if (entry.field === 'created') return false;
+      if (!STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))) return false;
       const time = new Date(entry.createdAt ?? 0).getTime();
       return latestFinalApprovalAt ? time > latestFinalApprovalAt : true;
     }).length;
   }, [changeHistory]);
+  const displayedChangeCount = user?.role === 'staff' ? staffChangeCount : changeCount;
   const approvalLockedForStaff = user?.role === 'staff' && approvalStatus === 'pending';
   const staffChangeLabel = staffChangeCount === 1 ? '1 change updated' : `${staffChangeCount} changes updated`;
   const canSendForApproval =
@@ -970,6 +983,7 @@ export default function TaskDetail() {
   const activeFinalVersionNote = String(activeFinalVersion?.note || '').trim();
   const finalDeliverableFiles = activeFinalVersion?.files ?? [];
   const hasFinalDeliverables = sortedFinalDeliverableVersions.length > 0;
+  const hasPendingFinalFiles = pendingFinalFiles.length > 0;
   const latestFinalUploadAt = useMemo(() => {
     if (sortedFinalDeliverableVersions.length === 0) return 0;
     const latest = sortedFinalDeliverableVersions[0];
@@ -978,7 +992,7 @@ export default function TaskDetail() {
   const canHandover =
     canDesignerActions &&
     normalizedTaskStatus !== 'completed' &&
-    hasFinalDeliverables &&
+    (hasFinalDeliverables || hasPendingFinalFiles) &&
     !isUploadingFinal;
   const currentSelectedVersionNote = activeFinalVersionNote;
   const isFinalVersionNoteDirty = finalVersionNote.trim() !== currentSelectedVersionNote;
@@ -1143,11 +1157,11 @@ export default function TaskDetail() {
   const getPreviewUrl = (file: (typeof taskState)['files'][number]) => {
     if (file.thumbnailUrl) return file.thumbnailUrl;
     if (!file.url) return '';
-    if (isImageFile(file.name)) return file.url;
     const driveId = getDriveFileId(file.url);
     if (driveId) {
-      return `https://drive.google.com/thumbnail?id=${driveId}&sz=w200-h200`;
+      return `https://drive.google.com/thumbnail?id=${driveId}&sz=w400`;
     }
+    if (isImageFile(file.name)) return file.url;
     return '';
   };
   const isDownloadableExtension = (fileName: string) => {
@@ -1175,9 +1189,68 @@ export default function TaskDetail() {
       return file.url;
     }
     if (driveId) {
-      return `https://drive.google.com/uc?export=download&id=${driveId}`;
+      return apiUrl
+        ? `${apiUrl}/api/files/download/${encodeURIComponent(driveId)}`
+        : `/api/files/download/${encodeURIComponent(driveId)}`;
     }
     return file.url;
+  };
+  const getDownloadFileNameFromHeaders = (response: Response, fallbackName: string) => {
+    const contentDisposition = response.headers.get('content-disposition') || '';
+    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+      try {
+        return decodeURIComponent(utf8Match[1]);
+      } catch {
+        return utf8Match[1];
+      }
+    }
+    const plainMatch = contentDisposition.match(/filename="([^"]+)"/i);
+    if (plainMatch?.[1]) {
+      return plainMatch[1];
+    }
+    return fallbackName;
+  };
+  const downloadFileViaApi = async (file: (typeof taskState)['files'][number]) => {
+    const fileLinkUrl = getFileActionUrl(file);
+    if (!fileLinkUrl || fileLinkUrl === '#') return;
+
+    const response = await authFetch(fileLinkUrl);
+    if (!response.ok) {
+      throw new Error('Download failed');
+    }
+
+    const blob = await response.blob();
+    const filename = getDownloadFileNameFromHeaders(response, file.name || 'download');
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(blobUrl);
+  };
+  const handleFileAction = async (file: (typeof taskState)['files'][number]) => {
+    const fileLinkUrl = getFileActionUrl(file);
+    if (!fileLinkUrl || fileLinkUrl === '#') return;
+
+    if (shouldUseLinkIcon(file)) {
+      window.open(fileLinkUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    const driveId = getDriveFileId(file.url || '');
+    if (driveId) {
+      try {
+        await downloadFileViaApi(file);
+      } catch {
+        toast.error('Unable to download file right now. Please try again.');
+      }
+      return;
+    }
+
+    window.open(fileLinkUrl, '_blank', 'noopener,noreferrer');
   };
   const toOutputFile = (file: FinalDeliverableFile, index: number) => ({
     id: file.id || `final-file-${index}`,
@@ -1195,13 +1268,11 @@ export default function TaskDetail() {
     const previewUrl = getPreviewUrl(file);
     return (
       <div className="relative h-9 w-12 overflow-hidden rounded-[6px] border border-transparent bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.6),_transparent_55%),linear-gradient(160deg,_rgba(236,244,255,0.85),_rgba(198,220,255,0.45))] backdrop-blur-xl dark:border-slate-700/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(100,116,139,0.35),_transparent_55%),linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.75))] dark:shadow-none">
-        {!previewUrl && (
-          <div className="absolute inset-0 rounded-[6px] border border-transparent bg-gradient-to-br from-white/85 via-[#EEF4FF]/75 to-[#D5E5FF]/65 backdrop-blur-sm dark:bg-gradient-to-br dark:from-slate-800/95 dark:via-slate-700/90 dark:to-slate-700/70 dark:border-slate-700/60">
-            <div className="absolute left-2 top-2 h-1 w-6 rounded-full bg-[#D6E2FA]/70 dark:bg-slate-400/55" />
-            <div className="absolute left-2 top-4 h-1 w-8 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
-            <div className="absolute left-2 top-6 h-1 w-5 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
-          </div>
-        )}
+        <div className="absolute inset-0 rounded-[6px] border border-transparent bg-gradient-to-br from-white/85 via-[#EEF4FF]/75 to-[#D5E5FF]/65 backdrop-blur-sm dark:bg-gradient-to-br dark:from-slate-800/95 dark:via-slate-700/90 dark:to-slate-700/70 dark:border-slate-700/60">
+          <div className="absolute left-2 top-2 h-1 w-6 rounded-full bg-[#D6E2FA]/70 dark:bg-slate-400/55" />
+          <div className="absolute left-2 top-4 h-1 w-8 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
+          <div className="absolute left-2 top-6 h-1 w-5 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
+        </div>
         {previewUrl && (
           <img
             src={previewUrl}
@@ -1637,9 +1708,44 @@ export default function TaskDetail() {
   const handleHandoverTask = async () => {
     if (!taskState || normalizedTaskStatus === 'completed') return;
     if (!ensureWritableTask()) return;
-    if (!hasFinalDeliverables) {
+    if (!hasFinalDeliverables && !hasPendingFinalFiles) {
       toast.message('Upload final files before handing over the task.');
       return;
+    }
+    if (!apiUrl) {
+      toast.error('Submit requires backend connection.');
+      return;
+    }
+    if (hasPendingFinalFiles) {
+      try {
+        const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/final-deliverables`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            files: pendingFinalFiles,
+            note: finalVersionNote.trim(),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to create final deliverable version.');
+        }
+        const hydrated = hydrateTask(data);
+        setTaskState(hydrated);
+        if (hydrated?.finalDeliverableVersions?.length) {
+          setSelectedFinalVersionId(hydrated.finalDeliverableVersions[0].id);
+        }
+        setPendingFinalFiles([]);
+        setFinalUploadItems([]);
+        setFinalVersionNote('');
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : 'Failed to create final deliverable version.';
+        toast.error(message);
+        return;
+      }
     }
     await recordChanges(
       [
@@ -1976,8 +2082,6 @@ export default function TaskDetail() {
     }> = [];
     let hasFailure = false;
     let needsDriveAuth = false;
-    let saveFailure = false;
-    let saveFailureMessage = '';
     try {
       for (let index = 0; index < uploads.length; index += 1) {
         const file = uploads[index];
@@ -2051,39 +2155,13 @@ export default function TaskDetail() {
         } else if (hasFailure) {
           toast.error('File upload failed');
         } else if (uploadedFiles.length > 0) {
-          const noteForUpload = finalVersionNote.trim();
-          const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/final-deliverables`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              files: uploadedFiles,
-              note: noteForUpload,
-            }),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            saveFailure = true;
-            saveFailureMessage = data?.error || 'Failed to save final deliverables';
-            throw new Error(saveFailureMessage);
-          }
-          const hydrated = hydrateTask(data);
-          setTaskState(hydrated);
-          if (hydrated?.finalDeliverableVersions?.length) {
-            setSelectedFinalVersionId(hydrated.finalDeliverableVersions[0].id);
-          }
-          setFinalVersionNote((current) =>
-            current.trim() === noteForUpload ? '' : current
-          );
-          toast.success('Final files uploaded.');
+          setPendingFinalFiles((prev) => [...prev, ...uploadedFiles]);
+          toast.success('Files staged. Click Submit to create the next version.');
         }
       }
     } catch (error: any) {
       if (error?.name === 'AbortError') {
         toast.message('Upload cancelled.');
-      } else if (saveFailure) {
-        toast.error('Final files uploaded, but not linked to the task.', {
-          description: saveFailureMessage || 'Please retry or contact support.',
-        });
       } else {
         const errorMsg = error.message || 'Upload failed';
         if (errorMsg.includes('Drive OAuth not connected')) {
@@ -2130,6 +2208,7 @@ export default function TaskDetail() {
 
   const clearFinalUploadItems = () => {
     setFinalUploadItems([]);
+    setPendingFinalFiles([]);
     setShowFinalUploadList(true);
   };
 
@@ -2216,35 +2295,28 @@ export default function TaskDetail() {
 
     setIsAddingFinalLink(true);
     try {
-      const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/final-deliverables`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          files: [
-            {
-              name: inferredName,
-              url: trimmedUrl,
-              mime: 'link',
-            },
-          ],
-          note: finalVersionNote.trim(),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to save final deliverables');
-      }
-      const hydrated = hydrateTask(data);
-      setTaskState(hydrated);
-      if (hydrated?.finalDeliverableVersions?.length) {
-        setSelectedFinalVersionId(hydrated.finalDeliverableVersions[0].id);
-      }
-      setFinalVersionNote('');
+      setPendingFinalFiles((prev) => [
+        ...prev,
+        {
+          name: inferredName,
+          url: trimmedUrl,
+          mime: 'link',
+        },
+      ]);
+      setFinalUploadItems((prev) => [
+        ...prev,
+        {
+          id: `final-link-${Date.now()}`,
+          name: inferredName,
+          status: 'done',
+        },
+      ]);
+      setShowFinalUploadList(true);
       setFinalLinkName('');
       setFinalLinkUrl('');
-      toast.success('Final deliverable link added.');
+      toast.success('Link staged. Click Submit to create the next version.');
     } catch (error) {
-      toast.error('Failed to add final deliverable link.');
+      toast.error('Failed to stage final deliverable link.');
     } finally {
       setIsAddingFinalLink(false);
     }
@@ -2270,28 +2342,29 @@ export default function TaskDetail() {
     toast.message('Design version restored.');
   };
 
-  const handleEditAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files;
+  const uploadEditAttachments = async (selectedFiles: File[]) => {
     if (!selectedFiles || selectedFiles.length === 0) return;
+    if (!taskState) return;
     if (!ensureWritableTask()) {
-      e.target.value = '';
       return;
     }
     if (approvalLockedForStaff) {
       toast.message('Approval pending. Changes are locked.');
-      e.target.value = '';
       return;
     }
     if (!apiUrl) {
       toast.error('File upload requires the backend.');
-      e.target.value = '';
       return;
     }
 
     setIsUploadingAttachment(true);
     const uploads = Array.from(selectedFiles);
+    setAttachmentUploadProgress(0);
+    const uploadedTaskFiles: typeof taskState.files = [];
+    const changeEntries: ChangeInput[] = [];
     try {
-      for (const file of uploads) {
+      for (let index = 0; index < uploads.length; index += 1) {
+        const file = uploads[index];
         const formData = new FormData();
         formData.append('file', file);
         formData.append('taskTitle', taskState.title);
@@ -2313,19 +2386,22 @@ export default function TaskDetail() {
           uploadedAt: new Date(),
           uploadedBy: user?.id || '',
         };
-        recordChanges(
-          [
-            {
-              type: 'file_added',
-              field: 'files',
-              oldValue: '',
-              newValue: newFile.name,
-              note: 'Attachment uploaded',
-            },
-          ],
-          { files: [...taskState.files, newFile] }
+        uploadedTaskFiles.push(newFile);
+        setAttachmentUploadProgress(
+          Math.min(99, Math.round(((index + 1) / uploads.length) * 100))
         );
+        changeEntries.push({
+          type: 'file_added',
+          field: 'files',
+          oldValue: '',
+          newValue: newFile.name,
+          note: 'Attachment uploaded',
+        });
       }
+      if (uploadedTaskFiles.length > 0) {
+        await recordChanges(changeEntries, { files: [...taskState.files, ...uploadedTaskFiles] });
+      }
+      setAttachmentUploadProgress(100);
       toast.success('Attachments uploaded.');
     } catch (error: any) {
       const errorMsg = error.message || "Upload failed";
@@ -2353,8 +2429,36 @@ export default function TaskDetail() {
       }
     } finally {
       setIsUploadingAttachment(false);
-      e.target.value = '';
+      setAttachmentUploadProgress(null);
     }
+  };
+
+  const handleEditAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
+    if (selectedFiles.length === 0) return;
+    await uploadEditAttachments(selectedFiles);
+    e.target.value = '';
+  };
+
+  const handleEditAttachmentDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (approvalLockedForStaff || isUploadingAttachment) return;
+    event.dataTransfer.dropEffect = 'copy';
+    setIsEditAttachmentDragging(true);
+  };
+
+  const handleEditAttachmentDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsEditAttachmentDragging(false);
+  };
+
+  const handleEditAttachmentDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsEditAttachmentDragging(false);
+    if (approvalLockedForStaff || isUploadingAttachment) return;
+    const files = Array.from(event.dataTransfer.files || []);
+    if (files.length === 0) return;
+    await uploadEditAttachments(files);
   };
 
   const handleRequestDeadline = () => {
@@ -2601,7 +2705,7 @@ export default function TaskDetail() {
               <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
                 <Edit3 className="h-3 w-3" />
               </span>
-              Changes: {changeCount}
+              Changes: {displayedChangeCount}
             </Badge>
             {approvalStatus && (
               <Badge
@@ -2705,7 +2809,19 @@ export default function TaskDetail() {
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         Attachments (optional)
                       </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <div
+                        className={cn(
+                          'mt-2 rounded-lg border border-dashed px-3 py-3 transition-colors',
+                          isEditAttachmentDragging
+                            ? 'border-primary/75 bg-primary/8'
+                            : 'border-[#BFD1F4] bg-[#F6FAFF]/75 dark:border-slate-600/85 dark:bg-slate-900/45',
+                          (approvalLockedForStaff || isUploadingAttachment) && 'opacity-70'
+                        )}
+                        onDragOver={handleEditAttachmentDragOver}
+                        onDragLeave={handleEditAttachmentDragLeave}
+                        onDrop={handleEditAttachmentDrop}
+                      >
+                        <div className="flex flex-wrap items-center gap-3">
                         <input
                           type="file"
                           multiple
@@ -2718,11 +2834,14 @@ export default function TaskDetail() {
                           htmlFor="edit-attachment-upload"
                           className="inline-flex cursor-pointer items-center justify-center rounded-md border border-border bg-secondary px-3 py-2 text-xs font-medium text-foreground"
                         >
-                          {isUploadingAttachment ? 'Uploading...' : 'Select files'}
+                          {isUploadingAttachment
+                            ? `Uploading... ${attachmentUploadProgress ?? 0}%`
+                            : 'Select files'}
                         </label>
                         <span className="text-xs text-muted-foreground">
-                          Add reference files if needed.
+                          Add reference files if needed, or drag and drop here.
                         </span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -2740,7 +2859,7 @@ export default function TaskDetail() {
                         {isUploadingAttachment && staffChangeCount < 3 ? (
                           <span className="inline-flex items-center gap-2">
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            Saving...
+                            {`Saving... ${attachmentUploadProgress ?? 0}%`}
                           </span>
                         ) : (
                           'Save Updates'
@@ -2755,7 +2874,7 @@ export default function TaskDetail() {
                           {isUploadingAttachment ? (
                             <span className="inline-flex items-center gap-2">
                               <Loader2 className="h-4 w-4 animate-spin" />
-                              Sending...
+                              {`Sending... ${attachmentUploadProgress ?? 0}%`}
                             </span>
                           ) : (
                             'Send to Treasurer'
@@ -2876,73 +2995,88 @@ export default function TaskDetail() {
               {/* Input Files */}
               {inputFiles.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-3">
-                    Reference Files
-                  </h3>
-                  <div className="space-y-2">
-                    {inputFiles.map((file) => (
-                      <div
-                        key={file.id}
-                        className={fileRowClass}
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          {renderFilePreview(file)}
-                          <div className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">
-                              {toTitleCaseFileName(file.name)}
-                            </span>
-                            <span className="mt-0.5 block text-xs text-muted-foreground">
-                              {(() => {
-                                const sizeLabel = formatFileSize(file.size);
-                                return sizeLabel || '';
-                              })()}
-                            </span>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-medium text-muted-foreground">
+                      Reference Files
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setShowReferenceFileList((prev) => !prev)}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#D9E6FF] bg-white/85 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition hover:bg-[#F3F7FF] dark:border-border dark:bg-card/85 dark:hover:bg-muted/80"
+                      aria-expanded={showReferenceFileList}
+                      aria-label="Toggle reference files list"
+                    >
+                      <span>{inputFiles.length}</span>
+                      <ChevronDown
+                        className={cn(
+                          'h-3.5 w-3.5 transition-transform',
+                          showReferenceFileList ? 'rotate-180' : ''
+                        )}
+                      />
+                    </button>
+                  </div>
+                  {showReferenceFileList && (
+                    <div className="space-y-2">
+                      {inputFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className={fileRowClass}
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            {renderFilePreview(file)}
+                            <div className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium">
+                                {toTitleCaseFileName(file.name)}
+                              </span>
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                {(() => {
+                                  const sizeLabel = formatFileSize(file.size);
+                                  return sizeLabel || '';
+                                })()}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          {canRemoveFiles && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              disabled={approvalLockedForStaff || staffChangeLimitReached}
-                              className={fileActionButtonClass}
-                              onClick={() => handleRemoveFile(file.id, file.name)}
-                            >
-                              <Trash2 className="h-4 w-4 text-status-urgent" />
-                            </Button>
-                          )}
-                          {(() => {
-                            const fileLinkUrl = getFileActionUrl(file);
-                            return (
+                          <div className="flex shrink-0 items-center gap-2">
+                            {canRemoveFiles && (
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                disabled={!fileLinkUrl || fileLinkUrl === '#'}
+                                disabled={approvalLockedForStaff || staffChangeLimitReached}
                                 className={fileActionButtonClass}
-                                onClick={() => {
-                                  if (fileLinkUrl && fileLinkUrl !== '#') {
-                                    window.open(fileLinkUrl, '_blank', 'noopener,noreferrer');
-                                  }
-                                }}
+                                onClick={() => handleRemoveFile(file.id, file.name)}
                               >
-                                {shouldUseLinkIcon(file) ? (
-                                  <ExternalLink className="h-4 w-4" />
-                                ) : (
-                                  <Download className="h-4 w-4" />
-                                )}
+                                <Trash2 className="h-4 w-4 text-status-urgent" />
                               </Button>
-                            );
-                          })()}
+                            )}
+                            {(() => {
+                              const fileLinkUrl = getFileActionUrl(file);
+                              return (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  disabled={!fileLinkUrl || fileLinkUrl === '#'}
+                                  className={fileActionButtonClass}
+                                  onClick={() => handleFileAction(file)}
+                                >
+                                  {shouldUseLinkIcon(file) ? (
+                                    <ExternalLink className="h-4 w-4" />
+                                  ) : (
+                                    <Download className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              );
+                            })()}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Output Files */}
               {sortedFinalDeliverableVersions.length > 0 && (
-                <div className="mb-6">
+                <div className="mb-6 deliverables-highlight">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-status-completed" />
@@ -2965,96 +3099,110 @@ export default function TaskDetail() {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
-                  </div>
-                  {activeFinalVersionNote && (
-                    <div className="mb-3 rounded-lg border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 px-3 py-2 dark:border-border/70 dark:bg-card/70">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Version note
-                      </p>
-                      <p className="mt-1 text-sm text-foreground/90 dark:text-slate-200">
-                        {activeFinalVersionNote}
-                      </p>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {finalDeliverableFiles.map((file, index) => {
-                      const displayFile = toOutputFile(file, index);
-                      const isLinkCard = isLinkOnlyFile(displayFile) && isGoogleDriveLinkFile(displayFile);
-                      const displayName = isLinkCard
-                        ? sanitizeLinkDisplayName(displayFile.name, displayFile.url || '')
-                        : toTitleCaseFileName(displayFile.name);
-                      return (
-                        <div key={displayFile.id} className={fileRowClass}>
-                          {isLinkCard ? (
-                            <div className="flex min-w-0 items-center gap-3">
-                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#CFDBF8]/65 bg-gradient-to-br from-[#EEF4FF]/90 to-[#DCE8FF]/75 dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-800/90 dark:to-slate-700/70">
-                                <Folder className="h-5 w-5 text-[#4A5EA1] dark:text-slate-200" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-semibold text-foreground">
-                                  {displayName}
-                                </span>
-                                <span className="mt-0.5 block text-xs text-muted-foreground">
-                                  {getLinkSubLabel(displayFile.url || '')}
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex min-w-0 items-center gap-3">
-                              {renderFilePreview(displayFile)}
-                              <div className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium">
-                                  {displayName}
-                                </span>
-                                <span className="mt-0.5 block text-xs text-muted-foreground">
-                                  {(() => {
-                                    const sizeLabel = formatFileSize(displayFile.size);
-                                    return sizeLabel || '';
-                                  })()}
-                                </span>
-                              </div>
-                            </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowFinalDeliverableList((prev) => !prev)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#D9E6FF] bg-white/85 text-muted-foreground transition hover:bg-[#F3F7FF] dark:border-border dark:bg-card/85 dark:hover:bg-muted/80"
+                        aria-expanded={showFinalDeliverableList}
+                        aria-label="Toggle final deliverables list"
+                      >
+                        <ChevronDown
+                          className={cn(
+                            'h-4 w-4 transition-transform',
+                            showFinalDeliverableList ? 'rotate-180' : ''
                           )}
-                          <div className="flex shrink-0 items-center gap-2">
-                            {canRemoveFiles && (
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                disabled={approvalLockedForStaff || staffChangeLimitReached}
-                                className={fileActionButtonClass}
-                                onClick={() => handleRemoveFile(displayFile.id, displayFile.name)}
-                              >
-                                <Trash2 className="h-4 w-4 text-status-urgent" />
-                              </Button>
-                            )}
-                          {(() => {
-                              const fileLinkUrl = getFileActionUrl(displayFile);
-                              return (
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  disabled={!fileLinkUrl || fileLinkUrl === '#'}
-                                  className={fileActionButtonClass}
-                                  onClick={() => {
-                                    if (fileLinkUrl && fileLinkUrl !== '#') {
-                                      window.open(fileLinkUrl, '_blank', 'noopener,noreferrer');
-                                    }
-                                  }}
-                                >
-                                  {shouldUseLinkIcon(displayFile) ? (
-                                    <ExternalLink className="h-4 w-4" />
-                                  ) : (
-                                    <Download className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      );
-                    })}
+                        />
+                      </button>
+                    </div>
                   </div>
+                  {showFinalDeliverableList && (
+                    <>
+                      {activeFinalVersionNote && (
+                        <div className="mb-3 rounded-lg border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 px-3 py-2 dark:border-border/70 dark:bg-card/70">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                            Version note
+                          </p>
+                          <p className="mt-1 text-sm text-foreground/90 dark:text-slate-200">
+                            {activeFinalVersionNote}
+                          </p>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        {finalDeliverableFiles.map((file, index) => {
+                          const displayFile = toOutputFile(file, index);
+                          const isLinkCard = isLinkOnlyFile(displayFile) && isGoogleDriveLinkFile(displayFile);
+                          const displayName = isLinkCard
+                            ? sanitizeLinkDisplayName(displayFile.name, displayFile.url || '')
+                            : toTitleCaseFileName(displayFile.name);
+                          return (
+                            <div key={displayFile.id} className={fileRowClass}>
+                              {isLinkCard ? (
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#CFDBF8]/65 bg-gradient-to-br from-[#EEF4FF]/90 to-[#DCE8FF]/75 dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-800/90 dark:to-slate-700/70">
+                                    <Folder className="h-5 w-5 text-[#4A5EA1] dark:text-slate-200" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-semibold text-foreground">
+                                      {displayName}
+                                    </span>
+                                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                                      {getLinkSubLabel(displayFile.url || '')}
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex min-w-0 items-center gap-3">
+                                  {renderFilePreview(displayFile)}
+                                  <div className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium">
+                                      {displayName}
+                                    </span>
+                                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                                      {(() => {
+                                        const sizeLabel = formatFileSize(displayFile.size);
+                                        return sizeLabel || '';
+                                      })()}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              <div className="flex shrink-0 items-center gap-2">
+                                {canRemoveFiles && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    disabled={approvalLockedForStaff || staffChangeLimitReached}
+                                    className={fileActionButtonClass}
+                                    onClick={() => handleRemoveFile(displayFile.id, displayFile.name)}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-status-urgent" />
+                                  </Button>
+                                )}
+                              {(() => {
+                                  const fileLinkUrl = getFileActionUrl(displayFile);
+                                  return (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      disabled={!fileLinkUrl || fileLinkUrl === '#'}
+                                      className={fileActionButtonClass}
+                                      onClick={() => handleFileAction(displayFile)}
+                                    >
+                                      {shouldUseLinkIcon(displayFile) ? (
+                                        <ExternalLink className="h-4 w-4" />
+                                      ) : (
+                                        <Download className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -3278,7 +3426,7 @@ export default function TaskDetail() {
                         Submit
                       </Button>
                       <span className="text-xs text-muted-foreground">
-                        Mark the task as completed after uploading final files.
+                        Submit creates the next version (V1, V2, ...) and marks the task as completed.
                       </span>
                     </div>
                   )}
@@ -3341,7 +3489,7 @@ export default function TaskDetail() {
                 </Button>
               </div>
               {Object.keys(typingUsers).length > 0 && (
-                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/80 px-3 py-1 text-[11px] font-semibold text-muted-foreground">
+                <div className="mt-2 inline-flex max-w-full items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/80 px-3 py-1 text-[11px] font-semibold text-muted-foreground dark:border-slate-600/70 dark:bg-slate-800/85 dark:text-slate-200">
                   <span>
                     {(() => {
                       const entries = Object.values(typingUsers);
@@ -3355,9 +3503,9 @@ export default function TaskDetail() {
                     })()}
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:150ms]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:300ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse dark:bg-[#9FB1FF]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:150ms] dark:bg-[#9FB1FF]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse [animation-delay:300ms] dark:bg-[#9FB1FF]" />
                   </span>
                 </div>
               )}
@@ -3709,27 +3857,6 @@ export default function TaskDetail() {
                     )}
                   </div>
                 )}
-              </div>
-            )}
-
-            {user?.role === 'staff' && changeHistory.length > 0 && (
-              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold text-foreground">Notifications</h2>
-                  <History className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="space-y-3">
-                  {changeHistory.slice(0, 3).map((entry) => (
-                    <div key={entry.id} className={cn(changeHistoryCardClass, 'p-3')}>
-                      <p className="text-sm font-medium text-foreground">
-                        {entry.note || `${entry.userName} updated ${formatChangeField(entry.field)}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formatDistanceToNow(entry.createdAt, { addSuffix: true })}
-                      </p>
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
 

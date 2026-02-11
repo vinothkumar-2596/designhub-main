@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { ArrowDownRight, ArrowUpRight, Info } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FeatureCard } from '@/components/ui/animated-card';
 
@@ -13,6 +13,12 @@ interface StatsCardProps {
   };
   variant?: 'default' | 'primary' | 'warning' | 'success' | 'urgent';
 }
+
+const truncateByCount = (value: string, maxChars: number) => {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text.length > maxChars ? `${text.slice(0, maxChars - 1)}...` : text;
+};
 
 const variantStyles = {
   default: 'bg-card border-border',
@@ -34,23 +40,26 @@ const iconStyles = {
 };
 
 export function StatsCard({ title, value, icon, trend, variant = 'default' }: StatsCardProps) {
+  const mobileTitle = truncateByCount(title, 13);
+
   return (
     <FeatureCard
       containerClassName="animate-slide-up"
       className={cn(
-        'relative overflow-hidden rounded-2xl border p-4 shadow-card dark:shadow-none',
+        'relative overflow-hidden rounded-2xl border p-3.5 sm:p-4 shadow-none min-h-[108px]',
         variantStyles[variant]
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2.5 sm:gap-3">
         <div className={cn(iconStyles[variant])}>
           <span className="relative z-10">{icon}</span>
         </div>
         <div className="flex-1">
-          <div className="flex items-center gap-1 text-sm font-medium text-foreground/80">
-            <span>{title}</span>
+          <div className="flex items-center gap-1 text-sm font-medium text-foreground/80 leading-tight">
+            <span className="block max-w-full sm:hidden truncate" title={title}>{mobileTitle}</span>
+            <span className="hidden sm:block max-w-full truncate" title={title}>{title}</span>
           </div>
-          <p className="mt-2 text-[22px] font-semibold tracking-tight text-foreground">{value}</p>
+          <p className="mt-1.5 text-[22px] font-semibold tracking-tight text-foreground">{value}</p>
           {trend && (
             <div
               className={cn(

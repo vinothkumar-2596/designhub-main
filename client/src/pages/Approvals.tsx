@@ -8,9 +8,6 @@ import {
   CheckCircle2,
   XCircle,
   FileCheck,
-  Calendar,
-  User,
-  Paperclip,
   AlertTriangle,
   Eye,
 } from 'lucide-react';
@@ -169,7 +166,8 @@ export default function Approvals() {
         }),
       });
       if (!response.ok) {
-        throw new Error('Failed to update approval');
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || 'Failed to update approval');
       }
     }
     setTasks((prev) =>
@@ -210,7 +208,9 @@ export default function Approvals() {
         description: 'The requester has been notified.',
       });
     } catch (error) {
-      toast.error('Failed to approve request');
+      const message =
+        error instanceof Error && error.message ? error.message : 'Failed to approve request';
+      toast.error(message);
     } finally {
       setProcessingId(null);
     }
@@ -224,7 +224,9 @@ export default function Approvals() {
         description: 'The requester has been notified.',
       });
     } catch (error) {
-      toast.error('Failed to reject request');
+      const message =
+        error instanceof Error && error.message ? error.message : 'Failed to reject request';
+      toast.error(message);
     } finally {
       setProcessingId(null);
     }
@@ -242,7 +244,7 @@ export default function Approvals() {
         </div>
 
         {/* Info Banner */}
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm animate-slide-up">
+        <div className="rounded-lg border border-border/45 bg-card p-4 shadow-none animate-slide-up">
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
             <div>
@@ -282,32 +284,35 @@ export default function Approvals() {
               return (
                 <div
                   key={task.id}
-                  className="relative overflow-hidden rounded-xl border border-border bg-card p-4 md:p-5 animate-slide-up shadow-sm"
+                  className="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-black/5 p-4 md:p-5 animate-slide-up dark:bg-card dark:border-border dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  <div className="relative grid gap-4 xl:grid-cols-[210px_minmax(0,1fr)_220px] xl:items-start">
-                    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-foreground font-semibold">
+                  <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-[#DCE8FF]/70 blur-3xl dark:bg-[#2C56B7]/20" />
+                  <div className="pointer-events-none absolute -left-12 -bottom-14 h-40 w-40 rounded-full bg-[#EAF1FF]/80 blur-3xl dark:bg-[#2A49A6]/20" />
+                  <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-white/50 dark:ring-white/5" />
+                  <div className="relative min-w-0">
+                    <div className="absolute right-0 top-0 inline-flex w-fit items-center gap-2.5 rounded-full border border-border bg-card/90 px-2.5 py-2">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#C9D7FF] bg-[#F4F8FF] text-[#1E2A5A] text-sm font-semibold dark:border-[#4D6BAF] dark:bg-[#0B1738] dark:text-slate-100">
                         {requesterInitials}
                       </div>
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      <div className="pr-1 whitespace-nowrap">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground dark:text-[#91A9D9]">
                           Submitted
                         </p>
-                        <p className="text-sm font-semibold text-foreground">
+                        <p className="text-sm font-semibold text-foreground dark:text-slate-100 leading-tight">
                           {format(task.createdAt, 'MMM d, yyyy')}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground dark:text-[#9BB0DD]">
                           {format(task.createdAt, 'h:mm a')}
                         </p>
                       </div>
                     </div>
 
-                    <div className="min-w-0">
+                    <div className="min-w-0 pr-0 sm:pr-[220px]">
                       <div className="mb-3 flex flex-wrap items-center gap-2">
                         <Badge
                           variant="pending"
-                          className="border border-border bg-muted/60 text-foreground"
+                          className="border border-border bg-card/90 text-muted-foreground"
                         >
                           Awaiting Approval
                         </Badge>
@@ -315,52 +320,31 @@ export default function Approvals() {
                           <Badge variant="urgent">Urgent</Badge>
                         )}
                       </div>
-                      <h3 className="text-xl font-semibold leading-snug text-foreground">
+                      <h3 className="text-2xl font-semibold leading-tight text-foreground dark:text-slate-100 premium-headline">
                         {headline}
                       </h3>
-                      <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">
+                      <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground dark:text-[#A0B4DE] premium-body">
                         {summary}
                       </p>
                       {staffPreview && (
-                        <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        <div className="mt-3 rounded-xl border border-border/45 bg-card/80 px-3 py-2.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                             Staff update
                           </p>
-                          <p className="mt-1 line-clamp-2 text-sm text-foreground/80">
+                          <p className="mt-1 line-clamp-2 text-sm text-foreground/85">
                             {staffPreview}
                           </p>
                         </div>
                       )}
                     </div>
 
-                    <div className="grid gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="truncate">
-                          {task.requesterName}
-                          {task.requesterDepartment && (
-                            <span className="ml-1 text-xs opacity-85">
-                              ({task.requesterDepartment})
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span>Due {format(task.deadline, 'MMM d, yyyy')}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Paperclip className="h-4 w-4 text-muted-foreground" />
-                        <span>{task.files.length} files attached</span>
-                      </div>
-                    </div>
                   </div>
 
-                  <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+                  <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#D9E6FF] pt-4 dark:border-[#2F4F8E]">
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="default"
-                        className="h-9 gap-2 rounded-md px-4"
+                        className="h-9 gap-2 rounded-xl px-4 border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-none hover:bg-primary/85 dark:border-transparent"
                         onClick={() => handleApprove(task.id)}
                         disabled={processingId === task.id}
                       >
@@ -369,7 +353,7 @@ export default function Approvals() {
                       </Button>
                       <Button
                         variant="outline"
-                        className="h-9 gap-2 rounded-md border-border text-foreground hover:bg-muted/60"
+                        className="h-9 gap-2 rounded-xl border-border text-foreground hover:bg-muted/60 dark:border-[#4B6AA9] dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
                         onClick={() => handleReject(task.id)}
                         disabled={processingId === task.id}
                       >
@@ -381,7 +365,7 @@ export default function Approvals() {
                       variant="ghost"
                       size="sm"
                       asChild
-                      className="h-9 gap-2 rounded-md px-3 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                      className="h-9 gap-2 rounded-xl px-3 text-muted-foreground hover:bg-muted/50 hover:text-foreground dark:text-[#A8BAE3] dark:hover:bg-[#173267]/70 dark:hover:text-slate-100"
                     >
                       <Link to={`/task/${task.id}`} state={{ task }}>
                         <Eye className="h-4 w-4" />

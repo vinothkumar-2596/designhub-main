@@ -601,6 +601,38 @@ const ensureTaskAccess = async (req, res, next) => {
       const canLegacyAssignAsManager =
         isLegacyAssignWrite &&
         ["staff", "treasurer", "admin"].includes(userRole);
+      const managerApprovalFields = new Set([
+        "approval_status",
+        "deadline_request",
+        "emergency_approval",
+      ]);
+      const managerApprovalUpdateKeys = new Set([
+        "approvalStatus",
+        "approvedBy",
+        "approvalDate",
+        "deadlineApprovalStatus",
+        "deadlineApprovedBy",
+        "deadlineApprovedAt",
+        "emergencyApprovalStatus",
+        "emergencyApprovedBy",
+        "emergencyApprovedAt",
+        "updatedAt",
+      ]);
+      const bodyChanges = Array.isArray(req.body?.changes) ? req.body.changes : [];
+      const bodyUpdates = req.body?.updates && typeof req.body.updates === "object" ? req.body.updates : {};
+      const hasManagerApprovalChanges =
+        bodyChanges.length > 0 &&
+        bodyChanges.every((change) =>
+          managerApprovalFields.has(normalizeValue(change?.field))
+        );
+      const hasOnlyManagerApprovalUpdates =
+        Object.keys(bodyUpdates).length === 0 ||
+        Object.keys(bodyUpdates).every((key) => managerApprovalUpdateKeys.has(key));
+      const canManagerApprovalWrite =
+        isChangeWrite &&
+        ["treasurer", "admin"].includes(userRole) &&
+        hasManagerApprovalChanges &&
+        hasOnlyManagerApprovalUpdates;
 
       if (isReadOnly) {
         if (accessContext.mode === "none") {
@@ -625,6 +657,13 @@ const ensureTaskAccess = async (req, res, next) => {
       if (canLegacyAssignAsManager) {
         req.task = task;
         req.taskAccessMode = accessContext.mode;
+        req.taskAccessContext = accessContext;
+        return next();
+      }
+
+      if (canManagerApprovalWrite) {
+        req.task = task;
+        req.taskAccessMode = "full";
         req.taskAccessContext = accessContext;
         return next();
       }

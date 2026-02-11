@@ -430,6 +430,7 @@ export default function Tasks() {
                   type="button"
                   variant="ghost"
                   size="sm"
+                  className="rounded-full border border-[#C9D7FF] bg-[#EAF1FF] text-[#2A3B77] hover:bg-[#DCE8FF] hover:text-[#1E2A5A] dark:border-[#36508E] dark:bg-[#1A2B52] dark:text-slate-100 dark:hover:bg-[#243A6A]"
                   onClick={() => {
                     setDesignerSearch('');
                     setStatusFilter('all');

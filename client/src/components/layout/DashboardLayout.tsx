@@ -1008,7 +1008,7 @@ export function DashboardLayout({
       {notificationsOpen && (
         <div className="absolute right-0 mt-2 w-72 rounded-xl border border-[#C9D7FF] bg-[#F2F6FF]/95 dark:bg-card/95 dark:border-border backdrop-blur-xl p-3 shadow-lg z-50 animate-dropdown origin-top-right">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2F3A56] dark:text-slate-100">
               Notifications
             </span>
             <div className="flex items-center gap-2">
@@ -1016,13 +1016,13 @@ export function DashboardLayout({
                 <button
                   type="button"
                   onClick={markAllNotificationsRead}
-                  className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/70 hover:text-primary"
+                  className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#3E5AA8] hover:text-[#274187] dark:text-slate-200 dark:hover:text-white"
                 >
                   Mark all read
                 </button>
               )}
               <button
-                className="text-primary/60 hover:text-primary"
+                className="text-[#5C70A8] hover:text-[#274187] dark:text-slate-300 dark:hover:text-white"
                 onClick={() => setNotificationsOpen(false)}
                 type="button"
               >
@@ -1030,7 +1030,7 @@ export function DashboardLayout({
               </button>
             </div>
           </div>
-          <div className="mt-3 space-y-2 max-h-[420px] overflow-y-auto pr-2 scrollbar-thin">
+          <div className="mt-3 space-y-2 max-h-[420px] overflow-y-auto overflow-x-hidden pr-2 scrollbar-thin">
             {uiNotifications.length > 0 ? (
               uiNotifications.map((entry, idx) => (
                 <button
@@ -1050,21 +1050,21 @@ export function DashboardLayout({
                     }
                   }}
                   className={cn(
-                    'block w-full rounded-lg border px-3 py-2 text-left transition',
+                    'block w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition',
                     entry.readAt
                       ? 'border-primary/10 bg-white/70 hover:bg-white dark:border-border dark:bg-slate-900/60 dark:hover:bg-slate-900/80'
                       : 'border-primary/20 bg-primary/5 hover:bg-primary/10 dark:border-primary/30 dark:bg-primary/10 dark:hover:bg-primary/20'
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-semibold text-foreground">
+                    <p className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground line-clamp-2">
                       {`${entry.title
                         .replace(/\s*:\s*now$/i, '')
                         .replace(/\s+now$/i, '')}${isNotificationNow(entry.createdAt) ? ': now' : ''}`}
                     </p>
                     <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="mt-1 break-all text-xs text-muted-foreground line-clamp-2">
                     {entry.message}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">

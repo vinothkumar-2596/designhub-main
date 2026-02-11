@@ -184,4 +184,53 @@ router.post("/metadata", async (req, res) => {
   }
 });
 
+router.get("/download/:fileId", async (req, res) => {
+  try {
+    const fileId = String(req.params?.fileId || "").trim();
+    if (!fileId) {
+      return res.status(400).json({ error: "File id is required." });
+    }
+    req.auditTargetId = fileId;
+
+    const drive = getDriveClient();
+    const metaResponse = await drive.files.get({
+      fileId,
+      fields: "id,name,mimeType",
+      supportsAllDrives: true,
+    });
+
+    const fileName = String(metaResponse?.data?.name || "download");
+    const mimeType = String(metaResponse?.data?.mimeType || "application/octet-stream");
+
+    const mediaResponse = await drive.files.get(
+      {
+        fileId,
+        alt: "media",
+        supportsAllDrives: true,
+      },
+      { responseType: "stream" }
+    );
+
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(fileName)}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+    );
+
+    mediaResponse.data.on("error", (streamError) => {
+      console.error("Drive download stream failed:", streamError?.message || streamError);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to download file." });
+      } else {
+        res.end();
+      }
+    });
+
+    mediaResponse.data.pipe(res);
+  } catch (error) {
+    console.error("Drive download failed:", error?.message || error);
+    res.status(500).json({ error: "Failed to download file." });
+  }
+});
+
 export default router;

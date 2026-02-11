@@ -46,13 +46,12 @@ STATUS: READY
   "category": "",
   "urgency": "",
   "deadline": "",
-  "internal_notes": ""
+  "phone": ""
 }
 
 RULES
 - The JSON must be valid.
 - description should contain the summary (objective, audience, deliverables, platform).
-- internal_notes can include references_available and any extra constraints.
 - Do NOT add any extra text outside the required format.`;
 
 export interface TaskDraft {
@@ -83,7 +82,7 @@ export interface TaskBuddyReadyPayload {
     category: string;
     urgency: string;
     deadline: string;
-    internal_notes?: string;
+    phone?: string;
 }
 
 export interface AIResponse {
@@ -193,17 +192,15 @@ export const mapActionPayloadToDraft = (payload: TaskBuddyActionPayload): TaskDr
 };
 
 export const mapReadyPayloadToDraft = (payload: TaskBuddyReadyPayload): TaskDraft => {
-    const description = payload.internal_notes
-        ? `${payload.description}\n\nNotes: ${payload.internal_notes}`.trim()
-        : payload.description;
+    const normalizedPhone = payload.phone?.trim();
     return {
         title: payload.title || 'Design Request',
-        description: description || 'Design request details',
+        description: payload.description || 'Design request details',
         category: mapActionCategoryToTaskDraft(payload.category || ''),
         urgency: mapActionUrgencyToTaskDraft(payload.urgency || ''),
         deadline: payload.deadline ? toIsoDate(payload.deadline) : '',
-        notes: payload.internal_notes || '',
-        attachmentsNote: payload.internal_notes || ''
+        whatsappNumbers: normalizedPhone ? [normalizedPhone] : undefined,
+        phone: normalizedPhone
     };
 };
 
@@ -300,7 +297,7 @@ export async function sendMessageToAI(
             }
 
             if (response.status === 429 || errorCode === 'AI_QUOTA_EXCEEDED') {
-                throw new Error('Usage limit exceeded (Quota). Please wait a minute and try again.');
+                throw new Error('Rate limit. Try again in 1 minute.');
             }
 
             if (
@@ -316,7 +313,16 @@ export async function sendMessageToAI(
         }
 
         const data = await response.json();
-        const text = data.text ?? '';
+        if (data?.ready === true && data?.data && typeof data.data === 'object') {
+            const draft = mapReadyPayloadToDraft(data.data as TaskBuddyReadyPayload);
+            return {
+                type: 'task_draft',
+                data: draft,
+                ready: true
+            };
+        }
+
+        const text = String(data?.message ?? data?.text ?? '');
 
         // Try to parse as JSON first
         try {
@@ -373,7 +379,7 @@ export async function sendMessageToAI(
         const errorMessage = error instanceof Error ? error.message : 'Unknown AI error';
 
         if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota')) {
-            throw new Error('Usage limit exceeded (Quota). Please wait a minute and try again.');
+            throw new Error('Rate limit. Try again in 1 minute.');
         }
 
         throw new Error(errorMessage || 'Unable to process AI request right now.');

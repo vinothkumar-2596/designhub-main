@@ -33,12 +33,30 @@ const roleLabelByValue: Record<string, string> = {
   staff: 'Staff',
   treasurer: 'Treasurer',
 };
+const INDIAN_MOBILE_REGEX = /^\+91[6-9]\d{9}$/;
+const INDIAN_PREFIX = '+91 ';
+const formatIndianPhoneInput = (value?: string) => {
+  const digitsOnly = String(value || '').replace(/\D/g, '');
+  const local = digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly;
+  const trimmed = local.slice(0, 10);
+  return `${INDIAN_PREFIX}${trimmed}`;
+};
+const normalizeIndianPhone = (value?: string) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits === '91') return '';
+  const local = digits.startsWith('91') ? digits.slice(2) : digits;
+  if (local.length !== 10) return '';
+  const normalized = `+91${local}`;
+  return INDIAN_MOBILE_REGEX.test(normalized) ? normalized : '';
+};
 
 export default function Settings() {
   const { user, updateUser } = useAuth();
   const [fullName, setFullName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
-  const [phone, setPhone] = useState(user?.phone || '');
+  const [phone, setPhone] = useState(
+    formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || '')
+  );
   const [profileAvatar, setProfileAvatar] = useState(
     getAvatarPreset(user?.avatar) ? (user?.avatar as string) : getDefaultAvatarValue()
   );
@@ -57,25 +75,10 @@ export default function Settings() {
     roleLabelByValue[String(user?.role || '').toLowerCase()] ||
     'General';
   const sanitizeName = (value: string) => value.replace(/\d+/g, '');
-  const normalizeIndianPhone = (value: string) => {
-    const raw = value.trim();
-    if (!raw) return '';
-    const digits = raw.replace(/[^\d]/g, '');
-    if (!digits) return '';
-    const withCountry = digits.startsWith('91') ? digits.slice(2) : digits;
-    const normalized =
-      digits.length === 10
-        ? digits
-        : withCountry.length === 10
-          ? withCountry
-          : '';
-    return normalized ? `+91${normalized}` : '';
-  };
-
   useEffect(() => {
     setFullName(user?.name || '');
     setEmail(user?.email || '');
-    setPhone(user?.phone || '');
+    setPhone(formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || ''));
     setProfileAvatar(getAvatarPreset(user?.avatar) ? (user?.avatar as string) : getDefaultAvatarValue());
   }, [user]);
 
@@ -107,7 +110,7 @@ export default function Settings() {
   const handleSaveProfile = () => {
     const sanitizedName = sanitizeName(fullName).trim();
     const normalizedPhone = normalizeIndianPhone(phone);
-    if (phone.trim() && !normalizedPhone) {
+    if (phone.trim() && phone.trim() !== '+91' && !normalizedPhone) {
       toast.error('Enter a valid Indian WhatsApp number (e.g., +919876543210).');
       return;
     }
@@ -155,7 +158,7 @@ export default function Settings() {
         </div>
 
         {/* Profile Section */}
-        <div id="profile" className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
+        <div id="profile" className="bg-card border border-border/70 rounded-2xl p-5 shadow-none animate-slide-up">
           <h2 className="text-lg font-semibold text-foreground premium-heading mb-4 flex items-center gap-2">
             <User className="h-5 w-5" />
             Profile
@@ -238,12 +241,25 @@ export default function Settings() {
                 <Input
                   id="phone"
                   type="tel"
-                  placeholder="+919876543210"
+                  inputMode="numeric"
+                  maxLength={14}
+                  placeholder="+91 9876543210"
                   value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
+                  onChange={(event) => setPhone(formatIndianPhoneInput(event.target.value))}
+                  onFocus={() => {
+                    if (!phone.trim()) {
+                      setPhone(INDIAN_PREFIX);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Backspace' && phone.length <= 4) {
+                      event.preventDefault();
+                      setPhone(INDIAN_PREFIX);
+                    }
+                  }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use an Indian number with country code (e.g., +919876543210).
+                  Enter 10-digit Indian mobile number. +91 is fixed automatically.
                 </p>
               </div>
             </div>

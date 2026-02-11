@@ -337,6 +337,47 @@
     animation: searchBorderFlow 3.2s linear infinite;
   }
 
+  .deliverables-highlight {
+    position: relative;
+    border-radius: 1rem;
+    padding: 0.75rem;
+    border: 1px solid rgba(126, 152, 255, 0.28);
+    background: linear-gradient(140deg, rgba(248, 251, 255, 0.82), rgba(238, 244, 255, 0.62));
+    box-shadow: 0 10px 24px -22px rgba(30, 64, 175, 0.45);
+  }
+
+  .deliverables-highlight::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    pointer-events: none;
+    padding: 1px;
+    opacity: 0.35;
+    background: linear-gradient(
+      120deg,
+      rgba(74, 118, 255, 0.65),
+      rgba(99, 102, 241, 0.65),
+      rgba(244, 114, 182, 0.65),
+      rgba(74, 118, 255, 0.65)
+    );
+    background-size: 200% 200%;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  .dark .deliverables-highlight {
+    border-color: rgba(82, 112, 255, 0.42);
+    background: linear-gradient(140deg, rgba(11, 22, 52, 0.76), rgba(10, 25, 67, 0.56));
+    box-shadow: 0 16px 36px -26px rgba(24, 119, 242, 0.55);
+  }
+
+  .dark .deliverables-highlight::after {
+    opacity: 0.95;
+    animation: searchBorderFlow 3.2s linear infinite;
+  }
+
   .search-elastic-input::placeholder {
     transition: transform 200ms ease, opacity 200ms ease;
   }
@@ -801,7 +842,7 @@
 
   .availability-calendar__scroll {
     border-radius: 20px;
-    border: 1px solid rgba(216, 226, 255, 0.85);
+    border: 1px solid #d8e2ff;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(236, 244, 255, 0.65));
     padding: 0;
     overflow: hidden;
@@ -911,7 +952,7 @@
     display: grid;
     gap: 8px;
     padding-bottom: 12px;
-    border-bottom: 1px solid rgba(226, 232, 255, 0.7);
+    border-bottom: 1px solid #e2e8ff;
   }
 
   .dark .availability-calendar__grid {
@@ -921,7 +962,7 @@
   .availability-daycell {
     height: 64px;
     border-radius: 20px;
-    border: 1px solid rgba(226, 232, 255, 0.8);
+    border: 1px solid #e2e8ff;
     background: rgba(255, 255, 255, 0.7);
     display: flex;
     flex-direction: column;
@@ -971,7 +1012,7 @@
       rgba(220, 233, 255, 0.92) 55%,
       rgba(201, 219, 255, 0.98) 100%
     );
-    border-color: rgba(201, 215, 255, 0.9);
+    border-color: #c9d7ff;
     color: #1e2a5a;
     transform: translateY(-2px);
     box-shadow:
@@ -1411,7 +1452,7 @@
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--border)) transparent;
+    scrollbar-color: #9fbcff transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -1424,7 +1465,7 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--border));
+    background-color: #9fbcff;
     border-radius: 3px;
   }
 

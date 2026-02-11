@@ -913,7 +913,7 @@ export default function AIMode() {
                                                     onClick={handleVoiceInput}
                                                     variant="ghost"
                                                     size="icon"
-                                                    className={cn("group/mic hover:bg-white/50 text-[#64748B] hover:text-[#1E2A5A] rounded-full h-10 w-10 transition-all relative", voiceState !== 'idle' && "bg-red-50 text-red-500 animate-pulse")}
+                                                    className={cn("group/mic hover:bg-[#EEF4FF] text-[#64748B] hover:text-[#1E2A5A] rounded-full h-10 w-10 transition-all relative dark:hover:bg-slate-800/80 dark:hover:text-slate-100", voiceState !== 'idle' && "bg-red-50 text-red-500 animate-pulse")}
                                                     title="Click to speak. AI will convert your voice into text."
                                                 >
                                                     <Mic className="h-5 w-5 group-hover/mic:scale-110 transition-transform" />

@@ -5,13 +5,14 @@ import { TaskFilters } from '@/components/tasks/TaskFilters';
 import { mockTasks } from '@/data/mockTasks';
 import { useAuth } from '@/contexts/AuthContext';
 import { TaskStatus, TaskCategory, TaskUrgency } from '@/types';
-import { ListTodo, PlusCircle } from 'lucide-react';
+import { ListTodo, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
+import { filterTasksForUser } from '@/lib/taskVisibility';
 
 import { API_URL, authFetch } from '@/lib/api';
 
@@ -32,8 +33,8 @@ export default function MyRequests() {
     const loadTasks = async () => {
       setIsLoading(true);
       try {
-        const emailValue = user?.email ? encodeURIComponent(user.email) : '';
-        const idValue = user?.id ? encodeURIComponent(user.id) : '';
+        const emailValue = user?.email ? user.email : '';
+        const idValue = user?.id ? user.id : '';
         const params = new URLSearchParams();
         if (emailValue) params.set('requesterEmail', emailValue);
         if (idValue) params.set('requesterId', idValue);
@@ -73,7 +74,7 @@ export default function MyRequests() {
       }
     };
     loadTasks();
-  }, [apiUrl, user?.id]);
+  }, [apiUrl, user?.email, user?.id]);
 
   useEffect(() => {
     if (!useLocalData) return;
@@ -135,8 +136,8 @@ export default function MyRequests() {
 
   // Filter to only show user's own requests
   const userTasks = useMemo(() => {
-    return hydratedTasks.filter((task) => task.requesterId === user?.id);
-  }, [hydratedTasks, user?.id]);
+    return filterTasksForUser(hydratedTasks, user);
+  }, [hydratedTasks, user]);
 
   useEffect(() => {
     setScopeLabel('My Requests');
@@ -191,10 +192,10 @@ export default function MyRequests() {
           <Button
             asChild
             size="default"
-            className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200 dark:border-transparent dark:ring-0"
+            className="bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200"
           >
             <Link to="/new-request">
-              <PlusCircle className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4 mr-2" />
               New Request
             </Link>
           </Button>

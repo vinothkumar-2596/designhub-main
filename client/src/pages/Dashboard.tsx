@@ -37,14 +37,13 @@ import {
   XCircle,
   Eye,
   User,
-  UserCheck,
   Calendar,
   Paperclip,
   ArrowRight,
+  Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { PlusCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
@@ -482,11 +481,6 @@ export default function Dashboard() {
       ),
     [pendingApprovals, query]
   );
-  const assignedDesignTasks = useMemo(
-    () => dateFilteredTasks.filter((task) => Boolean(task.assignedTo)),
-    [dateFilteredTasks]
-  );
-
   useEffect(() => {
     setScopeLabel('Dashboard');
     setItems(buildSearchItemsFromTasks(relevantTasks));
@@ -528,11 +522,10 @@ export default function Dashboard() {
                 isEmergencyApproval
               );
             }
-          )
-          .map((entry) => ({ ...entry, taskId: task.id, taskTitle: task.title, task }))
       )
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 3);
+      .map((entry) => ({ ...entry, taskId: task.id, taskTitle: task.title, task }))
+      )
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [hydratedTasks, user.role]);
 
   const designerNotifications = useMemo(() => {
@@ -566,8 +559,7 @@ export default function Dashboard() {
           ? [{ ...latestStaff, taskId: task.id, taskTitle: task.title, task }]
           : [];
       })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 3);
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [hydratedTasks, user.role]);
 
   const treasurerNotifications = useMemo(() => {
@@ -586,8 +578,7 @@ export default function Dashboard() {
           ? [{ ...latestCreated, taskId: task.id, taskTitle: task.title, task }]
           : [];
       })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 3);
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [hydratedTasks, user.role]);
 
   const activeNotifications =
@@ -700,7 +691,8 @@ export default function Dashboard() {
         }),
       });
       if (!response.ok) {
-        throw new Error('Failed to update approval');
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || 'Failed to update approval');
       }
       const updated = await response.json();
       const hydrated = hydrateTask({
@@ -746,7 +738,9 @@ export default function Dashboard() {
         description: 'The requester has been notified.',
       });
     } catch (error) {
-      toast.error('Failed to approve request');
+      const message =
+        error instanceof Error && error.message ? error.message : 'Failed to approve request';
+      toast.error(message);
     } finally {
       setProcessingApprovalId(null);
     }
@@ -760,7 +754,9 @@ export default function Dashboard() {
         description: 'The requester has been notified.',
       });
     } catch (error) {
-      toast.error('Failed to reject request');
+      const message =
+        error instanceof Error && error.message ? error.message : 'Failed to reject request';
+      toast.error(message);
     } finally {
       setProcessingApprovalId(null);
     }
@@ -859,10 +855,10 @@ export default function Dashboard() {
                 <Button
                   asChild
                   size="default"
-                  className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200 dark:border-transparent dark:ring-0"
+                  className="bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200"
                 >
                   <Link to="/new-request">
-                    <PlusCircle className="h-4 w-4 mr-2" />
+                    <Plus className="h-4 w-4 mr-2" />
                     New Request
                   </Link>
                 </Button>
@@ -935,14 +931,6 @@ export default function Dashboard() {
           />
           {user.role === 'treasurer' && (
             <StatsCard
-              title="Assigned to Designers"
-              value={assignedDesignTasks.length}
-              icon={<UserCheck className="h-5 w-5" />}
-              variant="primary"
-            />
-          )}
-          {user.role === 'treasurer' && (
-            <StatsCard
               title="Pending Approvals"
               value={stats.pendingApprovals}
               icon={<FileCheck className="h-5 w-5" />}
@@ -966,9 +954,13 @@ export default function Dashboard() {
           <div className="lg:col-span-1 h-full">
             <ActivityFeed
               notifications={activeNotifications.map(entry => {
-                let type: 'attachment' | 'message' | 'system' = 'system';
-                if (entry.field === 'files') type = 'attachment';
-                else if (entry.field === 'comment' || entry.field === 'staff_note') type = 'message';
+                let type: 'attachment' | 'message' | 'request' | 'approval' | 'deadline' | 'system' = 'system';
+                const field = String(entry.field || '').toLowerCase();
+                if (field === 'files') type = 'attachment';
+                else if (field === 'comment' || field === 'staff_note') type = 'message';
+                else if (field === 'created') type = 'request';
+                else if (field === 'approval_status' || field === 'emergency_approval') type = 'approval';
+                else if (field === 'deadline_request' || field === 'deadline') type = 'deadline';
 
                 return {
                   id: entry.id || Math.random().toString(),
@@ -1012,7 +1004,7 @@ export default function Dashboard() {
 
                 {user.role === 'treasurer' ? (
                   treasurerRecentTasks.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                       {treasurerRecentTasks.map((task, index) => (
                         <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
                           <TaskCard
@@ -1031,7 +1023,7 @@ export default function Dashboard() {
                 ) : (
                   /* Reusing standard recent tasks logic if not treasurer (e.g. staff/designer/other) */
                   recentTasks.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                       {recentTasks.map((task, index) => (
                         <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
                           <TaskCard

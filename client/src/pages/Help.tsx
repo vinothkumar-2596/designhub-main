@@ -292,14 +292,14 @@ export default function Help() {
                 <details
                   key={item.title}
                   open={index === 0}
-                  className="group rounded-2xl border border-[#E3EBFF] bg-[#F7F9FF] p-4 shadow-sm dark:border-border dark:bg-slate-900/50"
+                  className="group rounded-2xl border border-[#E3EBFF] bg-[#F7F9FF] p-4 shadow-none dark:border-border dark:bg-slate-900/50"
                 >
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-[#1E2A5A] dark:text-slate-100">
                     <span className="flex items-center gap-2">
                       <Icon className="h-4 w-4 text-[#4F6EF7] dark:text-primary" />
                       {item.title}
                     </span>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#D6E2FF] bg-white text-[#4F6EF7] transition group-open:rotate-180 dark:border-border dark:bg-slate-900/70 dark:text-primary">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#4F6EF7] transition group-open:rotate-180 dark:bg-slate-900/70 dark:text-primary">
                       <ChevronDown className="h-4 w-4" />
                     </span>
                   </summary>

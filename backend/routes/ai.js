@@ -7,6 +7,50 @@ import { requireRole } from "../middleware/auth.js";
 const router = express.Router();
 router.use(requireRole(["staff", "designer", "treasurer"]));
 
+const GEMINI_READY_RESPONSE_CONTRACT = `When ready, respond ONLY in this format:
+
+STATUS: READY
+
+{
+  "title": "",
+  "description": "",
+  "category": "",
+  "urgency": "",
+  "deadline": "",
+  "phone": ""
+}
+Do not include explanations.`;
+
+const buildGeminiPrompt = (systemPrompt, userMessage) => {
+    const sections = [];
+    if (systemPrompt && String(systemPrompt).trim()) {
+        sections.push(String(systemPrompt).trim());
+    }
+    sections.push(`Current user message:\n${String(userMessage || "").trim()}`);
+    // Keep the contract at the end to enforce strict output.
+    sections.push(GEMINI_READY_RESPONSE_CONTRACT);
+    return sections.join("\n\n");
+};
+
+const extractReadyPayload = (text) => {
+    if (!text || !/STATUS:\s*READY/i.test(text)) {
+        return null;
+    }
+    const statusIndex = text.search(/STATUS:\s*READY/i);
+    const jsonStart = text.indexOf("{", statusIndex);
+    const jsonEnd = text.lastIndexOf("}");
+    if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+        return null;
+    }
+    const jsonString = text.substring(jsonStart, jsonEnd + 1);
+    try {
+        const parsed = JSON.parse(jsonString);
+        return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
 const AI_BUDDY_SYSTEM_PROMPT = `SYSTEM ROLE:
 You are Task Buddy AI operating in STRICT ATTACHMENT-ONLY MODE.
 
@@ -145,12 +189,23 @@ router.post("/gemini", async (req, res) => {
             },
         });
 
-        const prompt = systemPrompt ? `${systemPrompt}\n\nUser: ${userMessage}` : userMessage;
+        const prompt = buildGeminiPrompt(systemPrompt, userMessage);
         const result = await chat.sendMessage(prompt);
         const response = result.response;
         const text = response.text();
+        const readyPayload = extractReadyPayload(text);
 
-        res.json({ text });
+        if (readyPayload) {
+            return res.json({
+                ready: true,
+                data: readyPayload,
+            });
+        }
+
+        return res.json({
+            ready: false,
+            message: text,
+        });
     } catch (error) {
         console.error("Gemini proxy error:", error);
         const message = error instanceof Error ? error.message : "Unknown Gemini error";
@@ -176,7 +231,7 @@ router.post("/gemini", async (req, res) => {
         if (isQuotaError) {
             return res
                 .status(429)
-                .json({ error: "Usage limit exceeded. Please wait and try again.", code: "AI_QUOTA_EXCEEDED" });
+                .json({ error: "Rate limit. Try again in 1 minute.", code: "AI_QUOTA_EXCEEDED" });
         }
 
         if (isAuthError) {
