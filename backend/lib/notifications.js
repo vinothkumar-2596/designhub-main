@@ -701,6 +701,31 @@ export const sendFinalFilesEmail = async ({
                     Download them below or open the task to review details.`;
   const assignmentHeroMoment = formatHeroMoment(taskDetails?.deadline || submittedAt);
 
+  const assignedHeaderHtml = `
+      <div style="background:${brandSoft};border-radius:18px;padding:18px 20px;text-align:left;border:1px solid #e6e9f2;">
+        <div style="display:flex;align-items:center;justify-content:flex-start;gap:16px;">
+          <div style="flex:1;">
+            <div style="font-size:13px;color:#475467;font-weight:600;">
+              ${formatDateTime(submittedAt) || formatDateTime(new Date())}
+            </div>
+            <div style="margin-top:6px;font-size:24px;font-weight:700;color:#111827;line-height:1.2;">
+              New task assigned.
+            </div>
+            <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};">
+              ${safeTitle}
+            </div>
+            <p style="margin:10px 0 0;font-size:14px;color:#475467;line-height:1.6;">
+              You have been assigned <strong>${safeTitle}</strong>. Review the task details below and start work.
+              ${safeAssignmentMessage ? `<br /><br /><strong>Message:</strong> ${safeAssignmentMessage}` : ""}
+            </p>
+            <div style="margin-top:16px;">
+              ${taskCta}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
   const html = `
     <div style="background:#f5f7fb;padding:24px 16px;font-family:Helvetica, Arial, sans-serif;color:#101828;">
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;margin:0 auto;">
@@ -739,6 +764,7 @@ export const sendFinalFilesEmail = async ({
               </tr>
               <tr>
                 <td style="padding:12px 32px 16px;${isTaskAssignedEmail ? "text-align:left;" : "text-align:center;"}">
+<<<<<<< HEAD
                   ${isTaskAssignedEmail
       ? `
                         <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#EEF4FF;border:1px solid #D9E6FF;border-radius:16px;">
@@ -762,26 +788,27 @@ export const sendFinalFilesEmail = async ({
                         </table>
                       `
       : `
+=======
+                  ${isTaskAssignedEmail ? assignedHeaderHtml : `
+>>>>>>> 94f85803034b3b9a30e202ee854a2fb858c9f97a
                   <div style="font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
-                    ${isTaskAssignedEmail
-      ? "New task assigned."
-      : isTaskAcceptedEmail
-      ? "Task accepted."
-        : "Final files uploaded."}
+                    ${isTaskAcceptedEmail ? "Task accepted." : "Final files uploaded."}
                   </div>
-                  <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};${isTaskAssignedEmail ? "text-align:left;" : ""}">
+                  <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};">
                     ${safeTitle}
                   </div>
-                  <p style="${isTaskAssignedEmail
-      ? "margin:12px 0 0;max-width:540px;font-size:15px;color:#475467;line-height:1.6;text-align:left;"
-      : "margin:12px auto 0;max-width:460px;font-size:15px;color:#475467;line-height:1.5;"}">
+                  <p style="margin:12px auto 0;max-width:460px;font-size:15px;color:#475467;line-height:1.5;">
                     ${emailDescription}
                   </p>
-                  <div style="margin-top:20px;${isTaskAssignedEmail ? "text-align:left;" : ""}">
+                  <div style="margin-top:20px;">
                     ${taskCta}
                   </div>
+<<<<<<< HEAD
                   `
     }
+=======
+                  `}
+>>>>>>> 94f85803034b3b9a30e202ee854a2fb858c9f97a
                 </td>
               </tr>
               <tr>

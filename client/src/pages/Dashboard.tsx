@@ -484,7 +484,17 @@ export default function Dashboard() {
         error instanceof Error && error.message
           ? error.message
           : 'Failed to assign designer.';
-      toast.error(message);
+      const normalizedMessage = message.toLowerCase();
+      if (
+        normalizedMessage.includes('only designers can assign designers') ||
+        normalizedMessage.includes('only designer or admin accounts can assign designers')
+      ) {
+        toast.error(
+          'Your signed-in account is not authorized to assign designers. Demo role switch changes view only.'
+        );
+      } else {
+        toast.error(message);
+      }
     } finally {
       setIsAssigningDesigner(false);
     }
@@ -1180,14 +1190,14 @@ export default function Dashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-[#1E2A5A]">
-                    Task assigned successfully
+                    Assignment confirmed
                   </p>
                   <p className="text-sm text-[#2B3F86]">
-                    <span className="font-medium">{assignSuccessInfo.taskTitle}</span> is assigned to{' '}
+                    <span className="font-medium">{assignSuccessInfo.taskTitle}</span> has been assigned to{' '}
                     <span className="font-medium">{assignSuccessInfo.designerName}</span>.
                   </p>
                   <p className="text-xs text-[#4B5FA8]">
-                    Email notification sent{assignSuccessInfo.ccCount > 0 ? ` with ${assignSuccessInfo.ccCount} CC recipient(s).` : '.'}
+                    Email notification sent{assignSuccessInfo.ccCount > 0 ? ` to ${assignSuccessInfo.ccCount} CC recipient(s).` : '.'}
                   </p>
                 </div>
               </div>

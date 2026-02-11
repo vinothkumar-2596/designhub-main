@@ -78,6 +78,12 @@ const normalizeRole = (role) => {
   return role && allowedRoles.includes(role) ? role : "staff";
 };
 
+const normalizeGoogleRole = (role) => {
+  const normalized = normalizeRole(String(role || "").trim().toLowerCase());
+  if (normalized === "admin") return "staff";
+  return normalized;
+};
+
 const buildResetUrl = (token) => {
   const base =
     process.env.RESET_PASSWORD_URL ||
@@ -459,7 +465,7 @@ router.post("/password/reset", async (req, res) => {
 
 router.get("/google/start", (req, res) => {
   try {
-    const role = req.query.role === "staff" ? "staff" : "staff";
+    const role = normalizeGoogleRole(req.query.role);
     const stateToken = jwt.sign(
       { role, purpose: "google" },
       getJwtSecret(),
@@ -496,6 +502,8 @@ router.get("/google/callback", async (req, res) => {
       return res.status(400).json({ error: "Invalid OAuth state." });
     }
 
+    const requestedRole = normalizeGoogleRole(statePayload.role);
+
     const oauthClient = getGoogleClient();
     const { tokens } = await oauthClient.getToken(code);
     oauthClient.setCredentials(tokens);
@@ -514,7 +522,7 @@ router.get("/google/callback", async (req, res) => {
       user = await User.create({
         email: normalizedEmail,
         name: data.name || normalizedEmail.split("@")[0],
-        role: normalizeRole(statePayload.role),
+        role: requestedRole,
         authProvider: "google",
         googleId: data.id,
         avatar: data.picture,
@@ -524,6 +532,14 @@ router.get("/google/callback", async (req, res) => {
       if (!user.googleId && data.id) updates.googleId = data.id;
       if (!user.avatar && data.picture) updates.avatar = data.picture;
       if (!user.name && data.name) updates.name = data.name;
+      if (
+        user.authProvider === "google" &&
+        user.role === "staff" &&
+        requestedRole !== "staff"
+      ) {
+        // Repair older Google accounts created before role state was preserved.
+        updates.role = requestedRole;
+      }
       if (Object.keys(updates).length > 0) {
         await User.updateOne({ _id: user._id }, { $set: updates });
         user = await User.findById(user._id);

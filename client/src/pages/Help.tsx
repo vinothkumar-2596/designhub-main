@@ -104,27 +104,27 @@ const helpItems: HelpItem[] = [
     icon: AlarmClock,
     body: (
       <div className="space-y-2">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
-          <p className="font-semibold text-amber-700 dark:text-slate-100">Pending</p>
-          <p className="text-xs text-amber-700/80 dark:text-slate-300">
+        <div className="rounded-lg border border-[#C9D7FF] bg-[#EEF4FF] px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
+          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Pending</p>
+          <p className="text-xs text-[#2F3A56]/85 dark:text-slate-300">
             Task submitted and awaiting action. No designer assigned yet.
           </p>
         </div>
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
-          <p className="font-semibold text-blue-700 dark:text-slate-100">In Progress</p>
-          <p className="text-xs text-blue-700/80 dark:text-slate-300">
+        <div className="rounded-lg border border-[#C9D7FF] bg-[#EEF4FF] px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
+          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">In Progress</p>
+          <p className="text-xs text-[#2F3A56]/85 dark:text-slate-300">
             A designer has started working on your request.
           </p>
         </div>
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
-          <p className="font-semibold text-emerald-700 dark:text-slate-100">Completed</p>
-          <p className="text-xs text-emerald-700/80 dark:text-slate-300">
+        <div className="rounded-lg border border-[#C9D7FF] bg-[#EEF4FF] px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
+          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Completed</p>
+          <p className="text-xs text-[#2F3A56]/85 dark:text-slate-300">
             Design work is finished and final files are uploaded.
           </p>
         </div>
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
-          <p className="font-semibold text-rose-700 dark:text-slate-100">Overdue</p>
-          <p className="text-xs text-rose-700/80 dark:text-slate-300">
+        <div className="rounded-lg border border-[#C9D7FF] bg-[#EEF4FF] px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
+          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Overdue</p>
+          <p className="text-xs text-[#2F3A56]/85 dark:text-slate-300">
             The expected deadline has passed without completion.
           </p>
         </div>
@@ -182,7 +182,7 @@ const helpItems: HelpItem[] = [
         <div className="mt-3 space-y-2 text-sm">
           <div className="rounded-lg border border-[#D9E6FF] bg-white/80 px-3 py-2 dark:border-border dark:bg-slate-900/60">
             <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Email Support</p>
-            <p>support@DesignDesk.yourdomain.com</p>
+            <p>design@smvec.ac.in</p>
             <p className="text-xs text-[#7B8CAD] dark:text-slate-400">
               Response time: up to 24 hours on business days.
             </p>
@@ -265,7 +265,7 @@ export default function Help() {
                 as soon as possible.
               </p>
               <Button asChild className="mt-4 rounded-full px-6">
-                <a href="mailto:support@DesignDesk.yourdomain.com">
+                <a href="mailto:design@smvec.ac.in">
                   Send email
                 </a>
               </Button>
@@ -277,7 +277,7 @@ export default function Help() {
                 Support Email
               </div>
               <p className="mt-2 text-sm text-[#5B6B8A] dark:text-slate-400">
-                support@DesignDesk.yourdomain.com
+                design@smvec.ac.in
               </p>
               <p className="text-xs text-[#7B8CAD] dark:text-slate-500">
                 Response time: up to 24 hours on business days.

@@ -42,6 +42,68 @@ interface NavItem {
   badge?: number;
 }
 
+const EMAIL_DRAFT_MAILTO_STORAGE_KEY = 'designhub:email-draft-mailto';
+const EMAIL_SEND_PENDING_KEY = 'designhub:gmail-send-pending';
+const EMAIL_COMPOSE_OPENED_EVENT = 'designhub:gmail-compose-opened';
+const decodeValue = (value: string) => {
+  try {
+    return decodeURIComponent(value || '');
+  } catch {
+    return value || '';
+  }
+};
+
+const getFallbackEmailDraft = () => {
+  const to = 'design@smvec.ac.in';
+  const subject = 'Design Request - New Design Request';
+  const timestamp = new Date().toLocaleString();
+  const sectionDivider = '----------------------------------------';
+  const body = [
+    sectionDivider,
+    'SUBMISSION GUIDELINES',
+    sectionDivider,
+    '',
+    'Data Requirements',
+    '- All final text content',
+    '- Images / photographs',
+    '- Logos (high resolution)',
+    '- Reference designs or samples',
+    '',
+    'Timeline',
+    '- Minimum 3 working days for standard requests',
+    '- Urgent requests require proper justification',
+    '',
+    'Modifications',
+    '- Any changes after design approval require Treasurer approval',
+    '',
+    'Attachments Required',
+    '- Screenshot of the requirement screen (MANDATORY)',
+    '- Reference images',
+    '- Logos',
+    '- Text content',
+    '- Any supporting files',
+    '',
+  ].join('\n');
+  return { to, subject, body };
+};
+
+const parseMailtoDraft = (mailtoUrl: string) => {
+  if (!mailtoUrl || !mailtoUrl.startsWith('mailto:')) return null;
+  const withoutScheme = mailtoUrl.slice('mailto:'.length);
+  const [toPart, queryPart = ''] = withoutScheme.split('?');
+  const params = new URLSearchParams(queryPart);
+  return {
+    to: decodeValue(toPart),
+    subject: decodeValue(params.get('subject') || ''),
+    body: decodeValue(params.get('body') || ''),
+  };
+};
+
+const createGmailComposeUrl = (to: string, subject: string, body: string) =>
+  `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+    to
+  )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
 const navItems: NavItem[] = [
   {
     title: 'Dashboard',
@@ -119,6 +181,7 @@ export function AppSidebar() {
     { label: 'Submission Guidelines', icon: FileText, action: 'open-guidelines' as const },
     { label: 'Edit Profile', icon: UserPen, href: '/settings#profile' },
     { label: 'Search', icon: Search, action: 'open-search' as const },
+    { label: 'Email Design Request', icon: Mail, action: 'email-design-request' as const },
     { label: 'Contact Design Coordinate Executive', icon: PhoneCall, href: 'tel:+919003776002' },
   ];
 
@@ -160,6 +223,22 @@ export function AppSidebar() {
         {label}
       </span>
     );
+  };
+
+  const openEmailDesignRequest = () => {
+    if (typeof window === 'undefined') return;
+    const storedMailto = window.localStorage.getItem(EMAIL_DRAFT_MAILTO_STORAGE_KEY) || '';
+    const draft = parseMailtoDraft(storedMailto) || getFallbackEmailDraft();
+    window.localStorage.setItem(
+      EMAIL_SEND_PENDING_KEY,
+      JSON.stringify({ openedAt: Date.now() })
+    );
+    window.dispatchEvent(new CustomEvent(EMAIL_COMPOSE_OPENED_EVENT));
+    const gmailUrl = createGmailComposeUrl(draft.to, draft.subject, draft.body);
+    const popup = window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      window.location.href = gmailUrl;
+    }
   };
 
   return (
@@ -352,6 +431,22 @@ export function AppSidebar() {
                   );
                 }
 
+                if (item.action === 'email-design-request') {
+                  return (
+                    <div key={item.label} className="relative group">
+                      {tooltip}
+                      <button
+                        type="button"
+                        aria-label={item.label}
+                        onClick={openEmailDesignRequest}
+                        className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={item.label} className="relative group">
                     {tooltip}
@@ -462,6 +557,22 @@ export function AppSidebar() {
                 );
               }
 
+              if (item.action === 'email-design-request') {
+                return (
+                  <div key={`quick-collapsed-${item.label}`} className="relative group">
+                    {tooltip}
+                    <button
+                      type="button"
+                      aria-label={item.label}
+                      onClick={openEmailDesignRequest}
+                      className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
+                    >
+                      <item.icon className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              }
+
               return (
                 <div key={`quick-collapsed-${item.label}`} className="relative group">
                   {tooltip}
@@ -539,4 +650,3 @@ export function AppSidebar() {
     </aside>
   );
 }
-

@@ -29,6 +29,7 @@ import {
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { avatarPresets, getAvatarPreset, getDefaultAvatarValue, toAvatarPresetValue } from '@/lib/avatarPresets';
 import { cn } from '@/lib/utils';
+import { API_URL } from '@/lib/api';
 
 const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[] = [
   { value: 'designer', label: 'Designer', icon: Palette },
@@ -98,7 +99,14 @@ export default function Settings() {
 
   const handleRoleSwitch = (role: UserRole) => {
     switchRole(role);
-    toast.success(`Switched to ${roleOptions.find(r => r.value === role)?.label} view`);
+    const roleLabel = roleOptions.find((entry) => entry.value === role)?.label || role;
+    if (API_URL) {
+      toast.message(
+        `Switched to ${roleLabel} view (demo). API permissions use your signed-in account role.`
+      );
+      return;
+    }
+    toast.success(`Switched to ${roleLabel} view`);
   };
 
   const applyProfileUpdate = (payload: {

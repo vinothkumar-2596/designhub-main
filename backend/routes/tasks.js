@@ -754,9 +754,9 @@ router.get("/", async (req, res) => {
 
 router.get("/designers", async (req, res) => {
   try {
-    const role = req.user?.role || "";
+    const role = normalizeTaskRole(req.user?.role);
     if (!["designer", "admin"].includes(role)) {
-      return res.status(403).json({ error: "Only designers can view designers." });
+      return res.status(403).json({ error: "Only designer or admin accounts can view designers." });
     }
 
     const designers = await User.find({
@@ -1579,9 +1579,9 @@ router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
 
 router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
   try {
-    const role = req.user?.role || "";
+    const role = normalizeTaskRole(req.user?.role);
     if (!["designer", "admin"].includes(role)) {
-      return res.status(403).json({ error: "Only designers can assign designers." });
+      return res.status(403).json({ error: "Only designer or admin accounts can assign designers." });
     }
 
     const assignedDesignerRaw = req.body?.assigned_designer_id;

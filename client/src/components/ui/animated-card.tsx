@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { ReactNode, useState } from "react";
+import { ReactNode } from "react";
 
 interface AnimatedCardProps {
     children: ReactNode;
@@ -17,8 +17,6 @@ export function AnimatedCard({
     containerClassName,
     onClick
 }: AnimatedCardProps) {
-    const [isHovered, setIsHovered] = useState(false);
-
     return (
         <div
             className={cn(
@@ -26,19 +24,8 @@ export function AnimatedCard({
                 onClick && "cursor-pointer",
                 containerClassName
             )}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
             onClick={onClick}
         >
-            {/* Animated Background Overlay - Dark mode only */}
-            <div
-                className={cn(
-                    "absolute inset-0 bg-gradient-to-br opacity-0 transition-opacity duration-500",
-                    "dark:from-primary/10 dark:via-primary/15 dark:to-accent/10",
-                    isHovered && "dark:opacity-100"
-                )}
-            />
-
             {/* Content */}
             <div className={cn("relative z-10", className)}>
                 {children}

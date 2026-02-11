@@ -35,7 +35,9 @@ import {
   Layout,
   Monitor,
   BookOpen,
-  Sparkles,
+  Mail,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Task, TaskCategory, TaskChange, TaskUrgency } from '@/types';
@@ -70,6 +72,12 @@ import { upsertLocalTask } from '@/lib/taskStorage';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 import type { TaskDraft } from '@/lib/ai';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface UploadedFile {
   id: string;
@@ -350,6 +358,16 @@ const getFileIcon = (fileName: string, className: string) => {
   return <FileText className={className} />;
 };
 
+const createMailtoUrl = (to: string, subject: string, body: string) =>
+  `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+const EMAIL_DRAFT_MAILTO_STORAGE_KEY = 'designhub:email-draft-mailto';
+const EMAIL_SEND_PENDING_KEY = 'designhub:gmail-send-pending';
+const EMAIL_COMPOSE_OPENED_EVENT = 'designhub:gmail-compose-opened';
+const createGmailComposeUrl = (to: string, subject: string, body: string) =>
+  `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+    to
+  )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
 function LinearProgressWithLabel(props: LinearProgressProps & { value: number }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -377,6 +395,7 @@ export default function NewRequest() {
   const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
   const [uploadAnimation, setUploadAnimation] = useState<object | null>(null);
   const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -893,6 +912,151 @@ export default function NewRequest() {
     };
   }, []);
 
+  const buildEmailDraft = () => {
+    const to = 'design@smvec.ac.in';
+    const requestTitle = title.trim();
+    const descriptionValue = description.trim();
+    const categoryLabel = category ? getCategoryLabel(category as TaskCategory) : '';
+    const urgencyLabel = urgency
+      ? urgency
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+      : '';
+    const deadlineLabel = deadline ? format(deadline, 'd MMMM yyyy') : '';
+    const phoneLabel = requesterPhone.trim();
+    const submittedOn = format(new Date(), 'd MMM yyyy, h:mm a');
+
+    const hasPrimaryField =
+      Boolean(requestTitle) ||
+      Boolean(descriptionValue) ||
+      Boolean(categoryLabel) ||
+      Boolean(deadlineLabel) ||
+      Boolean(phoneLabel);
+    const shouldShowUrgency = Boolean(urgencyLabel) && (hasPrimaryField || urgency !== 'normal');
+    const maxBodyLength = 1800;
+    const truncationSuffix = ' (truncated)';
+    const footerWidth = 72;
+    const sectionDivider = '----------------------------------------';
+    const centerFooterLine = (value: string) => {
+      if (!value) return '';
+      const trimmed = value.trim();
+      const leftPadding = Math.max(0, Math.floor((footerWidth - trimmed.length) / 2));
+      return `${' '.repeat(leftPadding)}${trimmed}`;
+    };
+    const footerLines = [
+      sectionDivider,
+      'SUBMISSION GUIDELINES',
+      sectionDivider,
+      '',
+      'Data Requirements',
+      '- All final text content',
+      '- Images / photographs',
+      '- Logos (high resolution)',
+      '- Reference designs or samples',
+      '',
+      'Timeline',
+      '- Minimum 3 working days for standard requests',
+      '- Urgent requests require proper justification',
+      '',
+      'Modifications',
+      '- Any changes after design approval require Treasurer approval',
+      '',
+      'Attachments Required',
+      '- Screenshot of the requirement screen (MANDATORY)',
+      '- Reference images',
+      '- Logos',
+      '- Text content',
+      '- Any supporting files',
+      '',
+    ];
+
+    const buildBodyContent = (descriptionText: string) => {
+      const details: string[] = [];
+      const addDetail = (label: string, value: string) => {
+        const cleanValue = value?.trim();
+        if (!cleanValue) return;
+        details.push(label, cleanValue, '');
+      };
+
+      addDetail('Request Title', requestTitle);
+      addDetail('Description', descriptionText);
+      addDetail('Category', categoryLabel);
+      if (shouldShowUrgency) {
+        addDetail('Urgency', urgencyLabel);
+      }
+      addDetail('Deadline', deadlineLabel);
+      addDetail('WhatsApp Updates', phoneLabel);
+
+      const lines: string[] = [];
+
+      if (details.length > 0) {
+        lines.push(
+          sectionDivider,
+          'DESIGN REQUEST DETAILS',
+          sectionDivider,
+          '',
+          ...details
+        );
+      }
+
+      lines.push(...footerLines);
+
+      return lines.join('\n');
+    };
+
+    let body = buildBodyContent(descriptionValue);
+    if (body.length > maxBodyLength && descriptionValue) {
+      const bodyWithoutDescription = buildBodyContent('');
+      const availableDescriptionChars = Math.max(
+        0,
+        maxBodyLength - bodyWithoutDescription.length - truncationSuffix.length
+      );
+      const truncatedDescription = `${descriptionValue
+        .slice(0, availableDescriptionChars)
+        .trimEnd()}${truncationSuffix}`;
+      body = buildBodyContent(truncatedDescription);
+    }
+
+    if (body.length > maxBodyLength) {
+      body = `${body.slice(0, maxBodyLength - truncationSuffix.length).trimEnd()}${truncationSuffix}`;
+    }
+
+    const subject = requestTitle
+      ? `Design Request - ${requestTitle}`
+      : 'Design Request - New Design Request';
+
+    return { subject, body, to };
+  };
+  const emailPreviewDraft = buildEmailDraft();
+  const emailDraftMailtoUrl = createMailtoUrl(
+    emailPreviewDraft.to,
+    emailPreviewDraft.subject,
+    emailPreviewDraft.body
+  );
+
+  const handleEmailDesignRequest = () => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      EMAIL_SEND_PENDING_KEY,
+      JSON.stringify({ openedAt: Date.now() })
+    );
+    window.dispatchEvent(new CustomEvent(EMAIL_COMPOSE_OPENED_EVENT));
+    const gmailUrl = createGmailComposeUrl(
+      emailPreviewDraft.to,
+      emailPreviewDraft.subject,
+      emailPreviewDraft.body
+    );
+    const popup = window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      window.location.href = gmailUrl;
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(EMAIL_DRAFT_MAILTO_STORAGE_KEY, emailDraftMailtoUrl);
+  }, [emailDraftMailtoUrl]);
+
   return (
     <DashboardLayout
       background={
@@ -910,9 +1074,67 @@ export default function NewRequest() {
             <p className="text-muted-foreground mt-1 premium-body">
               Submit a new design request to the team
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Attach screenshot / reference files in the email.
+            </p>
           </div>
-          <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} />
+          <div className="flex items-center gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleEmailDesignRequest}
+                    className="h-9 w-9 rounded-full bg-primary/10 text-primary hover:bg-primary/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/15 shadow-[0_10px_24px_-18px_hsl(var(--primary)/0.65)]"
+                    aria-label="Email Design Request"
+                  >
+                    <Mail className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="end">
+                  <p>Email Design Request</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} />
+          </div>
         </div>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setShowEmailPreview((prev) => !prev)}
+            className="h-8 rounded-full bg-primary/5 px-3 text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+          >
+            Preview Email
+            {showEmailPreview ? (
+              <ChevronUp className="ml-1 h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="ml-1 h-3.5 w-3.5" />
+            )}
+          </Button>
+        </div>
+        {showEmailPreview && (
+          <div className={`${glassPanelClass} p-4 animate-fade-in space-y-3`}>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Subject
+              </p>
+              <p className="mt-1 text-sm font-medium text-foreground break-words">
+                {emailPreviewDraft.subject}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Body
+              </p>
+              <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-[#D9E6FF] bg-white/70 p-3 text-xs leading-relaxed text-foreground/90 dark:border-slate-700/60 dark:bg-slate-900/60">
+                {emailPreviewDraft.body}
+              </pre>
+            </div>
+          </div>
+        )}
 
         {/* Guidelines Banner */}
         {showGuidelines && (
@@ -1298,10 +1520,10 @@ export default function NewRequest() {
               </a>{' '}
               or{' '}
               <a
-                href="mailto:support@designdesk.com"
+                href="mailto:design@smvec.ac.in"
                 className="font-medium text-foreground/80 hover:text-foreground"
               >
-                support@designdesk.com
+                design@smvec.ac.in
               </a>
               .
             </div>
