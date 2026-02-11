@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { API_URL, authFetch } from '@/lib/api';
+import { DESIGNER_CREDENTIALS, TREASURER_CREDENTIALS } from '@/constants/auth';
 import { UserRole } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,18 @@ const roleOptions: { value: UserRole; label: string; icon: React.ElementType; de
   { value: 'staff', label: 'Staff', icon: Users, description: 'Submit design requests' },
   { value: 'treasurer', label: 'Treasurer', icon: Briefcase, description: 'Approve modifications' },
 ];
+
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+const DESIGNER_LOGIN_EMAIL = normalizeEmail(DESIGNER_CREDENTIALS.email);
+const TREASURER_LOGIN_EMAIL = normalizeEmail(TREASURER_CREDENTIALS.email);
+
+const resolveLoginRole = (email: string): UserRole => {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return 'staff';
+  if (normalized === DESIGNER_LOGIN_EMAIL) return 'designer';
+  if (normalized === TREASURER_LOGIN_EMAIL) return 'treasurer';
+  return 'staff';
+};
 
 export default function Login() {
   const { setTheme } = useTheme();
@@ -81,6 +94,9 @@ export default function Login() {
   const [signupPassword, setSignupPassword] = useState('');
   const [signupRole, setSignupRole] = useState<UserRole>('staff');
   const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const inferredLoginRole = resolveLoginRole(email);
+  const inferredLoginRoleOption =
+    roleOptions.find((option) => option.value === inferredLoginRole) ?? roleOptions[1];
   const { login, signup, loginWithGoogle, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -246,6 +262,10 @@ export default function Login() {
     setRole(nextRole);
   };
 
+  useEffect(() => {
+    setRole((current) => (current === inferredLoginRole ? current : inferredLoginRole));
+  }, [inferredLoginRole]);
+
   const handleOpenSignup = () => {
     setSignupEmail(email);
     setSignupPassword(password);
@@ -409,27 +429,24 @@ export default function Login() {
 
               <div className="space-y-2">
                 <Label>Role</Label>
-                <Select value={role} onValueChange={(v) => handleRoleChange(v as UserRole)}>
+                <Select
+                  value={role}
+                  onValueChange={(v) => handleRoleChange(v as UserRole)}
+                >
                   <SelectTrigger className={selectTriggerClass}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className={selectContentClass}>
-                    {roleOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <div className="flex items-center gap-2">
-                          <option.icon className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-semibold text-foreground/90">{option.label}</span>
-                          <span className="text-[11px] text-foreground/70">
-                            - {option.description}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    <SelectItem value={inferredLoginRoleOption.value}>
+                      <div className="flex items-center gap-2">
+                        <inferredLoginRoleOption.icon className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-semibold text-foreground/90">
+                          {inferredLoginRoleOption.label}
+                        </span>
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Select a role to experience different portal views
-                </p>
               </div>
 
               <Button
@@ -452,49 +469,51 @@ export default function Login() {
               ) : null}
             </form>
 
-            <div className="my-6 flex items-center gap-3">
-              <div className="h-px flex-1 bg-border" />
-              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">or</span>
-              <div className="h-px flex-1 bg-border" />
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              className={`w-full h-11 ${glassButtonClass} border-0`}
-              onClick={handleGoogleLogin}
-              disabled={isLoading}
-            >
-              <span className="inline-flex items-center justify-center gap-2">
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 533.5 544.3"
-                  className="h-4 w-4"
-                >
-                  <path
-                    d="M533.5 278.4c0-18.8-1.5-37-4.3-54.6H272v103.4h146.9c-6.3 34-25.2 62.8-53.8 82l86.9 67.6c50.7-46.8 81.5-115.9 81.5-198.4z"
-                    fill="#4285F4"
-                  />
-                  <path
-                    d="M272 544.3c72.7 0 133.7-24.1 178.3-65.4l-86.9-67.6c-24.1 16.2-55 25.8-91.4 25.8-70 0-129.4-47.2-150.7-110.5H32.9v69.5c44.4 88.1 135.4 148.2 239.1 148.2z"
-                    fill="#34A853"
-                  />
-                  <path
-                    d="M121.3 326.6c-10.4-31-10.4-64.6 0-95.6V161.5H32.9c-38.6 77.2-38.6 168.2 0 245.4l88.4-69.5z"
-                    fill="#FBBC05"
-                  />
-                  <path
-                    d="M272 107.7c39.6-.6 77.6 14 106.7 40.9l79.4-79.4C407.3 24.1 346.3 0 272 0 168.3 0 77.3 60.1 32.9 148.2l88.4 69.5C142.6 154.9 202 107.7 272 107.7z"
-                    fill="#EA4335"
-                  />
-                </svg>
-                <span>Continue with Google</span>
-              </span>
-            </Button>
             {role === 'staff' ? (
-              <p className="text-center text-xs text-muted-foreground mt-3">
-                Staff can sign up with Google or use Create account.
-              </p>
+              <>
+                <div className="my-6 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">or</span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={`w-full h-11 ${glassButtonClass} border-0`}
+                  onClick={handleGoogleLogin}
+                  disabled={isLoading}
+                >
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 533.5 544.3"
+                      className="h-4 w-4"
+                    >
+                      <path
+                        d="M533.5 278.4c0-18.8-1.5-37-4.3-54.6H272v103.4h146.9c-6.3 34-25.2 62.8-53.8 82l86.9 67.6c50.7-46.8 81.5-115.9 81.5-198.4z"
+                        fill="#4285F4"
+                      />
+                      <path
+                        d="M272 544.3c72.7 0 133.7-24.1 178.3-65.4l-86.9-67.6c-24.1 16.2-55 25.8-91.4 25.8-70 0-129.4-47.2-150.7-110.5H32.9v69.5c44.4 88.1 135.4 148.2 239.1 148.2z"
+                        fill="#34A853"
+                      />
+                      <path
+                        d="M121.3 326.6c-10.4-31-10.4-64.6 0-95.6V161.5H32.9c-38.6 77.2-38.6 168.2 0 245.4l88.4-69.5z"
+                        fill="#FBBC05"
+                      />
+                      <path
+                        d="M272 107.7c39.6-.6 77.6 14 106.7 40.9l79.4-79.4C407.3 24.1 346.3 0 272 0 168.3 0 77.3 60.1 32.9 148.2l88.4 69.5C142.6 154.9 202 107.7 272 107.7z"
+                        fill="#EA4335"
+                      />
+                    </svg>
+                    <span>Continue with Google</span>
+                  </span>
+                </Button>
+                <p className="text-center text-xs text-muted-foreground mt-3">
+                  Staff can sign up with Google or use Create account.
+                </p>
+              </>
             ) : null}
 
           </div>

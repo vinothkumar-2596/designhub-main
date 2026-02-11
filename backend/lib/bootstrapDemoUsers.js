@@ -31,12 +31,12 @@ const buildDemoUsers = () => {
   }
 
   const designerEmail = String(
-    process.env.DESIGNER_DEMO_EMAIL || "designer@designhub.com"
+    process.env.DESIGNER_DEMO_EMAIL || "designer.portal@designhub.com"
   )
     .trim()
     .toLowerCase();
   const designerPassword = String(
-    process.env.DESIGNER_DEMO_PASSWORD || "Design@123"
+    process.env.DESIGNER_DEMO_PASSWORD || "Designer#Q9v4!"
   ).trim();
   const designerName = String(process.env.DESIGNER_DEMO_NAME || "Designer").trim();
 
@@ -50,6 +50,29 @@ const buildDemoUsers = () => {
       password: designerPassword,
       role: "designer",
       name: designerName,
+    });
+  }
+
+  const treasurerEmail = String(
+    process.env.TREASURER_DEMO_EMAIL || "treasurer.portal@designhub.com"
+  )
+    .trim()
+    .toLowerCase();
+  const treasurerPassword = String(
+    process.env.TREASURER_DEMO_PASSWORD || "Treasurer#R7m2!"
+  ).trim();
+  const treasurerName = String(process.env.TREASURER_DEMO_NAME || "Treasurer").trim();
+
+  if (
+    treasurerEmail &&
+    treasurerPassword &&
+    !users.some((entry) => entry.email === treasurerEmail)
+  ) {
+    users.push({
+      email: treasurerEmail,
+      password: treasurerPassword,
+      role: "treasurer",
+      name: treasurerName,
     });
   }
 
@@ -106,8 +129,8 @@ export const bootstrapDemoUsers = async () => {
       updates.name = entry.name;
       changed = true;
     }
-    if (existing.role !== entry.role && entry.role === "designer") {
-      updates.role = "designer";
+    if (existing.role !== entry.role) {
+      updates.role = entry.role;
       changed = true;
     }
     if (existing.isActive === false) {
@@ -125,4 +148,3 @@ export const bootstrapDemoUsers = async () => {
     }
   }
 };
-

@@ -14,8 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { UserRole } from '@/types';
-import { User, Palette, Users, Briefcase, Check } from 'lucide-react';
+import { User, Briefcase, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEffect, useState } from 'react';
 import BoringAvatar from 'boring-avatars';
@@ -29,16 +28,14 @@ import {
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { avatarPresets, getAvatarPreset, getDefaultAvatarValue, toAvatarPresetValue } from '@/lib/avatarPresets';
 import { cn } from '@/lib/utils';
-import { API_URL } from '@/lib/api';
-
-const roleOptions: { value: UserRole; label: string; icon: React.ElementType }[] = [
-  { value: 'designer', label: 'Designer', icon: Palette },
-  { value: 'staff', label: 'Staff', icon: Users },
-  { value: 'treasurer', label: 'Treasurer', icon: Briefcase },
-];
+const roleLabelByValue: Record<string, string> = {
+  designer: 'Designer',
+  staff: 'Staff',
+  treasurer: 'Treasurer',
+};
 
 export default function Settings() {
-  const { user, switchRole, updateUser } = useAuth();
+  const { user, updateUser } = useAuth();
   const [fullName, setFullName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState(user?.phone || '');
@@ -57,7 +54,7 @@ export default function Settings() {
   } | null>(null);
   const defaultDepartment =
     user?.department?.trim() ||
-    roleOptions.find((option) => option.value === user?.role)?.label ||
+    roleLabelByValue[String(user?.role || '').toLowerCase()] ||
     'General';
   const sanitizeName = (value: string) => value.replace(/\d+/g, '');
   const normalizeIndianPhone = (value: string) => {
@@ -96,18 +93,6 @@ export default function Settings() {
       // Ignore invalid storage
     }
   }, []);
-
-  const handleRoleSwitch = (role: UserRole) => {
-    switchRole(role);
-    const roleLabel = roleOptions.find((entry) => entry.value === role)?.label || role;
-    if (API_URL) {
-      toast.message(
-        `Switched to ${roleLabel} view (demo). API permissions use your signed-in account role.`
-      );
-      return;
-    }
-    toast.success(`Switched to ${roleLabel} view`);
-  };
 
   const applyProfileUpdate = (payload: {
     name: string;
@@ -324,38 +309,6 @@ export default function Settings() {
             </div>
           </div>
         )}
-
-        {/* Role Switcher (Demo) */}
-        <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
-          <h2 className="text-lg font-semibold text-foreground premium-heading mb-2 flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Demo: Switch Role
-          </h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Switch between different roles to explore the portal features
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            {roleOptions.map((role) => {
-              const isActive = user?.role === role.value;
-              return (
-                <Button
-                  key={role.value}
-                  variant="ghost"
-                  onClick={() => handleRoleSwitch(role.value)}
-                  className={cn(
-                    'justify-start gap-2 rounded-xl border h-11',
-                    isActive
-                      ? 'border-primary/45 bg-primary text-primary-foreground hover:bg-primary/95 hover:text-primary-foreground dark:border-primary/40 dark:bg-primary/85 dark:text-white dark:hover:bg-primary/80'
-                      : 'border-[#D9E6FF] bg-white text-[#1E2A5A] hover:border-[#C9D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-slate-700/70 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-600/80 dark:hover:bg-slate-800/75 dark:hover:text-slate-100'
-                  )}
-                >
-                  <role.icon className="h-4 w-4" />
-                  {role.label}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
 
       </div>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
