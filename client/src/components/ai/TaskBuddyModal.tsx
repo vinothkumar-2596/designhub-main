@@ -150,6 +150,11 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             if (response.type === 'task_draft' && response.data) {
                 setQuotaBlocked(false);
                 setTaskDraft(response.data);
+                if (response.ready && onTaskCreated) {
+                    onTaskCreated(response.data as TaskDraft);
+                    onClose();
+                    return;
+                }
                 const assistantMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
@@ -192,9 +197,16 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 setMessages(prev => [...prev, assistantMessage]);
             }
         } catch (error) {
-            console.error('AI Error:', error);
             const message = error instanceof Error ? error.message : 'Failed to get response';
-            toast.error(message);
+            const lowerMessage = message.toLowerCase();
+            const isServiceUnavailable =
+                lowerMessage.includes('temporarily unavailable') ||
+                lowerMessage.includes('contact admin') ||
+                lowerMessage.includes('ai service');
+
+            if (!isServiceUnavailable) {
+                toast.error(message);
+            }
             if (message.toLowerCase().includes('quota')) {
                 setQuotaBlocked(true);
                 const quotaMessage: Message = {
@@ -206,6 +218,18 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 setMessages(prev => [...prev, quotaMessage]);
                 return;
             }
+
+            if (isServiceUnavailable) {
+                const unavailableMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    role: 'assistant',
+                    content: 'Task Buddy is temporarily unavailable. Please try again in a few minutes.',
+                    timestamp: new Date()
+                };
+                setMessages(prev => [...prev, unavailableMessage]);
+                return;
+            }
+
             const errorMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
@@ -368,6 +392,12 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-3xl h-[700px] flex flex-col p-0 gap-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl overflow-hidden rounded-[32px] border-white/20 dark:border-slate-700/60 shadow-2xl ring-1 ring-white/40 dark:ring-slate-700/60">
+                <DialogHeader className="sr-only">
+                    <DialogTitle>Task Buddy AI</DialogTitle>
+                    <DialogDescription>
+                        Chat with Task Buddy to prepare and auto-fill your design request draft.
+                    </DialogDescription>
+                </DialogHeader>
                 {/* Close Button Only */}
 
 

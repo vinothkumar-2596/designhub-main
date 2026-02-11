@@ -112,9 +112,14 @@ Please process the above information and return the mandatory JSON response.`;
 });
 
 router.post("/gemini", async (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey =
+        process.env.GEMINI_API_KEY ||
+        process.env.VITE_GEMINI_API_KEY ||
+        process.env.GOOGLE_API_KEY;
     if (!apiKey) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server" });
+        return res
+            .status(503)
+            .json({ error: "AI service is temporarily unavailable. Please contact admin.", code: "AI_KEY_MISSING" });
     }
 
     try {
@@ -149,8 +154,40 @@ router.post("/gemini", async (req, res) => {
     } catch (error) {
         console.error("Gemini proxy error:", error);
         const message = error instanceof Error ? error.message : "Unknown Gemini error";
-        const status = message.includes("429") ? 429 : 500;
-        res.status(status).json({ error: message });
+        const lower = message.toLowerCase();
+        const statusHint =
+            Number(error?.status || error?.statusCode || error?.response?.status || 0) || 0;
+
+        const isQuotaError =
+            statusHint === 429 ||
+            lower.includes("429") ||
+            lower.includes("quota") ||
+            lower.includes("rate limit");
+        const isAuthError =
+            statusHint === 401 ||
+            statusHint === 403 ||
+            lower.includes("403") ||
+            lower.includes("api key") ||
+            lower.includes("forbidden") ||
+            lower.includes("permission") ||
+            lower.includes("authentication") ||
+            lower.includes("leaked");
+
+        if (isQuotaError) {
+            return res
+                .status(429)
+                .json({ error: "Usage limit exceeded. Please wait and try again.", code: "AI_QUOTA_EXCEEDED" });
+        }
+
+        if (isAuthError) {
+            return res
+                .status(503)
+                .json({ error: "AI service is temporarily unavailable. Please contact admin.", code: "AI_AUTH_UNAVAILABLE" });
+        }
+
+        return res
+            .status(503)
+            .json({ error: "AI service is temporarily unavailable. Please try again later.", code: "AI_UNAVAILABLE" });
     }
 });
 

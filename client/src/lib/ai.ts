@@ -2,131 +2,58 @@ import { API_URL, authFetch } from './api';
 
 const AI_ENDPOINT = API_URL ? `${API_URL}/api/ai/gemini` : undefined;
 
-export const TASK_BUDDY_SYSTEM_PROMPT = `You are TaskBuddy AI, a SMART REQUEST WIZARD inside the DesignDesk portal.
+export const TASK_BUDDY_SYSTEM_PROMPT = `You are TaskBuddy AI.
 
-GOAL
-Help users create a design request by asking ONE question at a time, using OPTIONS instead of open-ended questions wherever possible.
+YOUR JOB
+- Collect all required design information.
+- Ask ONE missing question at a time (never multiple questions).
+- Do NOT generate final output until sufficient details are collected.
 
-REQUIRED FIELDS (must collect all)
-- request_title
-- description
+REQUIRED FIELDS
+- title
 - category
-- urgency
+- objective
+- audience
+- deliverables
 - deadline
+- urgency
+- platform
+- references_available (yes/no)
 
-QUESTION ORDER (strict)
-1) What design is needed
-2) Description / details
-3) Category
-4) Urgency
-5) Deadline
-6) Optional data availability
+COMPANY RULES
+- Minimum 3 working days required.
+- If deadline is less than 3 days, set urgency to "urgent".
+- If attachments are not mentioned, ask if logos/content/reference files are available.
+
+QUESTION STYLE
+- Ask ONE smart question at a time.
+- Prefer options/choices instead of open-ended questions.
+- If the user already provided multiple fields, accept them and move to the next missing field.
+
+CATEGORY-SPECIFIC FOLLOW-UPS
+- If category = "logo": ask about brand name, usage, and style.
+- If category = "social_media": ask platform, dimensions, campaign goal.
+- If category = "website": ask pages/sitemap and tech stack.
+
+READY RESPONSE (ONLY WHEN ALL REQUIRED FIELDS ARE READY)
+When sufficient details are collected, respond ONLY in this format:
+
+STATUS: READY
+
+{
+  "title": "",
+  "description": "",
+  "category": "",
+  "urgency": "",
+  "deadline": "",
+  "internal_notes": ""
+}
 
 RULES
-- Ask ONE question per turn. Do NOT ask everything at once.
-- Always give OPTIONS for the user to choose.
-- Use short, clear, option-based prompts.
-- If the user gives multiple fields in one message, accept them and move to the next missing field.
-
-OPTIONS TO USE
-1) What design is needed (capture request_title)
-Choose one:
-- Event banner
-- Social media post
-- Flyer
-- Brochure
-- Website asset
-- UI/UX screen
-- LED backdrop
-- Campaign/other
-- Other (type)
-
-2) Description / details
-Choose one:
-- I will type a 1-2 line brief now
-- Keep it minimal (use title only)
-- I will add details later
-If the user chooses to type now, ask them to provide the brief in the next message.
-If minimal/later, proceed to the next step.
-
-3) Category (must map to these values)
-Choose one:
-- banner
-- campaign_or_others
-- social_media_creative
-- website_assets
-- ui_ux
-- led_backdrop
-- brochure
-- flyer
-
-4) Urgency
-Choose one:
-- Normal
-- Urgent
-
-5) Deadline
-Choose one:
-- 3 days from now
-- 1 week from now
-- Pick a date (YYYY-MM-DD)
-If user picks a date, accept the next message as the date and validate format.
-
-6) Optional data availability
-Ask what additional data is available and show options:
-- content/copy
-- logo/brand assets
-- reference/inspiration
-- size/dimensions
-- none
-
-MANDATORY FINAL PROMPT
-After all required fields are collected, ask exactly:
-"Do you want to continue or proceed now?"
-Give ONLY these options:
-- Send to Draft
-- Add more details / attachments
-- Submit request
-
-OPTION LOGIC
-If user selects:
-1) "Send to Draft" -> respond ONLY with SAVE_DRAFT JSON (no extra text).
-2) "Add more details / attachments" -> ask what additional data is available (content, logo, reference, size, text, etc.) using options.
-3) "Submit request" -> respond ONLY with SUBMIT_REQUEST JSON (no extra text).
-
-SHORTCUT INTENT
-If user says: "ok send to draft", "draft", "later", or "save"
-Treat as "Send to Draft".
-
-FINAL OUTPUT RULES (very strict)
-When user chooses "Send to Draft", respond ONLY with JSON:
-{
-  "action": "SAVE_DRAFT",
-  "data": {
-    "request_title": "",
-    "description": "",
-    "category": "",
-    "urgency": "Normal | Urgent",
-    "deadline": "YYYY-MM-DD",
-    "phone": "",
-    "attachments_note": ""
-  }
-}
-
-When user chooses "Submit request", respond ONLY with JSON:
-{
-  "action": "SUBMIT_REQUEST",
-  "data": {
-    "request_title": "",
-    "description": "",
-    "category": "",
-    "urgency": "Normal | Urgent",
-    "deadline": "YYYY-MM-DD"
-  }
-}
-
-Do NOT add explanations.
-Do NOT ask follow-up questions after action is decided.`;
+- The JSON must be valid.
+- description should contain the summary (objective, audience, deliverables, platform).
+- internal_notes can include references_available and any extra constraints.
+- Do NOT add any extra text outside the required format.`;
 
 export interface TaskDraft {
     title: string;
@@ -150,11 +77,21 @@ export interface TaskBuddyActionPayload {
     attachments_note?: string;
 }
 
+export interface TaskBuddyReadyPayload {
+    title: string;
+    description: string;
+    category: string;
+    urgency: string;
+    deadline: string;
+    internal_notes?: string;
+}
+
 export interface AIResponse {
     type: 'message' | 'task_draft' | 'action';
     content?: string;
     data?: TaskDraft | TaskBuddyActionPayload;
     action?: 'SAVE_DRAFT' | 'SUBMIT_REQUEST';
+    ready?: boolean;
 }
 
 const DRAFT_LABELS = [
@@ -255,6 +192,39 @@ export const mapActionPayloadToDraft = (payload: TaskBuddyActionPayload): TaskDr
     };
 };
 
+export const mapReadyPayloadToDraft = (payload: TaskBuddyReadyPayload): TaskDraft => {
+    const description = payload.internal_notes
+        ? `${payload.description}\n\nNotes: ${payload.internal_notes}`.trim()
+        : payload.description;
+    return {
+        title: payload.title || 'Design Request',
+        description: description || 'Design request details',
+        category: mapActionCategoryToTaskDraft(payload.category || ''),
+        urgency: mapActionUrgencyToTaskDraft(payload.urgency || ''),
+        deadline: payload.deadline ? toIsoDate(payload.deadline) : '',
+        notes: payload.internal_notes || '',
+        attachmentsNote: payload.internal_notes || ''
+    };
+};
+
+const extractReadyPayload = (text: string): TaskBuddyReadyPayload | null => {
+    if (!/STATUS:\s*READY/i.test(text)) return null;
+    const statusIndex = text.search(/STATUS:\s*READY/i);
+    const startIndex = text.indexOf('{', statusIndex);
+    const endIndex = text.lastIndexOf('}');
+    if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) return null;
+    const jsonText = text.slice(startIndex, endIndex + 1);
+    try {
+        const parsed = JSON.parse(jsonText);
+        if (parsed && typeof parsed === 'object') {
+            return parsed as TaskBuddyReadyPayload;
+        }
+    } catch {
+        return null;
+    }
+    return null;
+};
+
 const toIsoDate = (value: string) => {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
@@ -316,20 +286,33 @@ export async function sendMessageToAI(
 
         if (!response.ok) {
             let errorMessage = response.statusText;
+            let errorCode = '';
             try {
                 const errorBody = await response.json();
                 if (errorBody?.error) {
                     errorMessage = errorBody.error;
                 }
+                if (errorBody?.code) {
+                    errorCode = String(errorBody.code);
+                }
             } catch {
                 // Ignore JSON parse failures
             }
 
-            if (response.status === 429) {
+            if (response.status === 429 || errorCode === 'AI_QUOTA_EXCEEDED') {
                 throw new Error('Usage limit exceeded (Quota). Please wait a minute and try again.');
             }
 
-            throw new Error(errorMessage);
+            if (
+                errorCode === 'AI_KEY_MISSING' ||
+                errorCode === 'AI_AUTH_UNAVAILABLE' ||
+                errorCode === 'AI_UNAVAILABLE' ||
+                response.status >= 500
+            ) {
+                throw new Error('AI service is temporarily unavailable. Please contact admin.');
+            }
+
+            throw new Error(errorMessage || 'Unable to process AI request right now.');
         }
 
         const data = await response.json();
@@ -351,6 +334,18 @@ export async function sendMessageToAI(
                 }
             }
         } catch {
+            const readyPayload = extractReadyPayload(text);
+            if (readyPayload) {
+                const draft = mapReadyPayloadToDraft(readyPayload);
+                const validation = validateTaskDraft(draft);
+                if (validation.valid) {
+                    return {
+                        type: 'task_draft',
+                        data: draft,
+                        ready: true
+                    };
+                }
+            }
             const draft = parseTaskDraftFromText(text);
             if (draft) {
                 const validation = validateTaskDraft(draft);
@@ -375,14 +370,13 @@ export async function sendMessageToAI(
             content: text
         };
     } catch (error) {
-        console.error('AI Error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown AI error';
 
-        if (errorMessage.includes('429')) {
+        if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota')) {
             throw new Error('Usage limit exceeded (Quota). Please wait a minute and try again.');
         }
 
-        throw new Error(`AI Error: ${errorMessage}`);
+        throw new Error(errorMessage || 'Unable to process AI request right now.');
     }
 }
 

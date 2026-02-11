@@ -750,7 +750,7 @@ export default function NewRequest() {
     const aiResponse = draft;
     if (aiResponse) {
       applyAiDraft(aiResponse);
-      toast.success('Task Buddy draft applied to form!');
+      toast.success('Draft ready. Review & Submit.');
       return;
     }
   };
