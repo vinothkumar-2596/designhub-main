@@ -962,6 +962,16 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
       const targetRoom = task.assignedToId ? String(task.assignedToId) : "designers:queue";
       io.to(targetRoom).emit("request:new", payloadTask);
       console.log(`Emitted request:new to room: ${targetRoom}`);
+      getUserIdsByRole(["treasurer"]).then((userIds) => {
+        userIds.forEach((treasurerId) => {
+          io.to(String(treasurerId)).emit("request:new", payloadTask);
+        });
+        if (userIds.length > 0) {
+          console.log(`Emitted request:new to ${userIds.length} treasurer rooms`);
+        }
+      }).catch((error) => {
+        console.error("Request emit error (treasurer rooms):", error?.message || error);
+      });
       if (!task.assignedToId) {
         getUserIdsByRole(["designer"]).then((userIds) => {
           userIds.forEach((designerId) => {
