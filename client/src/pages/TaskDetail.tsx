@@ -771,6 +771,8 @@ export default function TaskDetail() {
   }, [taskState]);
 
   if (!taskState) {
+    const fallbackHref = user?.role === 'designer' ? '/tasks' : '/dashboard';
+    const fallbackLabel = user?.role === 'designer' ? 'Go to Task Portal' : 'Back to Dashboard';
     return (
       <DashboardLayout>
         <div className="text-center py-16">
@@ -778,7 +780,7 @@ export default function TaskDetail() {
             {isLoading ? 'Loading task...' : 'Task not found'}
           </h2>
           <Button asChild className="mt-4">
-            <Link to="/dashboard">Back to Dashboard</Link>
+            <Link to={fallbackHref}>{fallbackLabel}</Link>
           </Button>
         </div>
       </DashboardLayout>

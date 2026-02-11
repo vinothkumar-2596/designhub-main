@@ -78,7 +78,7 @@ export default function Tasks() {
   const { user } = useAuth();
   const { query, setItems, setScopeLabel } = useGlobalSearch();
   const apiUrl = API_URL;
-  const [tasks, setTasks] = useState(mockTasks);
+  const [tasks, setTasks] = useState<typeof mockTasks>(apiUrl ? [] : mockTasks);
   const [storageTick, setStorageTick] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [useLocalData, setUseLocalData] = useState(!apiUrl);
@@ -137,7 +137,7 @@ export default function Tasks() {
       setUseLocalData(false);
     } catch (error) {
       toast.error('Failed to load tasks');
-      setUseLocalData(true);
+      setUseLocalData(!apiUrl);
     } finally {
       setIsLoading(false);
     }
@@ -187,9 +187,10 @@ export default function Tasks() {
 
   const hydratedTasks = useMemo(() => {
     if (!useLocalData) return tasks;
-    if (typeof window === 'undefined') return mockTasks;
-    return mergeLocalTasks(mockTasks);
-  }, [useLocalData, storageTick, tasks]);
+    const localBaseTasks = apiUrl ? [] : mockTasks;
+    if (typeof window === 'undefined') return localBaseTasks;
+    return mergeLocalTasks(localBaseTasks);
+  }, [apiUrl, useLocalData, storageTick, tasks]);
 
   const visibleTasks = useMemo(() => {
     if (!user) return [];

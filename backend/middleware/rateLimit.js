@@ -6,7 +6,7 @@ const defaultHandler = (_req, res) => {
 
 export const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 120,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   handler: defaultHandler,

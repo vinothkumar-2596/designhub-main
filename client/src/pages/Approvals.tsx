@@ -26,7 +26,7 @@ export default function Approvals() {
   const { user } = useAuth();
   const { query, setItems, setScopeLabel } = useGlobalSearch();
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [tasks, setTasks] = useState(mockTasks);
+  const [tasks, setTasks] = useState<typeof mockTasks>(API_URL ? [] : mockTasks);
   const [isLoading, setIsLoading] = useState(false);
   const apiUrl = API_URL;
 

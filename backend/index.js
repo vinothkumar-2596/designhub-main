@@ -7,7 +7,6 @@ import { fileURLToPath } from 'url';
 import connectDB from './lib/db.js';
 import { initSocket } from './socket.js';
 import { attachClientMeta } from './middleware/clientMeta.js';
-import { globalLimiter } from './middleware/rateLimit.js';
 import { requireAuth } from './middleware/auth.js';
 import { auditWriteActions } from './middleware/audit.js';
 
@@ -47,7 +46,6 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(attachClientMeta);
-app.use(globalLimiter);
 app.use(requireAuth);
 app.use(auditWriteActions);
 

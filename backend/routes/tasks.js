@@ -18,6 +18,7 @@ import {
 } from "../lib/notificationService.js";
 import { getSocket } from "../socket.js";
 import { requireRole } from "../middleware/auth.js";
+import { globalLimiter } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 const TASK_ROLES = ["staff", "designer", "treasurer", "admin", "other", "manager"];
@@ -609,7 +610,7 @@ const ensureTaskAccess = async (req, res, next) => {
   }
 };
 
-router.get("/", async (req, res) => {
+router.get("/", globalLimiter, async (req, res) => {
   try {
     const { status, category, urgency, requesterId, requesterEmail, assignedToId, limit } = req.query;
     const query = {};

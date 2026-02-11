@@ -62,7 +62,9 @@ export default function DesignerAvailability() {
   const getLocalTasks = () =>
     normalizeDesignerAssignments(
       filterTasksForUser(
-        typeof window === 'undefined' ? mockTasks : mergeLocalTasks(mockTasks),
+        typeof window === 'undefined'
+          ? (apiUrl ? [] : mockTasks)
+          : mergeLocalTasks(apiUrl ? [] : mockTasks),
         user
       )
     );
@@ -85,7 +87,7 @@ export default function DesignerAvailability() {
         setRawTasks(normalizeDesignerAssignments(visibleTasks));
       } catch {
         if (!isActive) return;
-        setRawTasks(getLocalTasks());
+        setRawTasks(apiUrl ? [] : getLocalTasks());
       }
     };
     loadSchedule();

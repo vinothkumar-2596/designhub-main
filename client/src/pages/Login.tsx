@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { API_URL, authFetch } from '@/lib/api';
 import { UserRole } from '@/types';
@@ -83,6 +83,12 @@ export default function Login() {
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const { login, signup, loginWithGoogle, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectParam = new URLSearchParams(location.search).get('redirect') || '';
+  const safeRedirect =
+    redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
+      ? redirectParam
+      : '/dashboard';
   const glassInputClass =
     'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
   const glassButtonClass =
@@ -101,7 +107,7 @@ export default function Login() {
       toast.success('Welcome back!', {
         description: `Logged in as ${roleOptions.find(r => r.value === role)?.label}`,
       });
-      navigate('/dashboard');
+      navigate(safeRedirect);
     } catch (error) {
       toast.error('Login failed', {
         description: 'Please check your credentials and try again.',
@@ -256,7 +262,7 @@ export default function Login() {
     try {
       await signup(signupEmail, signupPassword, signupRole);
       toast.success('Account created');
-      navigate('/dashboard');
+      navigate(safeRedirect);
     } catch (error) {
       toast.error('Signup failed');
     } finally {
@@ -267,9 +273,9 @@ export default function Login() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard');
+      navigate(safeRedirect);
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, safeRedirect]);
 
   return (
     <>

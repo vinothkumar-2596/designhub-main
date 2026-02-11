@@ -27,8 +27,7 @@ import {
   loadScheduleNotifications,
   SCHEDULE_NOTIFICATIONS_PREFIX,
 } from '@/lib/designerSchedule';
-import { mockTasks } from '@/data/mockTasks';
-import { mergeLocalTasks } from '@/lib/taskStorage';
+import { useTasksContext } from '@/contexts/TasksContext';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 import { UserAvatar } from '@/components/common/UserAvatar';
@@ -81,10 +80,8 @@ export function DashboardLayout({
   hideGrid = false,
 }: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
+  const { tasks: hydratedTasks } = useTasksContext();
   const apiUrl = API_URL;
-  const [tasks, setTasks] = useState(mockTasks);
-  const [storageTick, setStorageTick] = useState(0);
-  const [useLocalData, setUseLocalData] = useState(!apiUrl);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [serverNotifications, setServerNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -97,6 +94,9 @@ export function DashboardLayout({
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
   const lastFetchedAtRef = useRef<string | null>(null);
   const notificationsSocketRef = useRef<ReturnType<typeof createSocket> | null>(null);
+  const notificationRateLimitedUntilRef = useRef(0);
+  const notificationsFetchInFlightRef = useRef(false);
+  const unreadCountFetchInFlightRef = useRef(false);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const location = useLocation();
@@ -166,24 +166,42 @@ export function DashboardLayout({
 
   const fetchUnreadCount = useCallback(async () => {
     if (!apiUrl || !userId) return;
+    if (Date.now() < notificationRateLimitedUntilRef.current) return;
+    if (unreadCountFetchInFlightRef.current) return;
+    unreadCountFetchInFlightRef.current = true;
     try {
       const response = await authFetch(`${apiUrl}/api/notifications/unread-count`);
+      if (response.status === 429) {
+        const retryAfterSeconds = Number(response.headers.get('retry-after') || 10);
+        notificationRateLimitedUntilRef.current = Date.now() + retryAfterSeconds * 1000;
+        return;
+      }
       if (!response.ok) return;
       const data = await response.json();
       setUnreadCount(Number(data?.count || 0));
     } catch (error) {
       console.error('Notification unread count failed:', error);
+    } finally {
+      unreadCountFetchInFlightRef.current = false;
     }
   }, [apiUrl, userId]);
 
   const fetchNotifications = useCallback(
     async (after?: string | null) => {
       if (!apiUrl || !userId) return;
+      if (Date.now() < notificationRateLimitedUntilRef.current) return;
+      if (notificationsFetchInFlightRef.current) return;
+      notificationsFetchInFlightRef.current = true;
       try {
         const params = new URLSearchParams();
         if (after) params.set('after', after);
         params.set('limit', '20');
         const response = await authFetch(`${apiUrl}/api/notifications?${params.toString()}`);
+        if (response.status === 429) {
+          const retryAfterSeconds = Number(response.headers.get('retry-after') || 10);
+          notificationRateLimitedUntilRef.current = Date.now() + retryAfterSeconds * 1000;
+          return;
+        }
         if (!response.ok) return;
         const data = await response.json();
         if (!Array.isArray(data)) return;
@@ -201,6 +219,8 @@ export function DashboardLayout({
         updateLastFetchedAt(normalized);
       } catch (error) {
         console.error('Notification fetch failed:', error);
+      } finally {
+        notificationsFetchInFlightRef.current = false;
       }
     },
     [apiUrl, userId, mergeNotifications, normalizeNotification, updateLastFetchedAt]
@@ -452,61 +472,7 @@ export function DashboardLayout({
         pollingRef.current = null;
       }
     };
-  }, [apiUrl, userId, isRealtimeConnected, fetchNotifications]);
-
-  useEffect(() => {
-    if (!useLocalData) return;
-    const onStorage = (event: StorageEvent) => {
-      if (event.key && event.key.startsWith('designhub.task.')) {
-        setStorageTick((prev) => prev + 1);
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [useLocalData]);
-
-  useEffect(() => {
-    if (!apiUrl) return;
-    const loadTasks = async () => {
-      try {
-        const response = await authFetch(`${apiUrl}/api/tasks`);
-        if (response.status === 401) {
-          return;
-        }
-        if (!response.ok) {
-          throw new Error('Failed to load tasks');
-        }
-        const data = await response.json();
-        const hydrated = data.map((task: any) => ({
-          ...task,
-          id: task.id || task._id,
-          deadline: new Date(task.deadline),
-          createdAt: new Date(task.createdAt),
-          updatedAt: new Date(task.updatedAt),
-          proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
-          deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
-          files: task.files?.map((file: any) => ({
-            ...file,
-            uploadedAt: new Date(file.uploadedAt),
-          })),
-          comments: task.comments?.map((comment: any) => ({
-            ...comment,
-            createdAt: new Date(comment.createdAt),
-          })),
-          changeHistory: task.changeHistory?.map((entry: any) => ({
-            ...entry,
-            createdAt: new Date(entry.createdAt),
-          })),
-        }));
-        setTasks(hydrated);
-        setUseLocalData(false);
-      } catch (error) {
-        console.error('❌ DashboardLayout load error:', error);
-        setUseLocalData(true);
-      }
-    };
-    loadTasks();
-  }, [apiUrl]);
+  }, [apiUrl, userId, isRealtimeConnected, fetchNotifications]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -515,13 +481,7 @@ export function DashboardLayout({
       contentScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [location.pathname, location.search]);
-
-  const hydratedTasks = useMemo(() => {
-    if (!useLocalData) return tasks;
-    if (typeof window === 'undefined') return mockTasks;
-    return mergeLocalTasks(mockTasks);
-  }, [useLocalData, storageTick, tasks]);
+  }, [location.pathname, location.search]);
 
   const taskIndex = useMemo(() => {
     const byId = new Map<string, any>();
@@ -1124,7 +1084,8 @@ export function DashboardLayout({
   ) : null;
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    const redirectPath = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(redirectPath)}`} replace />;
   }
 
   return (
@@ -1699,3 +1660,4 @@ function DashboardShell({
     </GridSmallBackground>
   );
 }
+

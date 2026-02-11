@@ -47,8 +47,8 @@ import { Link } from 'react-router-dom';
 import { PlusCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
+import { useTasksContext } from '@/contexts/TasksContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
 import { DotBackground } from '@/components/ui/background';
@@ -142,15 +142,12 @@ const EmptyState = () => (
 export default function Dashboard() {
   const { user } = useAuth();
   const { query, setItems, setScopeLabel } = useGlobalSearch();
+  const { tasks: hydratedTasks, isLoading, setTasks } = useTasksContext();
   const apiUrl = API_URL;
   const [dateRange, setDateRange] = useState<DateRangeOption>('month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
-  const [storageTick, setStorageTick] = useState(0);
   const [showNotifications, setShowNotifications] = useState(true);
-  const [tasks, setTasks] = useState(mockTasks);
-  const [isLoading, setIsLoading] = useState(false);
-  const [useLocalData, setUseLocalData] = useState(!apiUrl);
   const [processingApprovalId, setProcessingApprovalId] = useState<string | null>(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assigningTask, setAssigningTask] = useState<(typeof mockTasks)[number] | null>(null);
@@ -202,108 +199,6 @@ export default function Dashboard() {
       })),
     };
   };
-
-  useEffect(() => {
-    if (!useLocalData) return;
-    const onStorage = (event: StorageEvent) => {
-      if (event.key && event.key.startsWith('designhub.task.')) {
-        setStorageTick((prev) => prev + 1);
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [useLocalData]);
-
-  useEffect(() => {
-    if (!apiUrl) return;
-    const loadTasks = async () => {
-      setIsLoading(true);
-      try {
-        const response = await authFetch(`${apiUrl}/api/tasks`);
-        if (response.status === 401) {
-          return;
-        }
-        if (!response.ok) {
-          throw new Error('Failed to load tasks');
-        }
-        const data = await response.json();
-        const hydrated = data.map((task: any) => ({
-          ...task,
-          id: task.id || task._id,
-          deadline: new Date(task.deadline),
-          createdAt: new Date(task.createdAt),
-          updatedAt: new Date(task.updatedAt),
-          proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
-          deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
-          files: task.files?.map((file) => ({
-            ...file,
-            uploadedAt: new Date(file.uploadedAt),
-          })),
-          comments: task.comments?.map((comment) => ({
-            ...comment,
-            createdAt: new Date(comment.createdAt),
-          })),
-          changeHistory: task.changeHistory?.map((entry) => ({
-            ...entry,
-            createdAt: new Date(entry.createdAt),
-          })),
-        }));
-        setTasks(hydrated);
-        setUseLocalData(false);
-      } catch (error) {
-        console.error('❌ Dashboard load error:', error);
-        toast.error('Failed to load dashboard data');
-        setUseLocalData(true);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadTasks();
-  }, [apiUrl]);
-
-  useEffect(() => {
-    if (!apiUrl) return;
-    const handleNewRequest = (event: Event) => {
-      const payload = (event as CustomEvent).detail;
-      if (!payload) return;
-      const id = payload.id || payload._id;
-      if (!id) return;
-      setTasks((prev) => {
-        if (prev.some((task) => (task.id || (task as any)._id) === id)) {
-          return prev;
-        }
-        const hydrated = hydrateTask({ ...payload, id });
-        return [hydrated, ...prev];
-      });
-    };
-    const handleTaskUpdated = (event: Event) => {
-      const payload = (event as CustomEvent).detail;
-      if (!payload) return;
-      const id = payload.id || payload._id;
-      if (!id) return;
-      setTasks((prev) => {
-        const index = prev.findIndex((task) => (task.id || (task as any)._id) === id);
-        if (index === -1) return prev;
-        const hydrated = hydrateTask({ ...payload, id });
-        const next = [...prev];
-        next[index] = hydrated;
-        return next;
-      });
-    };
-    window.addEventListener('designhub:request:new', handleNewRequest);
-    window.addEventListener('designhub:task:updated', handleTaskUpdated);
-    return () => {
-      window.removeEventListener('designhub:request:new', handleNewRequest);
-      window.removeEventListener('designhub:task:updated', handleTaskUpdated);
-    };
-  }, [apiUrl]);
-
-  const hydratedTasks = useMemo(() => {
-    if (!useLocalData) return tasks;
-    if (typeof window === 'undefined') return mockTasks;
-    return mergeLocalTasks(mockTasks);
-  }, [useLocalData, storageTick, tasks]);
-
   const resetAssignDesignerModal = () => {
     setAssigningTask(null);
     setSelectedDesignerId('');
@@ -958,24 +853,16 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {user.role === 'staff' || user.role === 'treasurer' ? (
-                  <Button
-                    asChild
-                    size="default"
-                    className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200 dark:border-transparent dark:ring-0"
-                  >
-                    <Link to="/new-request">
-                      <PlusCircle className="h-4 w-4 mr-2" />
-                      New Request
-                    </Link>
-                  </Button>
-                ) : (
-                  <Button variant="secondary" asChild className="shadow-sm">
-                    <Link to={(user.role as any) === 'treasurer' ? '/approvals' : '/tasks'}>
-                      View Tasks
-                    </Link>
-                  </Button>
-                )}
+                <Button
+                  asChild
+                  size="default"
+                  className="border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl ring-1 ring-white/20 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200 dark:border-transparent dark:ring-0"
+                >
+                  <Link to="/new-request">
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    New Request
+                  </Link>
+                </Button>
                 <Button
                   asChild
                   className="border border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] shadow-none hover:shadow-none hover:bg-[#EEF4FF] transition-all duration-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:ring-white/10 dark:hover:bg-slate-900/80 dark:transition-none"
@@ -1314,5 +1201,6 @@ export default function Dashboard() {
     </DashboardLayout >
   );
 }
+
 
 

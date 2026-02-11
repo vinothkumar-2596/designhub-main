@@ -22,7 +22,7 @@ export default function MyRequests() {
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | 'all'>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<TaskUrgency | 'all'>('all');
-  const [tasks, setTasks] = useState(mockTasks);
+  const [tasks, setTasks] = useState<typeof mockTasks>(apiUrl ? [] : mockTasks);
   const [isLoading, setIsLoading] = useState(false);
   const [storageTick, setStorageTick] = useState(0);
   const [useLocalData, setUseLocalData] = useState(!apiUrl);
@@ -67,7 +67,7 @@ export default function MyRequests() {
         setUseLocalData(false);
       } catch (error) {
         toast.error('Failed to load requests');
-        setUseLocalData(true);
+        setUseLocalData(!apiUrl);
       } finally {
         setIsLoading(false);
       }
@@ -128,9 +128,10 @@ export default function MyRequests() {
 
   const hydratedTasks = useMemo(() => {
     if (!useLocalData) return tasks;
-    if (typeof window === 'undefined') return mockTasks;
-    return mergeLocalTasks(mockTasks);
-  }, [useLocalData, storageTick, tasks]);
+    const localBaseTasks = apiUrl ? [] : mockTasks;
+    if (typeof window === 'undefined') return localBaseTasks;
+    return mergeLocalTasks(localBaseTasks);
+  }, [apiUrl, useLocalData, storageTick, tasks]);
 
   // Filter to only show user's own requests
   const userTasks = useMemo(() => {
