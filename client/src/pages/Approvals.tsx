@@ -284,25 +284,25 @@ export default function Approvals() {
               return (
                 <div
                   key={task.id}
-                  className="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-black/5 p-4 md:p-5 animate-slide-up dark:bg-card dark:border-border dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent"
+                  className="relative overflow-hidden rounded-2xl border border-[#D5E2FF]/55 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-[#E3ECFF]/45 p-4 md:p-5 animate-slide-up dark:border-[#2F4F8F]/45 dark:ring-[#3C5FA0]/20 dark:bg-card dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-[#DCE8FF]/70 blur-3xl dark:bg-[#2C56B7]/20" />
                   <div className="pointer-events-none absolute -left-12 -bottom-14 h-40 w-40 rounded-full bg-[#EAF1FF]/80 blur-3xl dark:bg-[#2A49A6]/20" />
                   <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-white/50 dark:ring-white/5" />
                   <div className="relative min-w-0">
-                    <div className="absolute right-0 top-0 inline-flex w-fit items-center gap-2.5 rounded-2xl bg-gradient-to-r from-white/88 via-[#F5F8FF]/86 to-[#EAF2FF]/82 supports-[backdrop-filter]:bg-[#F5F8FF]/70 backdrop-blur-xl px-3 py-2 shadow-none dark:bg-card/90 dark:backdrop-blur-none">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-white/95 to-[#E6EEFF]/90 text-[#24366C] text-sm font-semibold dark:bg-[#0B1738] dark:text-slate-100">
+                    <div className="absolute right-0 top-0 inline-flex w-fit items-center gap-2.5 rounded-2xl border-none ring-0 bg-gradient-to-r from-white/90 via-[#F7FAFF]/88 to-[#EDF4FF]/84 supports-[backdrop-filter]:bg-[#F7FAFF]/72 backdrop-blur-xl px-3.5 py-2.5 shadow-none dark:bg-[linear-gradient(120deg,rgba(11,25,57,0.92),rgba(17,37,77,0.9),rgba(20,45,90,0.82))] dark:[box-shadow:inset_0_1px_0_rgba(166,188,236,0.10)] dark:backdrop-blur-xl">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none ring-0 bg-gradient-to-br from-white/96 to-[#ECF3FF]/92 text-[#2D3F73] text-sm font-semibold dark:bg-[linear-gradient(145deg,rgba(68,99,165,0.95),rgba(33,58,112,0.92))] dark:text-[#EAF0FF]">
                         {requesterInitials}
                       </div>
-                      <div className="pr-1 whitespace-nowrap">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground dark:text-[#91A9D9]">
+                      <div className="pr-1 whitespace-nowrap leading-tight">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#7B8EAF] dark:text-[#AFC2EA]">
                           Submitted
                         </p>
                         <p className="text-sm font-semibold text-foreground dark:text-slate-100 leading-tight">
                           {format(task.createdAt, 'MMM d, yyyy')}
                         </p>
-                        <p className="text-xs text-muted-foreground dark:text-[#9BB0DD]">
+                        <p className="text-xs text-[#7B8EAF] dark:text-[#B6C7EA]">
                           {format(task.createdAt, 'h:mm a')}
                         </p>
                       </div>
@@ -365,7 +365,7 @@ export default function Approvals() {
                       variant="outline"
                       size="sm"
                       asChild
-                      className="h-9 gap-2 rounded-xl border-border bg-card/85 px-3 text-foreground hover:bg-muted/60 dark:border-[#4B6AA9] dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
+                      className="group h-9 gap-2 rounded-full border border-[#CADBFF]/80 bg-gradient-to-r from-white/92 via-[#F6F9FF]/92 to-[#EEF3FF]/92 px-4 text-[#263A70] shadow-none transition-colors duration-200 hover:border-[#AFC7FF] hover:bg-[#F3F8FF] hover:text-[#1C2F63] dark:border-[#375A9A] dark:bg-[#0F214D]/80 dark:text-[#DCE6FF] dark:hover:border-[#4E72B6] dark:hover:bg-[#163266]/90"
                     >
                       <Link to={`/task/${task.id}`} state={{ task }}>
                         <Eye className="h-4 w-4" />

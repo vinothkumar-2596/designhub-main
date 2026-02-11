@@ -184,6 +184,7 @@ const resolveTaskCcEmails = (task?: typeof mockTasks[number]) => {
 
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 type UploadStatus = 'uploading' | 'done' | 'error';
+type ApprovalDecision = 'approved' | 'rejected';
 type UploadItem = { id: string; name: string; status: UploadStatus };
 type PendingFinalFile = {
   name: string;
@@ -269,6 +270,7 @@ export default function TaskDetail() {
   const [showFinalDeliverableList, setShowFinalDeliverableList] = useState(true);
   const [isEditAttachmentDragging, setIsEditAttachmentDragging] = useState(false);
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
+  const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
   const sizeFetchRef = useRef(new Set<string>());
   const addAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
@@ -1347,7 +1349,13 @@ export default function TaskDetail() {
     );
   };
 
-  const ensureWritableTask = () => {
+  const ensureWritableTask = (options?: { allowManagerApproval?: boolean }) => {
+    if (options?.allowManagerApproval) {
+      const isManagerApprovalActor = user?.role === 'treasurer' || user?.role === 'admin';
+      if (isManagerApprovalActor) {
+        return true;
+      }
+    }
     if (isViewOnlyTask || !hasFullTaskAccess) {
       toast.error('Action unavailable for this task.');
       return false;
@@ -1355,9 +1363,13 @@ export default function TaskDetail() {
     return true;
   };
 
-  const recordChanges = async (changes: ChangeInput[], updates: Partial<typeof taskState> = {}) => {
-    if (changes.length === 0) return;
-    if (!ensureWritableTask()) return;
+  const recordChanges = async (
+    changes: ChangeInput[],
+    updates: Partial<typeof taskState> = {},
+    options?: { allowManagerApproval?: boolean; skipSuccessToast?: boolean }
+  ) => {
+    if (changes.length === 0) return false;
+    if (!ensureWritableTask({ allowManagerApproval: options?.allowManagerApproval })) return false;
 
     const isStaffUser = user?.role === 'staff';
     const now = new Date();
@@ -1434,10 +1446,12 @@ export default function TaskDetail() {
         const hydrated = hydrateTask(updated);
         setTaskState(hydrated);
         setChangeHistory(hydrated?.changeHistory ?? []);
+        setApprovalStatus(hydrated?.approvalStatus);
         persistTask(hydrated);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Backend update failed.';
         toast.error('Backend update failed.', { description: message });
+        return false;
       }
     }
 
@@ -1454,10 +1468,13 @@ export default function TaskDetail() {
       nextStaffTrackedCount >= 3
     ) {
       toast.message('Treasurer approval required after 3+ changes.');
-      return;
+      return true;
     }
 
-    toast.success('Changes recorded.');
+    if (!options?.skipSuccessToast) {
+      toast.success('Changes recorded.');
+    }
+    return true;
   };
 
   useEffect(() => {
@@ -1966,25 +1983,36 @@ export default function TaskDetail() {
     toast.message('Approval request sent to treasurer.');
   };
 
-  const handleApprovalDecision = (decision: ApprovalStatus) => {
+  const handleApprovalDecision = async (decision: ApprovalDecision) => {
+    if (approvalDecisionInFlight) return;
     const oldValue = approvalStatus ?? 'pending';
-    recordChanges(
-      [
+    setApprovalDecisionInFlight(decision);
+    try {
+      const applied = await recordChanges(
+        [
+          {
+            type: 'status',
+            field: 'approval_status',
+            oldValue,
+            newValue: decision === 'approved' ? 'Approved' : 'Rejected',
+            note: `Approval ${decision} by ${user?.name || 'Treasurer'}`,
+          },
+        ],
         {
-          type: 'status',
-          field: 'approval_status',
-          oldValue,
-          newValue: decision === 'approved' ? 'Approved' : 'Rejected',
-          note: `Approval ${decision} by ${user?.name || 'Treasurer'}`,
+          approvalStatus: decision,
+          approvedBy: user?.name || '',
+          approvalDate: new Date(),
         },
-      ],
-      {
-        approvalStatus: decision,
-        approvedBy: user?.name || '',
-        approvalDate: new Date(),
-      }
-    );
-    toast.success(decision === 'approved' ? 'Request approved.' : 'Request rejected.');
+        {
+          allowManagerApproval: true,
+          skipSuccessToast: true,
+        }
+      );
+      if (!applied) return;
+      toast.success(decision === 'approved' ? 'Request approved.' : 'Request rejected.');
+    } finally {
+      setApprovalDecisionInFlight(null);
+    }
   };
 
   const handleSaveUpdates = () => {
@@ -2780,9 +2808,9 @@ export default function TaskDetail() {
                 className="relative pl-10 pb-4 last:pb-0"
               >
                 {index !== changeHistoryForDisplay.length - 1 && (
-                  <span className="absolute left-[0.9rem] top-8 h-[calc(100%-1.1rem)] w-px bg-[#C9D7FF]/70 dark:bg-border/70" />
+                  <span className="absolute left-[0.875rem] top-8 h-[calc(100%-1.1rem)] w-px bg-[#C9D7FF]/70 dark:bg-gradient-to-b dark:from-[#3A60A8]/75 dark:to-[#24457F]/55" />
                 )}
-                <span className="absolute left-0 top-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#BFD1F4] bg-gradient-to-br from-white/95 via-[#F2F7FF]/90 to-[#E5EEFF]/85 text-[11px] font-semibold text-[#1E2A5A] dark:border-border dark:bg-card dark:text-slate-100">
+                <span className="absolute left-0 top-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#BFD1F4] bg-gradient-to-br from-white/95 via-[#F2F7FF]/90 to-[#E5EEFF]/85 text-[11px] font-semibold text-[#1E2A5A] dark:border-[#4D70B4]/70 dark:bg-gradient-to-br dark:from-[#1E3D79]/95 dark:via-[#1A3468]/92 dark:to-[#132951]/92 dark:text-[#E6EEFF] dark:shadow-none">
                   {index + 1}
                 </span>
                 <div
@@ -3657,20 +3685,20 @@ export default function TaskDetail() {
                   <div className="mt-2 flex flex-wrap items-center justify-end gap-2 animate-slide-up">
                     <Button
                       onClick={() => handleApprovalDecision('approved')}
-                      disabled={isViewOnlyTask}
+                      disabled={approvalDecisionInFlight !== null}
                       className="h-9 gap-2 rounded-full px-4 border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-none hover:bg-primary/85 dark:border-transparent"
                     >
                       <CheckCircle2 className="h-4 w-4" />
-                      Approve
+                      {approvalDecisionInFlight === 'approved' ? 'Approving...' : 'Approve'}
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => handleApprovalDecision('rejected')}
-                      disabled={isViewOnlyTask}
+                      disabled={approvalDecisionInFlight !== null}
                       className="h-9 gap-2 rounded-full px-4 border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white"
                     >
                       <XCircle className="h-4 w-4" />
-                      Reject
+                      {approvalDecisionInFlight === 'rejected' ? 'Rejecting...' : 'Reject'}
                     </Button>
                   </div>
                 )}
