@@ -296,6 +296,17 @@ export async function sendMessageToAI(
                 // Ignore JSON parse failures
             }
 
+            const loweredError = String(errorMessage || '').toLowerCase();
+            const isQuotaExhausted =
+                errorCode === 'AI_QUOTA_EXHAUSTED' ||
+                loweredError.includes('exceeded your current quota') ||
+                loweredError.includes('insufficient quota') ||
+                (loweredError.includes('quota') && loweredError.includes('billing'));
+
+            if (isQuotaExhausted) {
+                throw new Error('AI quota exceeded. Update Gemini billing/quota or use a different project key.');
+            }
+
             if (response.status === 429 || errorCode === 'AI_QUOTA_EXCEEDED') {
                 throw new Error('Rate limit. Try again in 1 minute.');
             }
@@ -377,8 +388,21 @@ export async function sendMessageToAI(
         };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown AI error';
+        const lowerMessage = errorMessage.toLowerCase();
 
-        if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota')) {
+        const isQuotaExhausted =
+            lowerMessage.includes('exceeded your current quota') ||
+            lowerMessage.includes('insufficient quota') ||
+            (lowerMessage.includes('quota') && lowerMessage.includes('billing'));
+        if (isQuotaExhausted) {
+            throw new Error('AI quota exceeded. Update Gemini billing/quota or use a different project key.');
+        }
+
+        if (
+            errorMessage.includes('429') ||
+            lowerMessage.includes('rate limit') ||
+            lowerMessage.includes('too many requests')
+        ) {
             throw new Error('Rate limit. Try again in 1 minute.');
         }
 

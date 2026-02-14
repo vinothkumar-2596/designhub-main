@@ -32,6 +32,68 @@ const buildGeminiPrompt = (systemPrompt, userMessage) => {
     return sections.join("\n\n");
 };
 
+const normalizeChatHistory = (messages) => {
+    if (!Array.isArray(messages)) {
+        return [];
+    }
+    return messages
+        .map((msg) => ({
+            role: msg?.role === "user" ? "user" : "model",
+            parts: String(msg?.parts || "").trim(),
+        }))
+        .filter((msg) => Boolean(msg.parts));
+};
+
+const buildOllamaFallbackPrompt = (systemPrompt, messages, userMessage) => {
+    const sections = [
+        "You are TaskBuddy AI.",
+        "Follow the instructions carefully. Ask one concise follow-up question if details are missing.",
+    ];
+
+    if (systemPrompt && String(systemPrompt).trim()) {
+        sections.push(`SYSTEM INSTRUCTIONS:\n${String(systemPrompt).trim()}`);
+    }
+
+    const history = normalizeChatHistory(messages)
+        .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.parts}`)
+        .join("\n");
+
+    if (history) {
+        sections.push(`CONVERSATION HISTORY:\n${history}`);
+    }
+
+    sections.push(`Current user message:\n${String(userMessage || "").trim()}`);
+    sections.push(GEMINI_READY_RESPONSE_CONTRACT);
+
+    return sections.join("\n\n");
+};
+
+const runOllamaFallback = async ({ systemPrompt, messages, userMessage }) => {
+    const prompt = buildOllamaFallbackPrompt(systemPrompt, messages, userMessage);
+    const text = await generateAIContent(prompt);
+
+    if (typeof text === "string" && text.trim().startsWith("[AI SIMULATION]")) {
+        throw new Error("Ollama fallback is not available.");
+    }
+
+    const readyPayload = extractReadyPayload(text);
+    if (readyPayload) {
+        return {
+            ready: true,
+            data: readyPayload,
+            provider: "ollama",
+            fallback: true,
+        };
+    }
+
+    return {
+        ready: false,
+        message: text,
+        provider: "ollama",
+        fallback: true,
+    };
+};
+
 const extractReadyPayload = (text) => {
     if (!text || !/STATUS:\s*READY/i.test(text)) {
         return null;
@@ -156,6 +218,12 @@ Please process the above information and return the mandatory JSON response.`;
 });
 
 router.post("/gemini", async (req, res) => {
+    const { messages = [], userMessage = "", systemPrompt = "" } = req.body || {};
+
+    if (!userMessage) {
+        return res.status(400).json({ error: "userMessage is required" });
+    }
+
     const apiKey =
         process.env.GEMINI_API_KEY ||
         process.env.VITE_GEMINI_API_KEY ||
@@ -167,17 +235,13 @@ router.post("/gemini", async (req, res) => {
     }
 
     try {
-        const { messages = [], userMessage = "", systemPrompt = "" } = req.body || {};
-
-        if (!userMessage) {
-            return res.status(400).json({ error: "userMessage is required" });
-        }
+        const normalizedMessages = normalizeChatHistory(messages);
 
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
 
         const chat = model.startChat({
-            history: messages.map((msg) => ({
+            history: normalizedMessages.map((msg) => ({
                 role: msg.role,
                 parts: [{ text: msg.parts }],
             })),
@@ -213,11 +277,15 @@ router.post("/gemini", async (req, res) => {
         const statusHint =
             Number(error?.status || error?.statusCode || error?.response?.status || 0) || 0;
 
-        const isQuotaError =
+        const isQuotaExhaustedError =
+            lower.includes("exceeded your current quota") ||
+            lower.includes("insufficient quota") ||
+            (lower.includes("quota") && (lower.includes("exceeded") || lower.includes("billing")));
+        const isRateLimitError =
             statusHint === 429 ||
             lower.includes("429") ||
-            lower.includes("quota") ||
-            lower.includes("rate limit");
+            lower.includes("rate limit") ||
+            lower.includes("too many requests");
         const isAuthError =
             statusHint === 401 ||
             statusHint === 403 ||
@@ -228,7 +296,21 @@ router.post("/gemini", async (req, res) => {
             lower.includes("authentication") ||
             lower.includes("leaked");
 
-        if (isQuotaError) {
+        if (isQuotaExhaustedError || isRateLimitError) {
+            try {
+                const fallbackPayload = await runOllamaFallback({ systemPrompt, messages, userMessage });
+                return res.json(fallbackPayload);
+            } catch (fallbackError) {
+                console.error("Ollama fallback failed:", fallbackError);
+            }
+
+            if (isQuotaExhaustedError) {
+                return res.status(429).json({
+                    error: "AI quota exceeded. Update Gemini billing/quota or use a different project key.",
+                    code: "AI_QUOTA_EXHAUSTED",
+                });
+            }
+
             return res
                 .status(429)
                 .json({ error: "Rate limit. Try again in 1 minute.", code: "AI_QUOTA_EXCEEDED" });

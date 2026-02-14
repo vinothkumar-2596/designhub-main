@@ -88,6 +88,42 @@ const isTaskAssignedByUser = (task: Task, user: User) => {
   return false;
 };
 
+const isStaffTaskOwnerOrCreator = (task: Task, user: User) => {
+  const userEmail = normalizeValue(user.email);
+  const emailPrefix = userEmail.split('@')[0];
+  const requesterName = normalizeValue(task.requesterName || '');
+  const userName = normalizeValue(user.name);
+
+  if (task.requesterId === user.id) return true;
+  if (userEmail && normalizeValue(task.requesterEmail || '') === userEmail) return true;
+  if (
+    requesterName &&
+    userName &&
+    (requesterName === userName ||
+      requesterName.includes(userName) ||
+      userName.includes(requesterName))
+  ) {
+    return true;
+  }
+  if (requesterName && emailPrefix && requesterName.includes(emailPrefix)) return true;
+
+  const history = Array.isArray(task.changeHistory) ? task.changeHistory : [];
+  const createdEntry = history.find((entry) => entry?.field === 'created');
+  if (createdEntry?.userId && createdEntry.userId === user.id) return true;
+  const creatorName = normalizeValue(createdEntry?.userName);
+  if (
+    creatorName &&
+    userName &&
+    (creatorName === userName ||
+      creatorName.includes(userName) ||
+      userName.includes(creatorName))
+  ) {
+    return true;
+  }
+  if (creatorName && emailPrefix && creatorName.includes(emailPrefix)) return true;
+  return false;
+};
+
 const isDesignerTask = (task: Task, user: User) => {
   const assignedId = getAssignedToId(task);
   if (assignedId && assignedId === user.id) return true;
@@ -133,6 +169,7 @@ export const isTaskVisibleToUser = (task: Task, user?: User | null) => {
   }
 
   if (taskUsesAssignedAccess) {
+    if (userRole === 'staff' && isStaffTaskOwnerOrCreator(task, user)) return true;
     if (userRole === 'designer' && !assignedId) return true;
     if (assignedId && assignedId === user.id) return true;
     if (userEmail && ccEmails.includes(userEmail)) return true;
@@ -141,37 +178,7 @@ export const isTaskVisibleToUser = (task: Task, user?: User | null) => {
   }
 
   if (userRole === 'staff') {
-    const requesterEmail = normalizeValue(task.requesterEmail || '');
-    const emailPrefix = userEmail.split('@')[0];
-    const requesterName = normalizeValue(task.requesterName || '');
-    const userName = normalizeValue(user.name);
-    if (task.requesterId === user.id) return true;
-    if (userEmail && requesterEmail === userEmail) return true;
-    if (
-      requesterName &&
-      userName &&
-      (requesterName === userName ||
-        requesterName.includes(userName) ||
-        userName.includes(requesterName))
-    ) {
-      return true;
-    }
-    if (requesterName && emailPrefix && requesterName.includes(emailPrefix)) return true;
-    const history = Array.isArray(task.changeHistory) ? task.changeHistory : [];
-    const createdEntry = history.find((entry) => entry?.field === 'created');
-    if (createdEntry?.userId && createdEntry.userId === user.id) return true;
-    const creatorName = normalizeValue(createdEntry?.userName);
-    if (
-      creatorName &&
-      userName &&
-      (creatorName === userName ||
-        creatorName.includes(userName) ||
-        userName.includes(creatorName))
-    ) {
-      return true;
-    }
-    if (creatorName && emailPrefix && creatorName.includes(emailPrefix)) return true;
-    return false;
+    return isStaffTaskOwnerOrCreator(task, user);
   }
 
   if (userRole === 'designer') {

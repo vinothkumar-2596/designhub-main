@@ -199,10 +199,18 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to get response';
             const lowerMessage = message.toLowerCase();
+            const isQuotaExhausted =
+                lowerMessage.includes('quota exceeded') ||
+                lowerMessage.includes('exceeded your current quota') ||
+                lowerMessage.includes('insufficient quota') ||
+                (lowerMessage.includes('quota') && lowerMessage.includes('billing'));
             const isRateLimited =
-                lowerMessage.includes('quota') ||
-                lowerMessage.includes('rate limit') ||
-                lowerMessage.includes('1 minute');
+                !isQuotaExhausted &&
+                (
+                    lowerMessage.includes('rate limit') ||
+                    lowerMessage.includes('1 minute') ||
+                    lowerMessage.includes('too many requests')
+                );
             const isServiceUnavailable =
                 lowerMessage.includes('temporarily unavailable') ||
                 lowerMessage.includes('contact admin') ||
@@ -210,6 +218,17 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
 
             if (!isServiceUnavailable) {
                 toast.error(message);
+            }
+            if (isQuotaExhausted) {
+                setQuotaBlocked(false);
+                const quotaExhaustedMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    role: 'assistant',
+                    content: 'AI quota is exhausted. Please update Gemini billing/quota or switch to a key from a different project.',
+                    timestamp: new Date()
+                };
+                setMessages(prev => [...prev, quotaExhaustedMessage]);
+                return;
             }
             if (isRateLimited) {
                 setQuotaBlocked(true);
