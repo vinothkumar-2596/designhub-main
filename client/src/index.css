@@ -1061,6 +1061,7 @@
   .availability-bar-row {
     display: grid;
     align-items: center;
+    column-gap: 8px;
   }
 
   .availability-bar {
@@ -1431,20 +1432,32 @@
   }
 
   .availability-event.gantt-priority-vip {
-    background: linear-gradient(135deg, rgba(254, 226, 226, 0.8), rgba(255, 237, 213, 0.65));
-    border-color: rgba(248, 113, 113, 0.4);
-    color: #7f1d1d;
+    background: linear-gradient(
+      135deg,
+      rgba(238, 244, 255, 0.96),
+      rgba(220, 233, 255, 0.78)
+    );
+    border-color: rgba(74, 118, 255, 0.42);
+    color: #1e2a5a;
   }
 
   .availability-event.gantt-priority-high {
-    background: linear-gradient(135deg, rgba(219, 234, 254, 0.82), rgba(224, 231, 255, 0.6));
-    border-color: rgba(59, 130, 246, 0.35);
-    color: #1d4ed8;
+    background: linear-gradient(
+      135deg,
+      rgba(236, 243, 255, 0.9),
+      rgba(219, 234, 254, 0.72)
+    );
+    border-color: rgba(96, 165, 250, 0.38);
+    color: #1e40af;
   }
 
   .availability-event.gantt-priority-normal {
-    background: linear-gradient(135deg, rgba(219, 234, 254, 0.7), rgba(233, 241, 255, 0.55));
-    border-color: rgba(96, 165, 250, 0.35);
+    background: linear-gradient(
+      135deg,
+      rgba(238, 244, 255, 0.86),
+      rgba(224, 231, 255, 0.62)
+    );
+    border-color: rgba(147, 197, 253, 0.4);
     color: #1e40af;
   }
 }
@@ -1452,21 +1465,42 @@
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: #9fbcff transparent;
+    scrollbar-color: rgba(120, 147, 214, 0.42) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
+    background: rgba(120, 147, 214, 0.05);
+    border-radius: 999px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: #9fbcff;
-    border-radius: 3px;
+    background-color: rgba(120, 147, 214, 0.42);
+    border-radius: 999px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(120, 147, 214, 0.52);
+  }
+
+  .dark .scrollbar-thin {
+    scrollbar-color: rgba(146, 171, 238, 0.38) rgba(17, 31, 66, 0.22);
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-track {
+    background: rgba(146, 171, 238, 0.06);
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(146, 171, 238, 0.34);
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(146, 171, 238, 0.44);
   }
 
   .scrollbar-none {

@@ -23,7 +23,7 @@ REQUIRED FIELDS
 COMPANY RULES
 - Minimum 3 working days required.
 - If deadline is less than 3 days, set urgency to "urgent".
-- If attachments are not mentioned, ask if logos/content/reference files are available.
+- If attachments are not mentioned, ask if logos/content/associated files are available.
 
 QUESTION STYLE
 - Ask ONE smart question at a time.

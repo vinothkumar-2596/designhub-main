@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { buildDesignerPortalId, getDesignerScope } from "../lib/designerAccess.js";
 
 const UserSchema = new mongoose.Schema(
   {
@@ -39,6 +40,11 @@ UserSchema.set("toJSON", {
   versionKey: false,
   transform: (_doc, ret) => {
     ret.id = ret._id.toString();
+    const designerScope = getDesignerScope(ret);
+    if (designerScope) {
+      ret.designerScope = designerScope;
+      ret.portalId = buildDesignerPortalId(ret);
+    }
     delete ret._id;
     delete ret.password;
     delete ret.isActive;

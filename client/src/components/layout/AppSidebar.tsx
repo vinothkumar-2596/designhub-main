@@ -244,12 +244,12 @@ export function AppSidebar() {
   return (
     <aside
       className={cn(
-        'z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-[0_24px_60px_-40px_rgba(15,23,42,0.4)] transition-all duration-300 h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
+        'group/sidebar z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-[0_24px_60px_-40px_rgba(15,23,42,0.4)] transition-all duration-300 h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
         collapsed ? 'w-20' : 'w-72'
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#D9E6FF]/70 dark:border-border">
+      <div className="group/sidebar-header flex items-center justify-between px-4 py-3.5 border-b border-[#D9E6FF]/70 dark:border-border">
         <button
           type="button"
           onClick={() => {
@@ -284,7 +284,7 @@ export function AppSidebar() {
           size="icon-sm"
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            "text-[#6B7A99] dark:text-muted-foreground hover:bg-white/70 dark:hover:bg-muted hover:text-[#1E2A5A] dark:hover:text-foreground",
+            "opacity-0 transition-opacity duration-150 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100 group-hover/sidebar-header:opacity-100 group-focus-within/sidebar-header:opacity-100 text-[#6B7A99] dark:text-muted-foreground hover:bg-white/70 dark:hover:bg-muted hover:text-[#1E2A5A] dark:hover:text-foreground",
             collapsed ? "ml-0" : "ml-2"
           )}
         >

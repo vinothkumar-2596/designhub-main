@@ -194,7 +194,6 @@ export default function Tasks() {
 
   const visibleTasks = useMemo(() => {
     if (!user) return [];
-    if (user.role === 'designer') return hydratedTasks;
     return filterTasksForUser(hydratedTasks, user);
   }, [hydratedTasks, user]);
 

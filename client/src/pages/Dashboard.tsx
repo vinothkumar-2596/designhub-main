@@ -50,8 +50,8 @@ import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { useTasksContext } from '@/contexts/TasksContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
-import { DotBackground } from '@/components/ui/background';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
+import { getDesignerScopeLabel, isMainDesigner } from '@/lib/designerAccess';
 
 import { API_URL, authFetch } from '@/lib/api';
 
@@ -68,11 +68,20 @@ type DesignerOption = {
   name: string;
   email: string;
   role: string;
+  designerScope?: 'main' | 'junior';
+  portalId?: string;
 };
 
 const buildFallbackDesigners = (
   tasks: typeof mockTasks,
-  currentUser?: { id?: string; name?: string; email?: string; role?: string } | null
+  currentUser?: {
+    id?: string;
+    name?: string;
+    email?: string;
+    role?: string;
+    designerScope?: 'main' | 'junior';
+    portalId?: string;
+  } | null
 ): DesignerOption[] => {
   const fromTasks = Array.from(
     new Map(
@@ -84,7 +93,7 @@ const buildFallbackDesigners = (
             '';
           const name = task.assignedToName || '';
           return id && name
-            ? [id, { id, name, email: '', role: 'designer' as const }]
+            ? [id, { id, name, email: '', role: 'designer' as const, designerScope: 'junior' as const, portalId: `JD-${id.slice(-6).toUpperCase()}` }]
             : null;
         })
         .filter(Boolean) as Array<
@@ -106,6 +115,8 @@ const buildFallbackDesigners = (
       name: fallbackName,
       email: currentEmail,
       role: 'designer',
+      designerScope: currentUser?.designerScope === 'main' ? 'main' : 'junior',
+      portalId: currentUser?.portalId || `JD-${currentId.slice(-6).toUpperCase()}`,
     };
     if (existingIndex === -1) {
       fromTasks.unshift(selfOption);
@@ -171,11 +182,7 @@ export default function Dashboard() {
       </DashboardLayout>
     );
   }
-  const currentUserRole = String(user.role || '').toLowerCase();
-  const canAssignDesigner =
-    currentUserRole === 'designer' ||
-    currentUserRole === 'treasurer' ||
-    currentUserRole === 'admin';
+  const canAssignDesigner = isMainDesigner(user);
 
   const hydrateTask = (raw: typeof mockTasks[number]) => {
     if (!raw) return raw;
@@ -286,12 +293,20 @@ export default function Dashboard() {
             const name =
               String(designer?.name || '').trim() ||
               (email ? email.split('@')[0] : '');
+            const designerScope =
+              String(designer?.designerScope || '').trim().toLowerCase() === 'main'
+                ? 'main'
+                : 'junior';
             if (!id || !name) return null;
             return {
               id,
               name,
               email,
               role: String(designer?.role || 'designer').trim().toLowerCase(),
+              designerScope,
+              portalId:
+                String(designer?.portalId || '').trim() ||
+                `${designerScope === 'main' ? 'MD' : 'JD'}-${id.slice(-6).toUpperCase()}`,
             } as DesignerOption;
           })
           .filter(Boolean) as DesignerOption[];
@@ -384,7 +399,8 @@ export default function Dashboard() {
       if (
         normalizedMessage.includes('only designers can assign designers') ||
         normalizedMessage.includes('only designer or admin accounts can assign designers') ||
-        normalizedMessage.includes('only designer, treasurer, or admin accounts can assign designers')
+        normalizedMessage.includes('only designer, treasurer, or admin accounts can assign designers') ||
+        normalizedMessage.includes('only the main designer can assign designers')
       ) {
         toast.error(
           'Your signed-in account is not authorized to assign designers. Demo role switch changes view only.'
@@ -407,7 +423,7 @@ export default function Dashboard() {
     [activeRange, hydratedTasks]
   );
 
-  const stats = calculateStats(dateFilteredTasks, user.id, user.role);
+  const stats = calculateStats(filterTasksForUser(dateFilteredTasks, user), user.id, user.role);
 
   const visibleTasks = useMemo(
     () => filterTasksForUser(dateFilteredTasks, user),
@@ -803,19 +819,18 @@ export default function Dashboard() {
   return (
     <DashboardLayout
       background={
-        <DotBackground className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[32px]">
-          <div className="pointer-events-none absolute inset-0 bg-white dark:bg-transparent overflow-hidden rounded-[32px]">
-            <div className="absolute left-1/2 top-[-22%] h-[680px] w-[780px] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(77,92,218,0.6),_rgba(120,190,255,0.4)_45%,_transparent_72%)] dark:bg-[radial-gradient(ellipse_at_center,_rgba(59,130,246,0.15),_rgba(37,99,235,0.1)_45%,_transparent_72%)] blur-[90px] opacity-90 dark:opacity-40" />
-            <div className="absolute left-[10%] bottom-[-20%] h-[520px] w-[620px] rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(120,190,255,0.35),_transparent_70%)] dark:bg-[radial-gradient(ellipse_at_center,_rgba(139,92,246,0.12),_transparent_70%)] blur-[110px] opacity-70 dark:opacity-30" />
-          </div>
-        </DotBackground>
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[32px]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(106,140,255,0.22),_transparent_58%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,251,255,0.96))] dark:bg-[linear-gradient(180deg,#070C1D_0%,#08122A_100%)]" />
+        </div>
       }
     >
-      <div className="space-y-8 relative z-10 pt-8">
-        <div className="sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="space-y-8 relative z-10 pt-2">
+        <div
+          className="sticky top-0 z-30 -mx-4 md:-mx-8 bg-white/78 supports-[backdrop-filter]:bg-white/58 backdrop-blur-2xl dark:bg-[#081027]/74 dark:supports-[backdrop-filter]:bg-[#081027]/56 px-4 md:px-8 py-1.5 transition-colors border-b border-transparent"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#647898] dark:text-[#C6D6FF]">
                 Dashboard Overview
               </p>
             </div>
@@ -828,6 +843,7 @@ export default function Dashboard() {
                 onStartDateChange={setCustomStart}
                 onEndDateChange={setCustomEnd}
                 showLabel={false}
+                compact
               />
             </div>
           </div>
@@ -884,7 +900,7 @@ export default function Dashboard() {
                 </p>
                 <h3 className="text-base font-semibold text-foreground premium-heading">Submission standards</h3>
                 <p className="text-sm leading-6 text-muted-foreground premium-body">
-                  All design requests must include complete data and reference files. Minimum deadline is 3 working days.
+                  All design requests must include complete data and associated files. Minimum deadline is 3 working days.
                   Modifications require Treasurer approval.
                 </p>
               </div>
@@ -950,8 +966,8 @@ export default function Dashboard() {
 
 
         {/* Activity Feed Section */}
-        <div className="mb-8 grid gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-1 h-full">
+        <div className="mb-8 flex flex-col items-start gap-4 lg:flex-row">
+          <div className="w-full shrink-0 self-start lg:w-[32%] lg:max-w-[26rem]">
             <ActivityFeed
               notifications={activeNotifications.map(entry => {
                 let type: 'attachment' | 'message' | 'request' | 'approval' | 'deadline' | 'system' = 'system';
@@ -974,7 +990,7 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="lg:col-span-2">
+          <div className="w-full lg:flex-1">
             {isLoading ? (
               <div className="text-center py-12 bg-card rounded-[32px] border border-border shadow-card h-full flex flex-col items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
@@ -1106,7 +1122,7 @@ export default function Dashboard() {
                   ) : (
                     designerOptions.map((designer) => (
                       <SelectItem key={designer.id} value={designer.id}>
-                        {designer.name} ({designer.role === 'designer' ? 'Junior Designer' : designer.role})
+                        {designer.name} ({getDesignerScopeLabel(designer.designerScope)}{designer.portalId ? ` • ${designer.portalId}` : ''})
                       </SelectItem>
                     ))
                   )}

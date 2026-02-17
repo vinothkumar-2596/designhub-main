@@ -340,7 +340,7 @@ export default function Approvals() {
 
                   </div>
 
-                  <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#D9E6FF] pt-4 dark:border-[#2F4F8E]">
+                  <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#D9E6FF]/45 pt-4 dark:border-[#2F4F8E]/40">
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="default"
@@ -353,7 +353,7 @@ export default function Approvals() {
                       </Button>
                       <Button
                         variant="outline"
-                        className="h-9 gap-2 rounded-xl border-border text-foreground hover:bg-muted/60 dark:border-[#4B6AA9] dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
+                        className="h-9 gap-2 rounded-xl border-transparent text-foreground hover:bg-muted/60 dark:border-transparent dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
                         onClick={() => handleReject(task.id)}
                         disabled={processingId === task.id}
                       >
@@ -365,9 +365,13 @@ export default function Approvals() {
                       variant="outline"
                       size="sm"
                       asChild
-                      className="group h-9 gap-2 rounded-full border border-[#CADBFF]/80 bg-gradient-to-r from-white/92 via-[#F6F9FF]/92 to-[#EEF3FF]/92 px-4 text-[#263A70] shadow-none transition-colors duration-200 hover:border-[#AFC7FF] hover:bg-[#F3F8FF] hover:text-[#1C2F63] dark:border-[#375A9A] dark:bg-[#0F214D]/80 dark:text-[#DCE6FF] dark:hover:border-[#4E72B6] dark:hover:bg-[#163266]/90"
+                      className="group h-9 rounded-full border border-[#CADBFF]/55 bg-[#F5F8FF]/85 px-4 text-[#233A71] shadow-none transition-all duration-200 hover:border-[#AEC6FF]/70 hover:bg-[#EEF4FF] hover:text-[#162A5D] dark:border-[#3E5F9F]/55 dark:bg-[#10234F]/70 dark:text-[#DCE7FF] dark:hover:border-[#5D7EC0]/65 dark:hover:bg-[#17356B]/78"
                     >
-                      <Link to={`/task/${task.id}`} state={{ task }}>
+                      <Link
+                        to={`/task/${task.id}`}
+                        state={{ task }}
+                        className="inline-flex items-center gap-2 font-medium"
+                      >
                         <Eye className="h-4 w-4" />
                         Review Details
                       </Link>

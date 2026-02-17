@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -185,7 +187,14 @@ const resolveTaskCcEmails = (task?: typeof mockTasks[number]) => {
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 type UploadStatus = 'uploading' | 'done' | 'error';
 type ApprovalDecision = 'approved' | 'rejected';
-type UploadItem = { id: string; name: string; status: UploadStatus };
+type UploadItem = { id: string; name: string; status: UploadStatus; progress?: number };
+type FileUploadResponse = {
+  webViewLink?: string;
+  webContentLink?: string;
+  mimeType?: string;
+  thumbnailLink?: string;
+  error?: string;
+};
 type PendingFinalFile = {
   name: string;
   url: string;
@@ -194,6 +203,17 @@ type PendingFinalFile = {
   thumbnailUrl?: string;
 };
 const STAFF_EDIT_CHANGE_FIELDS = new Set(['description']);
+const isEditTaskHistoryChange = (entry?: Partial<TaskChange>) => {
+  if (!entry) return false;
+  if (String(entry.userRole || '').trim().toLowerCase() !== 'staff') return false;
+  const field = String(entry.field || '').trim().toLowerCase();
+  if (field === 'description' || field === 'staff_note') return true;
+  if (field === 'files') {
+    const type = String(entry.type || '').trim().toLowerCase();
+    return type === 'file_added' || type === 'file_removed';
+  }
+  return false;
+};
 
 const glassPanelClass =
   'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF]/35 ring-0 rounded-2xl shadow-none dark:bg-card dark:border-border/55 dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
@@ -205,7 +225,7 @@ const badgeGlassClass =
   'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
 const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
 
-import { API_URL, authFetch } from '@/lib/api';
+import { API_URL, authFetch, getAuthToken } from '@/lib/api';
 
 export default function TaskDetail() {
   const { id } = useParams();
@@ -253,12 +273,14 @@ export default function TaskDetail() {
   const [isUploadingFinal, setIsUploadingFinal] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null);
+  const [isFinalUploadDragging, setIsFinalUploadDragging] = useState(false);
   const [finalUploadItems, setFinalUploadItems] = useState<UploadItem[]>([]);
   const [showFinalUploadList, setShowFinalUploadList] = useState(true);
   const [pendingFinalFiles, setPendingFinalFiles] = useState<PendingFinalFile[]>([]);
   const [isEmergencyUpdating, setIsEmergencyUpdating] = useState(false);
   const [finalLinkName, setFinalLinkName] = useState('');
   const [finalLinkUrl, setFinalLinkUrl] = useState('');
+  const [finalLinkValidationError, setFinalLinkValidationError] = useState('');
   const [finalVersionNote, setFinalVersionNote] = useState('');
   const [selectedFinalVersionId, setSelectedFinalVersionId] = useState('');
   const [isAddingFinalLink, setIsAddingFinalLink] = useState(false);
@@ -276,11 +298,18 @@ export default function TaskDetail() {
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const isChatComposerFocusedRef = useRef(false);
   const clientIdRef = useRef<string>('');
   const finalUploadAbortRef = useRef<AbortController | null>(null);
   const [compareLeftId, setCompareLeftId] = useState('');
   const [compareRightId, setCompareRightId] = useState('');
   const storageKey = id ? `designhub.task.${id}` : '';
+  const commentDraftKey = useMemo(() => {
+    const taskIdForDraft = String(id || taskState?.id || '').trim();
+    const userIdForDraft = String(user?.id || '').trim();
+    if (!taskIdForDraft || !userIdForDraft) return '';
+    return `designhub.task.${taskIdForDraft}.chat-draft.${userIdForDraft}`;
+  }, [id, taskState?.id, user?.id]);
   const staffChangeCount = useMemo(() => {
     const latestApprovalCheckpointAt = changeHistory.reduce((latest, entry) => {
       if (entry.field !== 'approval_status') return latest;
@@ -300,6 +329,7 @@ export default function TaskDetail() {
   const canSendForApproval =
     user?.role === 'staff' && staffChangeCount >= 3;
   const staffChangeLimitReached = user?.role === 'staff' && staffChangeCount >= 3;
+  const editsRemainingBeforeTreasurerApproval = Math.max(0, 3 - staffChangeCount);
   const chronologicalChangeHistory = useMemo(
     () =>
       [...changeHistory].sort(
@@ -317,6 +347,10 @@ export default function TaskDetail() {
       return time > latest ? time : latest;
     }, 0);
   }, [chronologicalChangeHistory]);
+  const editTaskChangeHistory = useMemo(
+    () => chronologicalChangeHistory.filter((entry) => isEditTaskHistoryChange(entry)),
+    [chronologicalChangeHistory]
+  );
   const treasurerApprovalCycleChanges = useMemo(() => {
     if (!latestPendingApprovalAt) return [];
     const previousApprovalCheckpointAt = chronologicalChangeHistory.reduce((latest, entry) => {
@@ -325,33 +359,25 @@ export default function TaskDetail() {
       if (time >= latestPendingApprovalAt) return latest;
       return time > latest ? time : latest;
     }, 0);
-    return chronologicalChangeHistory.filter((entry) => {
-      if (entry.userRole !== 'staff') return false;
-      if (!STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))) return false;
+    return editTaskChangeHistory.filter((entry) => {
       const time = new Date(entry.createdAt ?? 0).getTime();
       return time > previousApprovalCheckpointAt && time <= latestPendingApprovalAt;
     });
-  }, [chronologicalChangeHistory, latestPendingApprovalAt]);
+  }, [chronologicalChangeHistory, editTaskChangeHistory, latestPendingApprovalAt]);
   const changeHistoryForDisplay = useMemo(() => {
-    if (user?.role === 'treasurer' && approvalStatus === 'pending') {
-      if (treasurerApprovalCycleChanges.length > 0) {
-        return treasurerApprovalCycleChanges;
-      }
-      const staffTracked = chronologicalChangeHistory.filter(
-        (entry) =>
-          entry.userRole === 'staff' &&
-          STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))
-      );
-      if (staffTracked.length > 0) {
-        return staffTracked;
-      }
+    if (
+      user?.role === 'treasurer' &&
+      approvalStatus === 'pending' &&
+      treasurerApprovalCycleChanges.length > 0
+    ) {
+      return treasurerApprovalCycleChanges;
     }
-    return chronologicalChangeHistory;
+    return editTaskChangeHistory;
   }, [
     user?.role,
     approvalStatus,
     treasurerApprovalCycleChanges,
-    chronologicalChangeHistory,
+    editTaskChangeHistory,
   ]);
   const isTreasurerReviewMode = user?.role === 'treasurer' && approvalStatus === 'pending';
   const designVersions = taskState?.designVersions ?? [];
@@ -532,6 +558,17 @@ export default function TaskDetail() {
 
   const emitTyping = (isTyping: boolean) => {
     const roomId = taskState?.id || (taskState as { _id?: string } | undefined)?._id || id;
+    if (typeof window !== 'undefined' && user?.id) {
+      window.dispatchEvent(
+        new CustomEvent('designhub:self-typing', {
+          detail: {
+            isTyping,
+            userId: user.id,
+            taskId: roomId || '',
+          },
+        })
+      );
+    }
     if (!socketRef.current || !roomId || !user) return;
     socketRef.current.emit('comment:typing', {
       taskId: roomId,
@@ -550,6 +587,27 @@ export default function TaskDetail() {
       typingTimeoutRef.current = null;
     }
     emitTyping(false);
+  };
+
+  const handleChatTypingInput = () => {
+    if (!apiUrl) return;
+    if (!isChatComposerFocusedRef.current) return;
+    emitTyping(true);
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      emitTyping(false);
+    }, 1200);
+  };
+
+  const handleChatComposerFocus = () => {
+    isChatComposerFocusedRef.current = true;
+  };
+
+  const handleChatComposerBlur = () => {
+    isChatComposerFocusedRef.current = false;
+    clearTyping();
   };
 
   useEffect(() => {
@@ -946,9 +1004,16 @@ export default function TaskDetail() {
     : !isViewOnlyTask;
   const canDesignerActions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canEditTask = user?.role === 'staff' && !isViewOnlyTask;
+  const editTaskActionTooltip = approvalLockedForStaff
+    ? 'Editing is temporarily locked while this request is under approval.'
+    : staffChangeLimitReached
+      ? 'You have reached 3 edits. Treasurer approval is required before further updates.'
+    : isEditingTask
+      ? `Close edit mode after reviewing your updates. Treasurer approval is required after 3 edits (${editsRemainingBeforeTreasurerApproval} remaining).`
+      : `Open edit mode to update task details. Treasurer approval is required after 3 edits (${editsRemainingBeforeTreasurerApproval} remaining).`;
   const canApproveDeadline = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canManageVersions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
-  const canComment = !isViewOnlyTask;
+  const canComment = !isViewOnlyTask || user?.role === 'treasurer';
   const canRemoveFiles = canDesignerActions;
   const minDeadlineDate = addWorkingDays(new Date(), 3);
   const emergencyStatus =
@@ -1046,11 +1111,16 @@ export default function TaskDetail() {
     const latest = sortedFinalDeliverableVersions[0];
     return latest?.uploadedAt ? new Date(latest.uploadedAt).getTime() : 0;
   }, [sortedFinalDeliverableVersions]);
+  const isTaskCompleted = normalizedTaskStatus === 'completed';
   const canHandover =
     canDesignerActions &&
-    normalizedTaskStatus !== 'completed' &&
-    (hasFinalDeliverables || hasPendingFinalFiles) &&
+    ((!isTaskCompleted && (hasFinalDeliverables || hasPendingFinalFiles)) ||
+      (isTaskCompleted && hasPendingFinalFiles)) &&
     !isUploadingFinal;
+  const submitActionLabel = isTaskCompleted ? 'Submit Revision' : 'Submit';
+  const submitActionHint = isTaskCompleted
+    ? 'Submit creates the next version (V1, V2, ...) and keeps this task completed.'
+    : 'Submit creates the next version (V1, V2, ...) and marks the task as completed.';
   const currentSelectedVersionNote = activeFinalVersionNote;
   const isFinalVersionNoteDirty = finalVersionNote.trim() !== currentSelectedVersionNote;
   const canAcceptTask =
@@ -1066,9 +1136,19 @@ export default function TaskDetail() {
     },
     { uploading: 0, done: 0, error: 0 }
   );
+  const finalUploadProgress = useMemo(() => {
+    if (finalUploadItems.length === 0) return 0;
+    const totalProgress = finalUploadItems.reduce((sum, item) => {
+      if (item.status === 'done') return sum + 100;
+      const raw = Number(item.progress);
+      const normalized = Number.isFinite(raw) ? Math.max(0, Math.min(99, Math.round(raw))) : 0;
+      return sum + normalized;
+    }, 0);
+    return Math.max(0, Math.min(100, Math.round(totalProgress / finalUploadItems.length)));
+  }, [finalUploadItems]);
   const finalUploadLabel =
     finalUploadTotals.uploading > 0
-      ? `Uploading ${finalUploadTotals.uploading} item${finalUploadTotals.uploading === 1 ? '' : 's'}`
+      ? `Uploading ${finalUploadTotals.uploading} item${finalUploadTotals.uploading === 1 ? '' : 's'} (${finalUploadProgress}%)`
       : finalUploadTotals.error > 0 && finalUploadTotals.done === 0
         ? 'Upload failed'
         : `${finalUploadTotals.done || finalUploadItems.length} upload${(finalUploadTotals.done || finalUploadItems.length) === 1 ? '' : 's'} complete`;
@@ -1080,6 +1160,10 @@ export default function TaskDetail() {
     if (Number.isNaN(parsed.getTime())) return 'Unknown time';
     return format(parsed, 'MMM d, yyyy · hh:mm:ss a');
   };
+  const finalVersionTooltip =
+    activeFinalVersion
+      ? `V${activeFinalVersion.version} was uploaded on ${formatVersionTimestamp(activeFinalVersion.uploadedAt)}. Use this selector to review files from each submission.`
+      : 'Each version (V1, V2, ...) is a final deliverable submission. Use this selector to review previous submissions.';
   const getFinalVersionLabel = (version: FinalDeliverableVersion) =>
     `V${version.version} · ${formatVersionTimestamp(version.uploadedAt)}`;
   const isImageVersion = (version?: DesignVersion) => {
@@ -1143,6 +1227,38 @@ export default function TaskDetail() {
     } catch {
       return { isGoogleDrive: false as const, itemType: 'external' as const, itemId: '' };
     }
+  };
+  const validateFinalGoogleDriveLink = (url: string) => {
+    const trimmedUrl = String(url || '').trim();
+    if (!trimmedUrl) {
+      return {
+        valid: false as const,
+        message: 'Paste a Google Drive link to continue.',
+      };
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmedUrl);
+    } catch {
+      return {
+        valid: false as const,
+        message: 'Invalid link format. Use a Google Drive URL.',
+      };
+    }
+    if (parsed.protocol !== 'https:') {
+      return {
+        valid: false as const,
+        message: 'Use an https Google Drive URL.',
+      };
+    }
+    const driveMeta = getDriveLinkMeta(trimmedUrl);
+    if (!driveMeta.isGoogleDrive) {
+      return {
+        valid: false as const,
+        message: 'Please provide a Google Drive link (drive.google.com or docs.google.com).',
+      };
+    }
+    return { valid: true as const, message: '' };
   };
   const inferDriveItemNameFromUrl = (url: string) => {
     const meta = getDriveLinkMeta(url);
@@ -1443,13 +1559,26 @@ export default function TaskDetail() {
           throw new Error(errorMessage);
         }
         const updated = await response.json();
-        const hydrated = hydrateTask(updated);
+        const hydrated = withAccessMetadata(hydrateTask(updated));
         setTaskState(hydrated);
         setChangeHistory(hydrated?.changeHistory ?? []);
         setApprovalStatus(hydrated?.approvalStatus);
         persistTask(hydrated);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Backend update failed.';
+        if (message.toLowerCase().includes('forbidden')) {
+          setTaskState((prev) =>
+            prev
+              ? ({
+                  ...prev,
+                  accessMode: 'view_only',
+                  viewOnly: true,
+                } as typeof prev)
+              : prev
+          );
+          toast.error('Only the assigned designer can update this task.');
+          return false;
+        }
         toast.error('Backend update failed.', { description: message });
         return false;
       }
@@ -1496,10 +1625,19 @@ export default function TaskDetail() {
                   (item: any) => (item?.id || item?._id) === id
                 );
                 if (match) {
-                  const hydrated = hydrateTask({
-                    ...match,
-                    id: match.id || match._id,
-                  });
+                  const isAccessDenied = response.status === 403;
+                  const hydrated = withAccessMetadata(
+                    hydrateTask({
+                      ...match,
+                      id: match.id || match._id,
+                      ...(isAccessDenied
+                        ? {
+                          accessMode: 'view_only',
+                          viewOnly: true,
+                        }
+                        : {}),
+                    })
+                  );
                   setTaskState(hydrated);
                   setChangeHistory(hydrated?.changeHistory ?? []);
                   setChangeCount(hydrated?.changeCount ?? 0);
@@ -1521,10 +1659,12 @@ export default function TaskDetail() {
           throw new Error('Task not found');
         }
         const data = await response.json();
-        const hydrated = hydrateTask({
-          ...data,
-          id: data.id || data._id,
-        });
+        const hydrated = withAccessMetadata(
+          hydrateTask({
+            ...data,
+            id: data.id || data._id,
+          })
+        );
         setTaskState(hydrated);
         setChangeHistory(hydrated?.changeHistory ?? []);
         setChangeCount(hydrated?.changeCount ?? 0);
@@ -1553,7 +1693,7 @@ export default function TaskDetail() {
     if (apiUrl || !id) return;
     const local = loadLocalTaskById(id);
     if (!local) return;
-    const hydrated = hydrateTask(local);
+    const hydrated = withAccessMetadata(hydrateTask(local));
     setTaskState(hydrated);
     setChangeHistory(hydrated?.changeHistory ?? []);
     setChangeCount(hydrated?.changeCount ?? 0);
@@ -1594,7 +1734,7 @@ export default function TaskDetail() {
           });
           if (response.ok) {
             const updated = await response.json();
-            const hydrated = hydrateTask(updated);
+            const hydrated = withAccessMetadata(hydrateTask(updated));
             setTaskState(hydrated);
           }
         } catch {
@@ -1624,6 +1764,21 @@ export default function TaskDetail() {
     };
     markSeen();
   }, [apiUrl, taskState?.id, hasUnseenComments, unseenFingerprint, user]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !commentDraftKey) return;
+    const savedDraft = window.localStorage.getItem(commentDraftKey);
+    setNewComment(savedDraft ?? '');
+  }, [commentDraftKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !commentDraftKey) return;
+    if (newComment.length > 0) {
+      window.localStorage.setItem(commentDraftKey, newComment);
+      return;
+    }
+    window.localStorage.removeItem(commentDraftKey);
+  }, [commentDraftKey, newComment]);
 
   const submitComment = async (
     content: string,
@@ -1671,7 +1826,7 @@ export default function TaskDetail() {
           throw new Error(errorMessage);
         }
         const updated = await response.json();
-        const hydrated = hydrateTask(updated);
+        const hydrated = withAccessMetadata(hydrateTask(updated));
         setTaskState(hydrated);
         onSuccess?.();
         clearTyping();
@@ -1789,10 +1944,14 @@ export default function TaskDetail() {
   };
 
   const handleHandoverTask = async () => {
-    if (!taskState || normalizedTaskStatus === 'completed') return;
+    if (!taskState) return;
     if (!ensureWritableTask()) return;
     if (!hasFinalDeliverables && !hasPendingFinalFiles) {
       toast.message('Upload final files before handing over the task.');
+      return;
+    }
+    if (isTaskCompleted && !hasPendingFinalFiles) {
+      toast.message('Add files or link, then submit the revision.');
       return;
     }
     if (!apiUrl) {
@@ -1813,7 +1972,7 @@ export default function TaskDetail() {
         if (!response.ok) {
           throw new Error(data?.error || 'Failed to create final deliverable version.');
         }
-        const hydrated = hydrateTask(data);
+        const hydrated = withAccessMetadata(hydrateTask(data));
         setTaskState(hydrated);
         if (hydrated?.finalDeliverableVersions?.length) {
           setSelectedFinalVersionId(hydrated.finalDeliverableVersions[0].id);
@@ -1826,11 +1985,28 @@ export default function TaskDetail() {
           error instanceof Error && error.message
             ? error.message
             : 'Failed to create final deliverable version.';
+        if (message.toLowerCase().includes('forbidden')) {
+          setTaskState((prev) =>
+            prev
+              ? ({
+                  ...prev,
+                  accessMode: 'view_only',
+                  viewOnly: true,
+                } as typeof prev)
+              : prev
+          );
+          toast.error('Only the assigned designer can submit this task.');
+          return;
+        }
         toast.error(message);
         return;
       }
     }
-    await recordChanges(
+    if (isTaskCompleted) {
+      toast.success('New revision version submitted.');
+      return;
+    }
+    const didComplete = await recordChanges(
       [
         {
           type: 'status',
@@ -1842,7 +2018,9 @@ export default function TaskDetail() {
       ],
       { status: 'completed' }
     );
-    setShowHandoverModal(true);
+    if (didComplete) {
+      setShowHandoverModal(true);
+    }
   };
 
   const handleHandoverClose = () => {
@@ -1926,7 +2104,7 @@ export default function TaskDetail() {
           throw new Error(errorMessage);
         }
         const updated = await response.json();
-        const hydrated = hydrateTask(updated);
+        const hydrated = withAccessMetadata(hydrateTask(updated));
         setTaskState(hydrated);
         setChangeHistory(hydrated?.changeHistory ?? []);
         setChangeCount(hydrated?.changeCount ?? changeCount + 1);
@@ -2099,12 +2277,87 @@ export default function TaskDetail() {
     );
   };
 
-  const handleFinalUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files;
-    if (!selectedFiles || selectedFiles.length === 0) return;
+  const uploadFinalFileWithProgress = ({
+    file,
+    taskTitle,
+    uploadId,
+    signal,
+  }: {
+    file: File;
+    taskTitle: string;
+    uploadId: string;
+    signal: AbortSignal;
+  }) =>
+    new Promise<FileUploadResponse>((resolve, reject) => {
+      if (!apiUrl) {
+        reject(new Error('File upload requires the backend.'));
+        return;
+      }
+
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('taskTitle', taskTitle);
+
+      const handleAbort = () => xhr.abort();
+      signal.addEventListener('abort', handleAbort, { once: true });
+
+      const cleanup = () => {
+        signal.removeEventListener('abort', handleAbort);
+      };
+
+      xhr.open('POST', `${apiUrl}/api/files/upload`);
+      const authToken = getAuthToken();
+      if (authToken) {
+        xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+      }
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const nextProgress = Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100)));
+        setFinalUploadItems((prev) =>
+          prev.map((item) =>
+            item.id === uploadId ? { ...item, status: 'uploading', progress: nextProgress } : item
+          )
+        );
+      };
+
+      xhr.onload = () => {
+        cleanup();
+        let payload: FileUploadResponse = {};
+        try {
+          payload = JSON.parse(xhr.responseText || '{}') as FileUploadResponse;
+        } catch {
+          payload = {};
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(payload);
+          return;
+        }
+        const errorMessage =
+          typeof payload?.error === 'string' && payload.error.trim()
+            ? payload.error.trim()
+            : 'Upload failed';
+        reject(new Error(errorMessage));
+      };
+
+      xhr.onerror = () => {
+        cleanup();
+        reject(new Error('Upload failed'));
+      };
+
+      xhr.onabort = () => {
+        cleanup();
+        reject(new DOMException('Upload cancelled.', 'AbortError'));
+      };
+
+      xhr.send(formData);
+    });
+
+  const uploadFinalFiles = async (uploads: File[]) => {
+    if (uploads.length === 0) return;
     if (!taskState) return;
     if (!ensureWritableTask()) {
-      e.target.value = '';
       return;
     }
     const taskId = (taskState as { id?: string; _id?: string })?.id || (taskState as { _id?: string })?._id;
@@ -2117,12 +2370,13 @@ export default function TaskDetail() {
       return;
     }
 
-    const uploads = Array.from(selectedFiles);
+    setIsFinalUploadDragging(false);
     const batchId = Date.now();
     const uploadItems = uploads.map((file, index) => ({
       id: `final-${batchId}-${index}`,
       name: file.name,
       status: 'uploading' as const,
+      progress: 0,
     }));
     setFinalUploadItems(uploadItems);
     setShowFinalUploadList(true);
@@ -2147,19 +2401,13 @@ export default function TaskDetail() {
       for (let index = 0; index < uploads.length; index += 1) {
         const file = uploads[index];
         const uploadId = uploadItems[index]?.id;
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('taskTitle', taskState.title);
         try {
-          const response = await authFetch(`${apiUrl}/api/files/upload`, {
-            method: 'POST',
-            body: formData,
+          const data = await uploadFinalFileWithProgress({
+            file,
+            taskTitle: taskState.title,
+            uploadId,
             signal: controller.signal,
           });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(data?.error || 'Upload failed');
-          }
           uploadedFiles.push({
             name: file.name,
             url: data.webViewLink || data.webContentLink || '',
@@ -2169,22 +2417,35 @@ export default function TaskDetail() {
           });
           if (uploadId) {
             setFinalUploadItems((prev) =>
-              prev.map((item) => (item.id === uploadId ? { ...item, status: 'done' } : item))
+              prev.map((item) =>
+                item.id === uploadId
+                  ? { ...item, status: 'done', progress: 100 }
+                  : item
+              )
             );
           }
-        } catch (error: any) {
-          if (error?.name === 'AbortError') {
+        } catch (error) {
+          const maybeAbortError = error as { name?: string; message?: string };
+          if (maybeAbortError?.name === 'AbortError') {
             if (uploadId) {
               setFinalUploadItems((prev) =>
-                prev.map((item) => (item.id === uploadId ? { ...item, status: 'error' } : item))
+                prev.map((item) =>
+                  item.id === uploadId
+                    ? { ...item, status: 'error', progress: item.progress ?? 0 }
+                    : item
+                )
               );
             }
             throw error;
           }
-          const errorMsg = error?.message || 'Upload failed';
+          const errorMsg = maybeAbortError?.message || 'Upload failed';
           if (uploadId) {
             setFinalUploadItems((prev) =>
-              prev.map((item) => (item.id === uploadId ? { ...item, status: 'error' } : item))
+              prev.map((item) =>
+                item.id === uploadId
+                  ? { ...item, status: 'error', progress: item.progress ?? 0 }
+                  : item
+              )
             );
           }
           hasFailure = true;
@@ -2251,8 +2512,41 @@ export default function TaskDetail() {
     } finally {
       setIsUploadingFinal(false);
       finalUploadAbortRef.current = null;
+    }
+  };
+
+  const handleFinalUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
+    try {
+      await uploadFinalFiles(selectedFiles);
+    } finally {
       e.target.value = '';
     }
+  };
+
+  const handleFinalUploadDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (isUploadingFinal) return;
+    event.dataTransfer.dropEffect = 'copy';
+    setIsFinalUploadDragging(true);
+  };
+
+  const handleFinalUploadDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const nextTarget = event.relatedTarget;
+    if (nextTarget && event.currentTarget.contains(nextTarget as Node)) {
+      return;
+    }
+    setIsFinalUploadDragging(false);
+  };
+
+  const handleFinalUploadDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsFinalUploadDragging(false);
+    if (isUploadingFinal) return;
+    const files = Array.from(event.dataTransfer.files || []);
+    if (files.length === 0) return;
+    await uploadFinalFiles(files);
   };
 
   const handleCancelFinalUpload = () => {
@@ -2300,7 +2594,7 @@ export default function TaskDetail() {
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to update version note');
       }
-      const hydrated = hydrateTask(data);
+      const hydrated = withAccessMetadata(hydrateTask(data));
       setTaskState(hydrated);
       toast.success('Version note updated.');
     } catch (error) {
@@ -2312,25 +2606,14 @@ export default function TaskDetail() {
 
   const handleAddFinalLink = async () => {
     if (!ensureWritableTask()) return;
-    if (!finalLinkUrl.trim()) {
-      toast.message('Add a Google Drive link first.');
-      return;
-    }
     const trimmedUrl = finalLinkUrl.trim();
-    try {
-      const parsed = new URL(trimmedUrl);
-      const allowedHosts = ['drive.google.com', 'docs.google.com'];
-      const isAllowedHost = allowedHosts.some((host) =>
-        parsed.hostname === host || parsed.hostname.endsWith(`.${host}`)
-      );
-      if (parsed.protocol !== 'https:' || !isAllowedHost) {
-        toast.error('Only secure Google Drive links are allowed.');
-        return;
-      }
-    } catch {
-      toast.error('Invalid link format. Use a Google Drive URL.');
+    const linkValidation = validateFinalGoogleDriveLink(trimmedUrl);
+    if (!linkValidation.valid) {
+      setFinalLinkValidationError(linkValidation.message);
+      toast.error(linkValidation.message);
       return;
     }
+    setFinalLinkValidationError('');
     let inferredName = finalLinkName.trim();
     if (!inferredName) {
       inferredName = inferDriveItemNameFromUrl(trimmedUrl);
@@ -2370,11 +2653,13 @@ export default function TaskDetail() {
           id: `final-link-${Date.now()}`,
           name: inferredName,
           status: 'done',
+          progress: 100,
         },
       ]);
       setShowFinalUploadList(true);
       setFinalLinkName('');
       setFinalLinkUrl('');
+      setFinalLinkValidationError('');
       toast.success('Link staged. Click Submit to create the next version.');
     } catch (error) {
       toast.error('Failed to stage final deliverable link.');
@@ -2727,15 +3012,10 @@ export default function TaskDetail() {
                 onChange={(e) => {
                   const value = e.target.value;
                   setReplyText(value);
-                  if (!apiUrl) return;
-                  emitTyping(true);
-                  if (typingTimeoutRef.current) {
-                    clearTimeout(typingTimeoutRef.current);
-                  }
-                  typingTimeoutRef.current = setTimeout(() => {
-                    emitTyping(false);
-                  }, 1200);
+                  handleChatTypingInput();
                 }}
+                onFocus={handleChatComposerFocus}
+                onBlur={handleChatComposerBlur}
                 rows={2}
                 className="flex-1 select-text"
               />
@@ -2970,14 +3250,28 @@ export default function TaskDetail() {
               <div className={`${glassPanelClass} p-6 animate-slide-up`}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-foreground">Edit Task</h2>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setIsEditingTask((prev) => !prev)}
-                    disabled={approvalLockedForStaff}
-                  >
-                    {isEditingTask ? 'Close' : 'Edit'}
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setIsEditingTask((prev) => !prev)}
+                          disabled={approvalLockedForStaff}
+                        >
+                          {isEditingTask ? 'Close' : 'Edit'}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      align="end"
+                      sideOffset={8}
+                      className="max-w-[420px] text-xs leading-relaxed dark:text-white shadow-none dark:shadow-none"
+                    >
+                      {editTaskActionTooltip}
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
                 {isEditingTask ? (
                   <div className="space-y-4">
@@ -3055,7 +3349,7 @@ export default function TaskDetail() {
                             : 'Select files'}
                         </label>
                         <span className="text-xs text-muted-foreground">
-                          Add reference files if needed, or drag and drop here.
+                          Add associated files if needed, or drag and drop here.
                         </span>
                         </div>
                       </div>
@@ -3213,14 +3507,14 @@ export default function TaskDetail() {
                 <div className="mb-6">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <h3 className="text-sm font-medium text-muted-foreground">
-                      Reference Files
+                      Associated Files
                     </h3>
                     <button
                       type="button"
                       onClick={() => setShowReferenceFileList((prev) => !prev)}
                       className="inline-flex items-center gap-1 rounded-full border border-[#D9E6FF] bg-white/85 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition hover:bg-[#F3F7FF] dark:border-border dark:bg-card/85 dark:hover:bg-muted/80"
                       aria-expanded={showReferenceFileList}
-                      aria-label="Toggle reference files list"
+                      aria-label="Toggle associated files list"
                     >
                       <span>{inputFiles.length}</span>
                       <ChevronDown
@@ -3299,14 +3593,31 @@ export default function TaskDetail() {
                       Final Deliverables
                     </h3>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Version</span>
+                      <span className="text-xs text-muted-foreground">
+                        Version
+                      </span>
                       <Select
                         value={selectedFinalVersionId || activeFinalVersion?.id || ''}
                         onValueChange={setSelectedFinalVersionId}
                       >
-                        <SelectTrigger className="h-8 w-[200px]">
-                          <SelectValue placeholder="Select version" />
-                        </SelectTrigger>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SelectTrigger
+                              className="h-8 w-[200px]"
+                              aria-label="Final deliverable version selector"
+                            >
+                              <SelectValue placeholder="Select version" />
+                            </SelectTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="bottom"
+                            align="start"
+                            sideOffset={8}
+                            className="max-w-[320px] text-xs leading-relaxed"
+                          >
+                            {finalVersionTooltip}
+                          </TooltipContent>
+                        </Tooltip>
                         <SelectContent>
                           {sortedFinalDeliverableVersions.map((version) => (
                             <SelectItem key={version.id} value={version.id}>
@@ -3503,13 +3814,22 @@ export default function TaskDetail() {
               {/* Upload (Designer only) */}
               {canDesignerActions && (
                 <>
-                  <div className="mt-6 relative overflow-hidden rounded-2xl gradient-border bg-white p-6 text-center shadow-none dark:bg-card">
+                  <div
+                    className={cn(
+                      'mt-6 relative overflow-hidden rounded-2xl gradient-border bg-white p-6 text-center shadow-none transition-colors dark:bg-card',
+                      isFinalUploadDragging &&
+                        'border-primary/40 bg-[#F4F8FF] ring-2 ring-primary/25 dark:bg-card/95'
+                    )}
+                    onDragOver={handleFinalUploadDragOver}
+                    onDragLeave={handleFinalUploadDragLeave}
+                    onDrop={handleFinalUploadDrop}
+                  >
                     <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
                     <div className="relative">
                       <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
                       <p className="text-xs text-muted-foreground">
-                        Drag and drop or click to upload
+                        {isFinalUploadDragging ? 'Drop files to upload' : 'Drag and drop or click to upload'}
                       </p>
                       <div className="mt-3 text-left">
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -3597,35 +3917,67 @@ export default function TaskDetail() {
                             <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3 dark:border-border">
                               {finalUploadItems.map((item) => {
                                 const extension = getFileExtension(item.name);
+                                const itemProgress =
+                                  item.status === 'done'
+                                    ? 100
+                                    : Math.max(0, Math.min(99, Math.round(Number(item.progress) || 0)));
                                 return (
                                   <div
                                     key={item.id}
-                                    className="flex items-center justify-between rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2 dark:border-border dark:bg-card/95"
+                                    className="rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2.5 dark:border-border dark:bg-card/95"
                                   >
-                                    <div className="flex min-w-0 items-center gap-3">
-                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:bg-muted dark:text-slate-200">
-                                        {extension.slice(0, 4)}
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex min-w-0 items-center gap-3">
+                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:bg-muted dark:text-slate-200">
+                                          {extension.slice(0, 4)}
+                                        </div>
+                                        <span className="min-w-0 truncate text-xs font-medium text-foreground">
+                                          {item.name}
+                                        </span>
                                       </div>
-                                      <span className="min-w-0 truncate text-xs font-medium text-foreground">
-                                        {item.name}
-                                      </span>
+                                      <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                                        {item.status === 'uploading' && (
+                                          <>
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/90">
+                                              Uploading
+                                            </span>
+                                          </>
+                                        )}
+                                        {item.status === 'done' && (
+                                          <>
+                                            <Check className="h-4 w-4 text-emerald-500" />
+                                            <span className="font-semibold tabular-nums text-emerald-500">
+                                              100%
+                                            </span>
+                                          </>
+                                        )}
+                                        {item.status === 'error' && (
+                                          <>
+                                            <AlertTriangle className="h-4 w-4 text-red-500" />
+                                            <span className="font-semibold text-red-500">Failed</span>
+                                          </>
+                                        )}
+                                      </div>
                                     </div>
-                                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                      {item.status === 'uploading' && (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      )}
-                                      {item.status === 'done' && (
-                                        <Check className="h-4 w-4 text-emerald-500" />
-                                      )}
-                                      {item.status === 'error' && (
-                                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                                      )}
-                                    </div>
+                                    {item.status === 'uploading' && (
+                                      <div className="mt-2.5 grid grid-cols-[1fr_auto] items-center gap-2">
+                                        <Progress
+                                          value={itemProgress}
+                                          className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-[#1A2748]"
+                                        />
+                                        <span className="min-w-[2.5rem] text-right text-[11px] font-semibold tabular-nums text-foreground/90 dark:text-slate-100">
+                                          {itemProgress}%
+                                        </span>
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
                               {finalUploadTotals.uploading > 0 && (
-                                <p className="text-xs text-muted-foreground">Starting upload...</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Upload in progress: {finalUploadProgress}%
+                                </p>
                               )}
                             </div>
                           )}
@@ -3645,8 +3997,24 @@ export default function TaskDetail() {
                           <Input
                             placeholder="https://drive.google.com/..."
                             value={finalLinkUrl}
-                            onChange={(event) => setFinalLinkUrl(event.target.value)}
-                            className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4 dark:border-border dark:bg-card/95 dark:text-slate-100 dark:placeholder:text-slate-400"
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              setFinalLinkUrl(nextValue);
+                              if (!finalLinkValidationError) return;
+                              if (!nextValue.trim()) {
+                                setFinalLinkValidationError('');
+                                return;
+                              }
+                              const nextValidation = validateFinalGoogleDriveLink(nextValue);
+                              if (nextValidation.valid) {
+                                setFinalLinkValidationError('');
+                              }
+                            }}
+                            className={cn(
+                              'h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4 dark:border-border dark:bg-card/95 dark:text-slate-100 dark:placeholder:text-slate-400',
+                              finalLinkValidationError &&
+                                'border-red-300 bg-red-50/40 focus-visible:border-red-400 dark:border-red-400/70 dark:bg-red-950/20'
+                            )}
                           />
                           <Button
                             type="button"
@@ -3657,20 +4025,25 @@ export default function TaskDetail() {
                             {isAddingFinalLink ? 'Adding...' : 'Add link'}
                           </Button>
                         </div>
+                        {finalLinkValidationError && (
+                          <p className="mt-2 text-xs font-medium text-red-500 dark:text-red-300">
+                            {finalLinkValidationError}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
-                  {normalizedTaskStatus !== 'completed' && (
+                  {(normalizedTaskStatus !== 'completed' || hasPendingFinalFiles) && (
                     <div className="mt-4 flex flex-col items-center gap-2">
                       <Button
                         onClick={handleHandoverTask}
                         disabled={!canHandover}
                         className="min-w-[180px] px-6"
                       >
-                        Submit
+                        {submitActionLabel}
                       </Button>
                       <span className="text-xs text-muted-foreground">
-                        Submit creates the next version (V1, V2, ...) and marks the task as completed.
+                        {submitActionHint}
                       </span>
                     </div>
                   )}
@@ -3729,15 +4102,10 @@ export default function TaskDetail() {
                   onChange={(e) => {
                     const value = e.target.value;
                     setNewComment(value);
-                    if (!apiUrl) return;
-                    emitTyping(true);
-                    if (typingTimeoutRef.current) {
-                      clearTimeout(typingTimeoutRef.current);
-                    }
-                    typingTimeoutRef.current = setTimeout(() => {
-                      emitTyping(false);
-                    }, 1200);
+                    handleChatTypingInput();
                   }}
+                  onFocus={handleChatComposerFocus}
+                  onBlur={handleChatComposerBlur}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                       e.preventDefault();
@@ -4181,5 +4549,6 @@ export default function TaskDetail() {
     </DashboardLayout>
   );
 }
+
 
 

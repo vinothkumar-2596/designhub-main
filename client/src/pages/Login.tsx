@@ -35,11 +35,26 @@ const roleOptions: { value: UserRole; label: string; icon: React.ElementType; de
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const DESIGNER_LOGIN_EMAIL = normalizeEmail(DESIGNER_CREDENTIALS.email);
 const TREASURER_LOGIN_EMAIL = normalizeEmail(TREASURER_CREDENTIALS.email);
+const parseEmailList = (value?: string) =>
+  Array.from(
+    new Set(
+      String(value || '')
+        .split(/[\s,;]+/g)
+        .map((entry) => normalizeEmail(entry))
+        .filter(Boolean)
+    )
+  );
+const DESIGNER_ROLE_HINT_EMAILS = new Set([
+  DESIGNER_LOGIN_EMAIL,
+  'demo@designhub',
+  ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAIL),
+  ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAILS),
+]);
 
 const resolveLoginRole = (email: string): UserRole => {
   const normalized = normalizeEmail(email);
   if (!normalized) return 'staff';
-  if (normalized === DESIGNER_LOGIN_EMAIL) return 'designer';
+  if (DESIGNER_ROLE_HINT_EMAILS.has(normalized)) return 'designer';
   if (normalized === TREASURER_LOGIN_EMAIL) return 'treasurer';
   return 'staff';
 };

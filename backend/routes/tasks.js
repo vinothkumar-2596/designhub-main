@@ -19,6 +19,12 @@ import {
 import { getSocket } from "../socket.js";
 import { requireRole } from "../middleware/auth.js";
 import { globalLimiter } from "../middleware/rateLimit.js";
+import {
+  buildDesignerPortalId,
+  getDesignerScope,
+  hasMainDesignerConfig,
+  isMainDesignerUser,
+} from "../lib/designerAccess.js";
 
 const router = express.Router();
 const TASK_ROLES = ["staff", "designer", "treasurer", "admin", "other", "manager"];
@@ -106,6 +112,36 @@ const getUserIdsByRole = async (roles = []) => {
     isActive: { $ne: false }
   }).select("_id");
   return users.map((user) => user._id.toString());
+};
+
+const getActiveDesignerUsers = async () =>
+  User.find({
+    role: "designer",
+    isActive: { $ne: false }
+  })
+    .sort({ name: 1, email: 1 })
+    .select("_id name email role");
+
+const splitDesignersByScope = (designers = []) => {
+  const mainDesigners = [];
+  const juniorDesigners = [];
+  designers.forEach((designer) => {
+    if (getDesignerScope(designer) === "main") {
+      mainDesigners.push(designer);
+      return;
+    }
+    juniorDesigners.push(designer);
+  });
+  return { mainDesigners, juniorDesigners };
+};
+
+const getQueueDesignerUserIds = async () => {
+  const designers = await getActiveDesignerUsers();
+  if (!hasMainDesignerConfig()) {
+    return designers.map((designer) => designer._id?.toString?.() || "").filter(Boolean);
+  }
+  const { mainDesigners } = splitDesignersByScope(designers);
+  return mainDesigners.map((designer) => designer._id?.toString?.() || "").filter(Boolean);
 };
 
 const resolveUserIdByEmail = async (email) => {
@@ -378,6 +414,7 @@ const resolveTaskAccessContext = async (task, user) => {
   };
   if (!user) return fallback;
   const userRole = normalizeTaskRole(user.role);
+  const isMainDesigner = userRole === "designer" && isMainDesignerUser(user);
   const userId = normalizeId(user._id?.toString?.() || user._id);
   const userEmail = normalizeValue(user.email);
   const ccEmails = extractTaskCcEmails(task);
@@ -409,7 +446,7 @@ const resolveTaskAccessContext = async (task, user) => {
     };
   }
   // Designers can work from the unassigned queue and self-assign via change updates.
-  if (userRole === "designer" && !effectiveAssignedId) {
+  if (userRole === "designer" && isMainDesigner && !effectiveAssignedId) {
     return {
       mode: "full",
       assignedDesignerEmail: userEmail || assignedDesignerEmail,
@@ -429,6 +466,10 @@ const resolveTaskAccessContext = async (task, user) => {
       assignedDesignerEmail,
       ccEmails
     };
+  }
+  // Junior designers can access only the tasks explicitly assigned to them.
+  if (userRole === "designer" && !isMainDesigner) {
+    return fallback;
   }
   if (userEmail && ccEmails.includes(userEmail)) {
     return {
@@ -570,6 +611,7 @@ const ensureTaskAccess = async (req, res, next) => {
       return res.status(404).json({ error: "Task not found." });
     }
     const userRole = normalizeTaskRole(req.user?.role);
+    const isMainDesigner = userRole === "designer" && isMainDesignerUser(req.user);
     const isUnassigned = await isTaskEffectivelyUnassigned(task);
     const isCommentWrite =
       req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/comments");
@@ -593,14 +635,15 @@ const ensureTaskAccess = async (req, res, next) => {
       const accessContext = await resolveTaskAccessContext(task, req.user);
       const canAssignDesignerFromUnassigned =
         userRole === "designer" &&
+        isMainDesigner &&
         isUnassigned &&
         isAssignDesignerWrite;
       const canAssignDesignerAsManager =
         isAssignDesignerWrite &&
-        isManagerRole(userRole);
+        (userRole === "admin" || (userRole === "designer" && isMainDesigner));
       const canLegacyAssignAsManager =
         isLegacyAssignWrite &&
-        ["staff", "treasurer", "admin"].includes(userRole);
+        (userRole === "admin" || (userRole === "designer" && isMainDesigner));
       const managerApprovalFields = new Set([
         "approval_status",
         "deadline_request",
@@ -633,6 +676,10 @@ const ensureTaskAccess = async (req, res, next) => {
         ["treasurer", "admin"].includes(userRole) &&
         hasManagerApprovalChanges &&
         hasOnlyManagerApprovalUpdates;
+      const canManagerCommentWrite =
+        isCommentWrite &&
+        isManagerRole(userRole) &&
+        accessContext.mode !== "none";
 
       if (isReadOnly) {
         if (accessContext.mode === "none") {
@@ -668,6 +715,13 @@ const ensureTaskAccess = async (req, res, next) => {
         return next();
       }
 
+      if (canManagerCommentWrite) {
+        req.task = task;
+        req.taskAccessMode = accessContext.mode;
+        req.taskAccessContext = accessContext;
+        return next();
+      }
+
       if (accessContext.mode !== "full") {
         return res.status(403).json({ error: "Forbidden." });
       }
@@ -684,6 +738,7 @@ const ensureTaskAccess = async (req, res, next) => {
     }
     if (
       userRole === "designer" &&
+      isMainDesigner &&
       isUnassigned &&
       (isReadOnly ||
         isCommentWrite ||
@@ -722,6 +777,9 @@ const ensureTaskAccess = async (req, res, next) => {
       }
     }
     if (!canAccessTask(task, req.user)) {
+      if (userRole === "designer" && !isMainDesigner) {
+        return res.status(403).json({ error: "Forbidden." });
+      }
       if (isReadOnly) {
         req.task = task;
         req.taskAccessMode = "view_only";
@@ -749,6 +807,7 @@ router.get("/", globalLimiter, async (req, res) => {
     const userId = getUserId(req);
     const userEmail = normalizeValue(req.user?.email);
     const userName = normalizeValue(req.user?.name);
+    const userIsMainDesigner = userRole === "designer" && isMainDesignerUser(req.user);
 
     if (status) query.status = status;
     if (category) query.category = category;
@@ -799,7 +858,7 @@ router.get("/", globalLimiter, async (req, res) => {
       }
       query.$or = orClauses;
     } else if (userRole === "designer") {
-      // Designers can see assigned tasks and the unassigned queue. Apply detailed access filtering after fetch.
+      // Main designers can monitor the unassigned queue; junior designers are limited to assigned tasks.
     } else if (userRole !== "treasurer" && userRole !== "admin") {
       return res.status(403).json({ error: "Forbidden." });
     }
@@ -811,7 +870,13 @@ router.get("/", globalLimiter, async (req, res) => {
         ? (
           await Promise.all(
             tasks.map(async (task) => {
-              if (!hasAssignedDesignerAccessMetadata(task)) return task;
+              if (!userIsMainDesigner) {
+                return canAccessTask(task, req.user) ? task : null;
+              }
+              if (!hasAssignedDesignerAccessMetadata(task)) {
+                if (await isTaskEffectivelyUnassigned(task)) return task;
+                return canAccessTask(task, req.user) ? task : null;
+              }
               if (await isTaskEffectivelyUnassigned(task)) return task;
               const assignedId = resolveAssignedIdentifier(task);
               if (assignedId && userId && assignedId === userId) return task;
@@ -821,7 +886,7 @@ router.get("/", globalLimiter, async (req, res) => {
               const ccEmails = extractTaskCcEmails(task);
               if (isTaskAssignedByUser(task, req.user)) return task;
               if (userEmail && ccEmails.includes(userEmail)) return task;
-              return null;
+              return task;
             })
           )
         ).filter(Boolean)
@@ -835,26 +900,29 @@ router.get("/", globalLimiter, async (req, res) => {
 router.get("/designers", async (req, res) => {
   try {
     const role = normalizeTaskRole(req.user?.role);
-    if (!["designer", "treasurer", "admin"].includes(role)) {
-      return res.status(403).json({ error: "Only designer, treasurer, or admin accounts can view designers." });
+    const canViewAssignableDesigners =
+      role === "admin" || (role === "designer" && isMainDesignerUser(req.user));
+    if (!canViewAssignableDesigners) {
+      return res.status(403).json({ error: "Only the main designer can view assignable designers." });
     }
 
-    const designers = await User.find({
-      role: "designer",
-      isActive: { $ne: false }
-    })
-      .sort({ name: 1, email: 1 })
-      .select("_id name email role");
+    const designers = await getActiveDesignerUsers();
+    const assignableDesigners = hasMainDesignerConfig()
+      ? splitDesignersByScope(designers).juniorDesigners
+      : designers;
 
     res.json(
-      designers.map((designer) => {
+      assignableDesigners.map((designer) => {
         const email = normalizeValue(designer.email);
         const fallbackName = email ? email.split("@")[0] : "Designer";
+        const designerScope = getDesignerScope(designer) || "junior";
         return {
           id: designer._id?.toString?.() || "",
           name: designer.name || fallbackName,
           email,
-          role: designer.role || "designer"
+          role: designer.role || "designer",
+          designerScope,
+          portalId: buildDesignerPortalId(designer)
         };
       })
     );
@@ -905,14 +973,11 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
         return res.status(400).json({ error: "Emergency deadline cannot be before today." });
       }
     }
-    const resolvedAssignment = await resolveAssignedUser({
-      assignedToId: payload.assignedToId,
-      assignedTo: payload.assignedTo,
-      assignedToName: payload.assignedToName,
-      assignedToEmail: payload.assignedToEmail
-    });
-    payload.assignedToId = resolvedAssignment.assignedToId;
-    payload.assignedToName = resolvedAssignment.assignedToName;
+    // Staff/treasurer cannot directly assign designers while creating a task.
+    payload.assignedToId = "";
+    payload.assignedToName = "";
+    payload.assignedTo = "";
+    payload.assignedToEmail = "";
     const dedupeWindowMs = Number(process.env.TASK_DEDUPE_WINDOW_MS || 120000);
     const dedupeSince = new Date(Date.now() - dedupeWindowMs);
     const baseDedupeQuery = {
@@ -1012,7 +1077,7 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
         console.error("Request emit error (treasurer rooms):", error?.message || error);
       });
       if (!task.assignedToId) {
-        getUserIdsByRole(["designer"]).then((userIds) => {
+        getQueueDesignerUserIds().then((userIds) => {
           userIds.forEach((designerId) => {
             io.to(String(designerId)).emit("request:new", payloadTask);
           });
@@ -1026,7 +1091,7 @@ router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
     }
 
     if (!task.assignedToId) {
-      getUserIdsByRole(["designer"]).then((userIds) => {
+      getQueueDesignerUserIds().then((userIds) => {
         if (userIds.length === 0) return;
         return createNotificationsForUsers(userIds, {
           title: `New request: ${task.title}`,
@@ -1511,7 +1576,8 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
     }
 
     const validRoles = ["staff", "treasurer", "designer", "admin"];
-    const senderRole = validRoles.includes(userRole) ? userRole : "";
+    const normalizedUserRole = normalizeTaskRole(userRole);
+    const senderRole = validRoles.includes(normalizedUserRole) ? normalizedUserRole : "";
     const normalizedMentions = Array.isArray(mentions)
       ? mentions.filter((role) => validRoles.includes(role))
       : [];
@@ -1556,97 +1622,117 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
       return res.status(404).json({ error: "Task not found." });
     }
 
-    await Activity.create({
-      taskId: task._id,
-      taskTitle: task.title,
-      action: "commented",
-      userId: userId || "",
-      userName: userName || ""
-    });
-
     const createdComment = Array.isArray(task.comments)
       ? task.comments[task.comments.length - 1]
       : null;
+    const taskId = task.id || task._id?.toString?.();
 
-    if (createdComment) {
-      const requesterUserId =
-        task.requesterId ||
-        (task.requesterEmail ? await resolveUserIdByEmail(task.requesterEmail) : "");
-      const designerUserId = task.assignedToId || "";
-      const treasurerUserIds = await getUserIdsByRole(["treasurer"]);
-      const allRecipients = new Set([
-        requesterUserId,
-        designerUserId,
-        ...treasurerUserIds,
-      ]);
-      const finalRecipients = Array.from(allRecipients).filter(Boolean);
-      if (finalRecipients.length > 0) {
-        const snippet =
-          content.length > 140 ? `${content.slice(0, 137)}...` : content;
-        const commentEventId = createdComment._id
-          ? `comment:${createdComment._id.toString()}`
-          : undefined;
-          createNotificationsForUsers(finalRecipients, {
-            title: `New message on ${task.title}`,
-            message: `${userName || "Staff"}: ${snippet}`,
-            type: "comment",
-            link: buildTaskLink(task.id || task._id?.toString?.()),
-            taskId: task.id || task._id?.toString?.(),
-            eventId: commentEventId,
-          })
-            .then(emitNotifications)
-            .catch((error) => {
-            console.error("Notification error (comment):", error?.message || error);
-          });
-      }
-    }
-
-    const requesterPrefs = await resolveNotificationPreferences({
-      userId: task.requesterId,
-      email: task.requesterEmail,
-    });
-
-    // Notify recipients via WhatsApp/SMS
-    if (requesterPrefs.whatsappNotifications) {
-      const recipients = [
-        task.requesterPhone,
-        ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
-      ].filter((p) => p && p.trim() !== "");
-
-      if (recipients.length > 0) {
-        const baseUrl = process.env.FRONTEND_URL || "";
-        const taskUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}` : "";
-
-        // Non-blocking notification
-        Promise.all(recipients.map(to =>
-          sendCommentNotificationSms({
-            to,
-            taskTitle: task.title,
-            userName: userName,
-            content: content,
-            taskUrl: taskUrl
-          })
-        )).catch(err => console.error("Background Notification Error (Comment):", err));
-      }
-    }
-
-    const io = getSocket();
-    if (io && createdComment) {
-      io.to(task.id || task._id?.toString?.()).emit("comment:new", {
-        taskId: task.id || task._id?.toString?.(),
-        comment: createdComment
-      });
-    }
-
+    // Comment save succeeded. Return immediately and run side effects in background.
     res.json(task);
+
+    void (async () => {
+      try {
+        await Activity.create({
+          taskId: task._id,
+          taskTitle: task.title,
+          action: "commented",
+          userId: userId || "",
+          userName: userName || ""
+        });
+      } catch (error) {
+        console.error("Activity error (comment):", error?.message || error);
+      }
+
+      if (createdComment) {
+        try {
+          const requesterUserId =
+            task.requesterId ||
+            (task.requesterEmail ? await resolveUserIdByEmail(task.requesterEmail) : "");
+          const designerUserId = task.assignedToId || "";
+          const treasurerUserIds = await getUserIdsByRole(["treasurer"]);
+          const allRecipients = new Set([
+            requesterUserId,
+            designerUserId,
+            ...treasurerUserIds,
+          ]);
+          const finalRecipients = Array.from(allRecipients).filter(Boolean);
+          if (finalRecipients.length > 0) {
+            const snippet =
+              content.length > 140 ? `${content.slice(0, 137)}...` : content;
+            const commentEventId = createdComment._id
+              ? `comment:${createdComment._id.toString()}`
+              : undefined;
+            createNotificationsForUsers(finalRecipients, {
+              title: `New message on ${task.title}`,
+              message: `${userName || "Staff"}: ${snippet}`,
+              type: "comment",
+              link: buildTaskLink(taskId),
+              taskId,
+              eventId: commentEventId,
+            })
+              .then(emitNotifications)
+              .catch((error) => {
+                console.error("Notification error (comment):", error?.message || error);
+              });
+          }
+        } catch (error) {
+          console.error("Notification setup error (comment):", error?.message || error);
+        }
+      }
+
+      try {
+        const requesterPrefs = await resolveNotificationPreferences({
+          userId: task.requesterId,
+          email: task.requesterEmail,
+        });
+
+        if (requesterPrefs.whatsappNotifications) {
+          const recipients = [
+            task.requesterPhone,
+            ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
+          ].filter((p) => p && p.trim() !== "");
+
+          if (recipients.length > 0) {
+            const baseUrl = process.env.FRONTEND_URL || "";
+            const taskUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}` : "";
+
+            Promise.all(recipients.map(to =>
+              sendCommentNotificationSms({
+                to,
+                taskTitle: task.title,
+                userName: userName,
+                content: content,
+                taskUrl: taskUrl
+              })
+            )).catch(err => console.error("Background Notification Error (Comment):", err));
+          }
+        }
+      } catch (error) {
+        console.error("WhatsApp notification error (comment):", error?.message || error);
+      }
+
+      try {
+        const io = getSocket();
+        if (io && createdComment) {
+          io.to(taskId).emit("comment:new", {
+            taskId,
+            comment: createdComment
+          });
+        }
+      } catch (error) {
+        console.error("Socket emit error (comment):", error?.message || error);
+      }
+    })();
   } catch (error) {
-    res.status(400).json({ error: "Failed to add comment." });
+    res.status(400).json({
+      error: error instanceof Error && error.message ? error.message : "Failed to add comment."
+    });
   }
 });
 
 router.post("/:id/comments/seen", ensureTaskAccess, async (req, res) => {
   try {
-    const role = req.user?.role || "";
+    const role = normalizeTaskRole(req.user?.role);
     const validRoles = ["staff", "treasurer", "designer", "admin"];
     if (!validRoles.includes(role)) {
       return res.status(400).json({ error: "Invalid role." });
@@ -1688,10 +1774,12 @@ router.post("/:id/comments/seen", ensureTaskAccess, async (req, res) => {
 router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
   try {
     const { assignedToId, assignedToName, assignedTo, assignedToEmail, userName } = req.body;
-    const role = req.user?.role || "";
+    const role = normalizeTaskRole(req.user?.role);
+    const canAssign =
+      role === "admin" || (role === "designer" && isMainDesignerUser(req.user));
 
-    if (!["staff", "treasurer", "admin"].includes(role)) {
-      return res.status(403).json({ error: "Only staff or treasurer can assign tasks." });
+    if (!canAssign) {
+      return res.status(403).json({ error: "Only the main designer can assign tasks." });
     }
 
     const resolvedAssignment = await resolveAssignedUser({
@@ -1700,6 +1788,25 @@ router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
       assignedToName,
       assignedToEmail
     });
+    if (resolvedAssignment.assignedToId) {
+      const assignedDesigner = await User.findById(resolvedAssignment.assignedToId)
+        .select("_id name email role isActive");
+      if (
+        !assignedDesigner ||
+        assignedDesigner.role !== "designer" ||
+        assignedDesigner.isActive === false
+      ) {
+        return res.status(404).json({ error: "Assigned designer not found." });
+      }
+      if (hasMainDesignerConfig() && getDesignerScope(assignedDesigner) !== "junior") {
+        return res.status(400).json({ error: "Only junior designers can be assigned." });
+      }
+      if (!resolvedAssignment.assignedToName) {
+        const assignedEmail = normalizeValue(assignedDesigner.email);
+        resolvedAssignment.assignedToName =
+          assignedDesigner.name || (assignedEmail ? assignedEmail.split("@")[0] : "Designer");
+      }
+    }
 
     const task = await Task.findByIdAndUpdate(
       req.params.id,
@@ -1758,8 +1865,10 @@ router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
 router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
   try {
     const role = normalizeTaskRole(req.user?.role);
-    if (!["designer", "treasurer", "admin"].includes(role)) {
-      return res.status(403).json({ error: "Only designer, treasurer, or admin accounts can assign designers." });
+    const canAssign =
+      role === "admin" || (role === "designer" && isMainDesignerUser(req.user));
+    if (!canAssign) {
+      return res.status(403).json({ error: "Only the main designer can assign designers." });
     }
 
     const assignedDesignerRaw = req.body?.assigned_designer_id;
@@ -1798,6 +1907,9 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
       assignedDesigner.isActive === false
     ) {
       return res.status(404).json({ error: "Assigned designer not found." });
+    }
+    if (hasMainDesignerConfig() && getDesignerScope(assignedDesigner) !== "junior") {
+      return res.status(400).json({ error: "Only junior designers can be assigned." });
     }
 
     const assignedDesignerEmail = normalizeValue(assignedDesigner.email);

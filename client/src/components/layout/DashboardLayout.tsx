@@ -36,6 +36,7 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useTheme } from 'next-themes';
 
 import { API_URL, authFetch, getAuthToken } from '@/lib/api';
+import { isMainDesigner } from '@/lib/designerAccess';
 import { createSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 import { GridSmallBackground } from '@/components/ui/background';
@@ -87,6 +88,7 @@ export function DashboardLayout({
   const [unreadCount, setUnreadCount] = useState(0);
   const [globalViewers, setGlobalViewers] = useState<GlobalViewer[]>([]);
   const [globalTypers, setGlobalTypers] = useState<GlobalViewer[]>([]);
+  const [localSelfTyping, setLocalSelfTyping] = useState(false);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const autoPreviewShownRef = useRef(false);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,11 +101,26 @@ export function DashboardLayout({
   const unreadCountFetchInFlightRef = useRef(false);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const localSelfTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const userId = user?.id || (user as { _id?: string } | null)?._id || '';
+  const userEmail = String(user?.email || '').trim().toLowerCase();
   const useServerNotifications = Boolean(apiUrl);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const isCurrentUserViewer = useCallback(
+    (viewer?: GlobalViewer | null) => {
+      if (!viewer) return false;
+      const viewerId = String(viewer.userId || '').trim();
+      const viewerEmail = String(viewer.userEmail || '').trim().toLowerCase();
+      if (userId && viewerId === userId) return true;
+      if (userEmail && viewerEmail && viewerEmail === userEmail) return true;
+      if (userEmail && viewerId && viewerId.toLowerCase() === userEmail) return true;
+      return false;
+    },
+    [userEmail, userId]
+  );
 
 
   const normalizeNotification = useCallback((entry: any): NotificationItem => {
@@ -281,6 +298,40 @@ export function DashboardLayout({
     return () => window.removeEventListener('storage', onStorage);
   }, [user]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !userId) return;
+
+    const handleSelfTyping = (event: Event) => {
+      const detail = (event as CustomEvent<{ isTyping?: boolean; userId?: string }>).detail;
+      const sourceUserId = String(detail?.userId || '');
+      if (sourceUserId && sourceUserId !== userId) return;
+
+      const isTyping = Boolean(detail?.isTyping);
+      setLocalSelfTyping(isTyping);
+
+      if (localSelfTypingTimeoutRef.current) {
+        clearTimeout(localSelfTypingTimeoutRef.current);
+        localSelfTypingTimeoutRef.current = null;
+      }
+
+      if (isTyping) {
+        localSelfTypingTimeoutRef.current = setTimeout(() => {
+          setLocalSelfTyping(false);
+          localSelfTypingTimeoutRef.current = null;
+        }, 1600);
+      }
+    };
+
+    window.addEventListener('designhub:self-typing', handleSelfTyping as EventListener);
+    return () => {
+      window.removeEventListener('designhub:self-typing', handleSelfTyping as EventListener);
+      if (localSelfTypingTimeoutRef.current) {
+        clearTimeout(localSelfTypingTimeoutRef.current);
+        localSelfTypingTimeoutRef.current = null;
+      }
+    };
+  }, [userId]);
+
   const consumePendingEmailSendFlag = useCallback(() => {
     if (typeof window === 'undefined') return false;
     const raw = window.localStorage.getItem(EMAIL_SEND_PENDING_KEY);
@@ -338,7 +389,7 @@ export function DashboardLayout({
         socket.emit('join', { userId: user.email });
         console.log('Joined room', user.email);
       }
-      if (user?.role === 'designer') {
+      if (isMainDesigner(user)) {
         socket.emit('join', { userId: 'designers:queue' });
         console.log('Joined room designers:queue');
       }
@@ -505,12 +556,12 @@ export function DashboardLayout({
   const globalPresenceList = useMemo(() => {
     const list = [...globalViewers];
     list.sort((a, b) => {
-      if (a.userId === userId) return -1;
-      if (b.userId === userId) return 1;
+      if (isCurrentUserViewer(a)) return -1;
+      if (isCurrentUserViewer(b)) return 1;
       return (a.userName || '').localeCompare(b.userName || '');
     });
     return list;
-  }, [globalViewers, userId]);
+  }, [globalViewers, isCurrentUserViewer]);
 
   const globalPresenceSummary = useMemo(() => {
     const visible = globalPresenceList.slice(0, 4);
@@ -521,14 +572,39 @@ export function DashboardLayout({
   }, [globalPresenceList]);
 
   const globalTypingList = useMemo(() => {
-    const list = [...globalTypers];
+    const list = [...globalTypers].filter(
+      (viewer) => !isCurrentUserViewer(viewer) || localSelfTyping
+    );
+    if (localSelfTyping) {
+      const alreadyHasSelf = list.some((viewer) => isCurrentUserViewer(viewer));
+      if (!alreadyHasSelf) {
+        list.unshift({
+          userId: userId || userEmail || 'self',
+          userName: user?.name || 'You',
+          userRole: user?.role,
+          userEmail: user?.email,
+          avatar: user?.avatar,
+          lastSeenAt: new Date().toISOString(),
+        });
+      }
+    }
     list.sort((a, b) => {
-      if (a.userId === userId) return -1;
-      if (b.userId === userId) return 1;
+      if (isCurrentUserViewer(a)) return -1;
+      if (isCurrentUserViewer(b)) return 1;
       return (a.userName || '').localeCompare(b.userName || '');
     });
     return list;
-  }, [globalTypers, userId]);
+  }, [
+    globalTypers,
+    isCurrentUserViewer,
+    localSelfTyping,
+    user?.avatar,
+    user?.email,
+    user?.name,
+    user?.role,
+    userEmail,
+    userId,
+  ]);
 
   const globalTypingSummary = useMemo(() => {
     const visible = globalTypingList.slice(0, 4);
@@ -889,11 +965,23 @@ export function DashboardLayout({
     const extraCount = isTyping ? globalTypingSummary.extraCount : globalPresenceSummary.extraCount;
     const label = isTyping
       ? (() => {
-        const preferred =
-          globalTypingList.find((viewer) => viewer.userId !== userId) || globalTypingList[0];
-        const rawName = (preferred?.userName || 'Someone').trim();
-        const shortName = rawName ? rawName.slice(0, 5) : 'User';
-        return `${shortName} typing...`;
+        const selfTyping = globalTypingList.some((viewer) => isCurrentUserViewer(viewer));
+        const others = globalTypingList.filter((viewer) => !isCurrentUserViewer(viewer));
+        const firstOtherName = (others[0]?.userName || 'Someone').trim() || 'Someone';
+
+        if (selfTyping && others.length === 0) {
+          return 'You are typing...';
+        }
+        if (selfTyping && others.length === 1) {
+          return `You and ${firstOtherName} are typing...`;
+        }
+        if (selfTyping && others.length > 1) {
+          return `You and ${others.length} others are typing...`;
+        }
+        if (others.length <= 1) {
+          return `${firstOtherName} is typing...`;
+        }
+        return `${firstOtherName} and ${others.length - 1} others are typing...`;
       })()
       : 'Currently viewing';
     return (
@@ -917,7 +1005,7 @@ export function DashboardLayout({
         )}
         <div className="flex -space-x-2">
           {avatars.map((viewer) => {
-            const isSelf = viewer.userId === userId;
+            const isSelf = isCurrentUserViewer(viewer);
             const avatarSrc = isSelf ? user?.avatar || viewer.avatar : viewer.avatar;
             const labelRole =
               viewer.userRole
@@ -961,7 +1049,14 @@ export function DashboardLayout({
         </div>
       </div>
     );
-  }, [globalPresenceSummary, globalTypingSummary, user, userId]);
+  }, [
+    globalPresenceSummary,
+    globalTypingList,
+    globalTypingSummary,
+    isCurrentUserViewer,
+    user,
+    userId,
+  ]);
 
   useEffect(() => {
     const onOpenGuidelines = () => {
@@ -1149,7 +1244,7 @@ export function DashboardLayout({
                       <Database className="mt-0.5 h-7 w-7 text-primary" />
                       <span>
                         <span className="font-semibold text-[#2F3A56] dark:text-foreground">Data Requirements:</span>{' '}
-                        Include all text content, images, logos, and reference files.
+                        Include all text content, images, logos, and associated files.
                       </span>
                     </div>
                     <div className="flex items-start gap-3 px-5 py-5">
@@ -1514,7 +1609,7 @@ function DashboardShell({
       hideGrid={hideGrid}
       className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] dark:bg-background p-4 md:p-6"
     >
-      <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6 relative z-10">
+      <div className="flex h-[calc(100vh-2rem)] gap-4 md:gap-6 relative z-10">
         <div
           className="relative flex-shrink-0"
           style={{ width: 'var(--app-sidebar-width, 18rem)' }}
@@ -1527,129 +1622,123 @@ function DashboardShell({
         </div>
         <main className="flex-1 min-w-0 flex justify-center">
           <div className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] dark:shadow-[0_24px_60px_-40px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden">
+            <div className="relative z-30 shrink-0 border-b border-[#D9E6FF] bg-white/75 dark:bg-card/80 dark:border-border backdrop-blur-md px-4 md:px-6 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="relative min-w-[150px] flex-1 max-w-[220px] sm:max-w-[280px] md:max-w-md" ref={searchContainerRef}>
+                  <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-2 shadow-sm">
+                    <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
+                    <div className="relative flex-1">
+                      {showPlaceholder && (
+                        <div className="search-placeholder">
+                          <span className="search-placeholder-static">Search for</span>
+                          <span className="search-placeholder-words">
+                            <span className="search-placeholder-wordlist">
+                              <span>tasks</span>
+                              <span>files</span>
+                            </span>
+                          </span>
+                        </div>
+                      )}
+                      <input
+                        type="text"
+                        aria-label="Search"
+                        value={query}
+                        onChange={(event) => {
+                          setQuery(event.target.value);
+                          setIsSearchDismissed(false);
+                        }}
+                        ref={searchInputRef}
+                        onFocus={handleFocus}
+                        onBlur={handleBlur}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            setQuery('');
+                          }
+                        }}
+                        className="search-elastic-input w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                      />
+                    </div>
+                    <span className="hidden sm:flex items-center gap-1 rounded-full bg-[#EFF4FF] dark:bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                      <kbd className="font-sans">Ctrl</kbd>
+                      <kbd className="font-sans">F</kbd>
+                    </span>
+                  </div>
+                  {showPanel && (
+                    <GlassCard
+                      className="absolute left-0 right-0 mt-2 z-50 backdrop-blur-2xl"
+                      contentClassName={cn(
+                        'rounded-2xl overflow-hidden border p-2 animate-dropdown border-[#D9E6FF]/75 bg-white/94 supports-[backdrop-filter]:bg-white/82 backdrop-blur-md dark:border-[#253D78]/90 dark:bg-[#081027]/96 dark:supports-[backdrop-filter]:bg-[#081027]/88'
+                      )}
+                      blur={isDark ? 14 : 12}
+                      saturation={100}
+                      backgroundColor={isDark ? '#081027' : '#ffffff'}
+                      backgroundOpacity={isDark ? 0.88 : 0.82}
+                      borderColor={isDark ? '#253D78' : '#D9E6FF'}
+                      borderOpacity={0.95}
+                      borderSize={1}
+                      innerLightOpacity={0}
+                    >
+                      <div onMouseDown={(event) => event.preventDefault()}>
+                        <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                          <span>{scopeLabel}</span>
+                          <span>{totalCount} results</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 px-3 pb-3">
+                          {filterOptions.map((option) => {
+                            const Icon = option.icon;
+                            return (
+                              <button
+                                key={option.key}
+                                type="button"
+                                onClick={() => setActiveFilter(option.key as typeof activeFilter)}
+                                className="search-chip"
+                                data-active={activeFilter === option.key}
+                              >
+                                <Icon className="h-4 w-4" />
+                                <span>{option.label}</span>
+                                <span className="search-chip-count">{option.count}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="max-h-72 overflow-auto scrollbar-none">
+                          {Object.entries(visibleGroups).some(([, list]) => list.length > 0) ? (
+                            Object.entries(visibleGroups).map(([title, list]) => {
+                              if (list.length === 0) return null;
+                              return (
+                                <div key={title}>
+                                  <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                    {title}
+                                  </div>
+                                  {list.slice(0, 6).map(renderItem)}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="px-3 py-4 text-sm text-muted-foreground border-t border-[#E4ECFF] dark:border-border">
+                              No matches. Try a different term.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </GlassCard>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center justify-end gap-2">
+                  {headerActions}
+                </div>
+              </div>
+            </div>
             <div
               ref={contentScrollRef}
-              className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin relative"
+              data-app-scroll-container="true"
+              className="relative flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin"
               onScroll={handleContentScroll}
             >
               {background}
               <div className="relative z-10">
-                <div className="relative z-20">
-                  <div className="shrink-0 border-b border-[#D9E6FF] bg-white/60 dark:bg-card/70 dark:border-border backdrop-blur-md px-4 md:px-6 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="relative min-w-[150px] flex-1 max-w-[220px] sm:max-w-[280px] md:max-w-md" ref={searchContainerRef}>
-                        <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-2 shadow-sm">
-                          <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
-                          <div className="relative flex-1">
-                            {showPlaceholder && (
-                              <div className="search-placeholder">
-                                <span className="search-placeholder-static">Search for</span>
-                                <span className="search-placeholder-words">
-                                  <span className="search-placeholder-wordlist">
-                                    <span>tasks</span>
-                                    <span>files</span>
-                                  </span>
-                                </span>
-                              </div>
-                            )}
-                            <input
-                              type="text"
-                              aria-label="Search"
-                              value={query}
-                              onChange={(event) => {
-                                setQuery(event.target.value);
-                                setIsSearchDismissed(false);
-                              }}
-                              ref={searchInputRef}
-                              onFocus={handleFocus}
-                              onBlur={handleBlur}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Escape') {
-                                  setQuery('');
-                                }
-                              }}
-                              className="search-elastic-input w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-                            />
-                          </div>
-                          <span className="hidden sm:flex items-center gap-1 rounded-full bg-[#EFF4FF] dark:bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                            <kbd className="font-sans">Ctrl</kbd>
-                            <kbd className="font-sans">F</kbd>
-                          </span>
-                        </div>
-                        {showPanel && (
-                          <GlassCard
-                            className="absolute left-0 right-0 mt-2 z-50 backdrop-blur-2xl"
-                            contentClassName={cn(
-                              'rounded-2xl overflow-hidden border p-2 animate-dropdown',
-                              isDark
-                                ? 'border-white/10 bg-[linear-gradient(160deg,_rgba(12,24,56,0.86),_rgba(8,18,43,0.78))] backdrop-blur-xl shadow-[0_26px_54px_-30px_rgba(2,8,23,0.95)] ring-1 ring-white/10'
-                                : 'border-slate-200 bg-white/80 backdrop-blur-xl shadow-lg shadow-slate-200/40'
-                            )}
-                            blur={isDark ? 18 : 14}
-                            saturation={isDark ? 145 : 115}
-                            backgroundColor={isDark ? '#0b1738' : '#ffffff'}
-                            backgroundOpacity={isDark ? 0.62 : 0.8}
-                            borderColor={isDark ? '#ffffff' : '#e2e8f0'}
-                            borderOpacity={isDark ? 0.14 : 1}
-                            borderSize={1}
-                            innerLightOpacity={isDark ? 0.1 : 0}
-                          >
-                            <div onMouseDown={(event) => event.preventDefault()}>
-                              <div className="flex items-center justify-between px-3 pt-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                                <span>{scopeLabel}</span>
-                                <span>{totalCount} results</span>
-                              </div>
-                              <div className="flex flex-wrap gap-2 px-3 pb-3">
-                                {filterOptions.map((option) => {
-                                  const Icon = option.icon;
-                                  return (
-                                    <button
-                                      key={option.key}
-                                      type="button"
-                                      onClick={() => setActiveFilter(option.key as typeof activeFilter)}
-                                      className="search-chip"
-                                      data-active={activeFilter === option.key}
-                                    >
-                                      <Icon className="h-4 w-4" />
-                                      <span>{option.label}</span>
-                                      <span className="search-chip-count">{option.count}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              <div className="max-h-72 overflow-auto scrollbar-none">
-                                {Object.entries(visibleGroups).some(([, list]) => list.length > 0) ? (
-                                  Object.entries(visibleGroups).map(([title, list]) => {
-                                    if (list.length === 0) return null;
-                                    return (
-                                      <div key={title}>
-                                        <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                                          {title}
-                                        </div>
-                                        {list.slice(0, 6).map(renderItem)}
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="px-3 py-4 text-sm text-muted-foreground border-t border-[#E4ECFF] dark:border-border">
-                                    No matches. Try a different term.
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </GlassCard>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 items-center justify-end gap-2">
-                        {headerActions}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <div className="container py-6 px-4 md:px-8 max-w-6xl mx-auto">
-                    {children}
-                  </div>
+                <div className="container py-6 px-4 md:px-8 max-w-6xl mx-auto">
+                  {children}
                 </div>
               </div>
             </div>

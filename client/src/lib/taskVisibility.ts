@@ -1,4 +1,5 @@
 import type { Task, User } from '@/types';
+import { isMainDesigner } from '@/lib/designerAccess';
 
 const normalizeValue = (value?: string) => (value ? String(value).trim().toLowerCase() : '');
 const assignmentMetaFields = new Set(['assigned_designer', 'task_status', 'cc_emails']);
@@ -124,7 +125,7 @@ const isStaffTaskOwnerOrCreator = (task: Task, user: User) => {
   return false;
 };
 
-const isDesignerTask = (task: Task, user: User) => {
+const isDesignerTask = (task: Task, user: User, allowUnassigned: boolean) => {
   const assignedId = getAssignedToId(task);
   if (assignedId && assignedId === user.id) return true;
   if (assignedId && looksLikeEmail(assignedId) && normalizeValue(assignedId) === normalizeValue(user.email)) {
@@ -133,7 +134,7 @@ const isDesignerTask = (task: Task, user: User) => {
 
   const assignedName = normalizeValue(task.assignedToName);
   const isUnassigned = !assignedId;
-  if (isUnassigned) return true;
+  if (isUnassigned) return allowUnassigned;
 
   const userName = normalizeValue(user.name);
   const userEmail = normalizeValue(user.email);
@@ -160,6 +161,7 @@ export const isTaskVisibleToUser = (task: Task, user?: User | null) => {
   if (!user) return false;
   const userRole = normalizeValue(user.role);
   const userEmail = normalizeValue(user.email);
+  const userIsMainDesigner = userRole === 'designer' && isMainDesigner(user);
   const assignedId = getAssignedToId(task);
   const ccEmails = getTaskCcEmails(task);
   const taskUsesAssignedAccess = hasAssignmentMetadata(task);
@@ -170,10 +172,19 @@ export const isTaskVisibleToUser = (task: Task, user?: User | null) => {
 
   if (taskUsesAssignedAccess) {
     if (userRole === 'staff' && isStaffTaskOwnerOrCreator(task, user)) return true;
-    if (userRole === 'designer' && !assignedId) return true;
+    if (userRole === 'designer' && userIsMainDesigner && !assignedId) return true;
     if (assignedId && assignedId === user.id) return true;
+    if (
+      assignedId &&
+      looksLikeEmail(assignedId) &&
+      normalizeValue(assignedId) === normalizeValue(user.email)
+    ) {
+      return true;
+    }
+    if (userRole === 'designer' && !userIsMainDesigner) return false;
     if (userEmail && ccEmails.includes(userEmail)) return true;
     if (isTaskAssignedByUser(task, user)) return true;
+    if (userRole === 'designer' && userIsMainDesigner) return true;
     return false;
   }
 
@@ -182,7 +193,7 @@ export const isTaskVisibleToUser = (task: Task, user?: User | null) => {
   }
 
   if (userRole === 'designer') {
-    return isDesignerTask(task, user);
+    return isDesignerTask(task, user, userIsMainDesigner);
   }
 
   return true;

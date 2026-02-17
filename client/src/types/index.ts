@@ -26,6 +26,8 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  designerScope?: 'main' | 'junior';
+  portalId?: string;
   avatar?: string;
   department?: string;
   phone?: string;

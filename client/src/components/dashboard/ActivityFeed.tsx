@@ -28,16 +28,15 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
     const enableScroll = notifications.length > 3;
 
     return (
-        <div className="relative overflow-hidden rounded-[28px] border border-slate-100 bg-white dark:bg-card dark:border-border p-2 shadow-xl shadow-slate-200/50 dark:shadow-[0_22px_50px_-28px_rgba(0,0,0,0.6)] flex flex-col">
+        <div className="relative w-full self-start h-fit flex flex-col">
             {/* Visual Glass Header Section */}
-            <div className="relative h-[17rem] w-full overflow-hidden rounded-[22px] bg-slate-50/50 dark:bg-muted/40">
+            <div className="relative w-full overflow-hidden rounded-[22px] bg-slate-50/50 dark:bg-transparent p-4">
                 {/* Background Gradients */}
-                <div className="absolute top-0 right-0 h-64 w-64 translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-100/40 dark:bg-blue-500/10 blur-3xl" />
-                <div className="absolute bottom-0 left-0 h-64 w-64 -translate-x-1/2 translate-y-1/2 rounded-full bg-indigo-100/40 dark:bg-indigo-500/10 blur-3xl" />
+                <div className="absolute top-0 right-0 h-48 w-48 translate-x-1/3 -translate-y-1/3 rounded-full bg-blue-100/32 dark:bg-blue-500/6 blur-3xl" />
+                <div className="absolute bottom-0 left-0 h-44 w-44 -translate-x-1/3 translate-y-1/3 rounded-full bg-indigo-100/26 dark:bg-transparent blur-3xl" />
 
                 {/* Glass Card "Activity" */}
-                <div className="absolute inset-0 flex items-center justify-center p-4">
-                    <div className="relative w-full max-w-sm rounded-[22px] border border-white/40 dark:border-border bg-white/40 dark:bg-card/70 backdrop-blur-xl shadow-xl shadow-indigo-500/5 p-5">
+                <div className="relative w-full rounded-[22px] border border-white/40 dark:border-border bg-white/40 dark:bg-card/70 backdrop-blur-xl shadow-xl shadow-indigo-500/5 p-5">
                         <div className="mb-3 flex items-center justify-between">
                             <h3 className="text-lg font-bold text-slate-800 dark:text-foreground">Activity</h3>
                             <div className="flex items-center gap-2">
@@ -150,15 +149,14 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
                                 ))}
                             </div>
                         )}
-                    </div>
                 </div>
             </div>
 
             {/* Footer Content */}
-            <div className="p-8 pt-7 pb-10 mt-auto">
+            <div className="px-2 pt-3 pb-2">
                 <Badge
                     variant="secondary"
-                    className="bg-blue-50 text-blue-600 dark:bg-muted dark:text-foreground border-none rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider mb-3"
+                    className="bg-blue-50 text-blue-600 dark:bg-muted dark:text-foreground border-none rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider mb-2"
                 >
                     <Sparkles className="h-3 w-3 mr-1.5" />
                     <span className="gradient-name bg-gradient-to-r from-sky-300 via-indigo-400 to-pink-300 dark:from-sky-200 dark:via-indigo-400 dark:to-pink-300 bg-clip-text text-transparent">
@@ -166,7 +164,7 @@ export function ActivityFeed({ notifications }: ActivityFeedProps) {
                     </span>
                 </Badge>
 
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-foreground mb-2 tracking-tight">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-foreground mb-1.5 tracking-tight">
                     Live Updates
                 </h2>
 

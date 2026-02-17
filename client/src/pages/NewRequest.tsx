@@ -1178,7 +1178,7 @@ export default function NewRequest() {
                     </span>
                     <span>
                       <strong>Data Requirements:</strong> Include all text content,
-                      images, logos, and reference files
+                      images, logos, and associated files
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
@@ -1404,7 +1404,7 @@ export default function NewRequest() {
                 Attachments <span className="text-muted-foreground">(Optional)</span>
               </Label>
               <p className="text-sm text-muted-foreground mt-1">
-                Upload any supporting content, reference files, and data
+                Upload any supporting content, associated files, and data
               </p>
             </div>
 
