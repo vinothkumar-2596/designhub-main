@@ -169,6 +169,7 @@ export default function Dashboard() {
   const [ccEmails, setCcEmails] = useState<string[]>([]);
   const [assignmentMessage, setAssignmentMessage] = useState('');
   const [isAssigningDesigner, setIsAssigningDesigner] = useState(false);
+  const [showStickyHeader, setShowStickyHeader] = useState(false);
   const [assignSuccessInfo, setAssignSuccessInfo] = useState<{
     taskTitle: string;
     designerName: string;
@@ -502,6 +503,22 @@ export default function Dashboard() {
     setItems(buildSearchItemsFromTasks(relevantTasks));
   }, [relevantTasks, setItems, setScopeLabel]);
 
+  useEffect(() => {
+    const scrollContainer = document.querySelector('[data-app-scroll-container="true"]') as HTMLElement | null;
+    const target = scrollContainer ?? window;
+    const getScrollTop = () =>
+      scrollContainer ? scrollContainer.scrollTop : window.scrollY;
+    const handleScroll = () => {
+      setShowStickyHeader(getScrollTop() > 8);
+    };
+
+    handleScroll();
+    target.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      target.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
   const getLatestEntry = (entries: any[]) => {
     if (entries.length === 0) return null;
     return entries.reduce((latest, current) => {
@@ -826,7 +843,11 @@ export default function Dashboard() {
     >
       <div className="space-y-8 relative z-10 pt-2">
         <div
-          className="sticky top-0 z-30 -mx-4 md:-mx-8 bg-white/78 supports-[backdrop-filter]:bg-white/58 backdrop-blur-2xl dark:bg-[#081027]/74 dark:supports-[backdrop-filter]:bg-[#081027]/56 px-4 md:px-8 py-1.5 transition-colors border-b border-transparent"
+          className={`sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-1.5 border-b transition-all duration-200 ${
+            showStickyHeader
+              ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,251,255,0.94))] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(247,251,255,0.84))] backdrop-blur-xl backdrop-saturate-125 border-white/30 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.94),rgba(8,16,39,0.9))] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.84),rgba(8,16,39,0.8))] dark:border-white/10'
+              : 'bg-transparent border-transparent backdrop-blur-0 shadow-none'
+          }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
